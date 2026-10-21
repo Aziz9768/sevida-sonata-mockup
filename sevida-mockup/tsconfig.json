@@ -1,0 +1,73 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "paths": {
+      "sevida-ui": [
+        "../sevida-ui/src/index.ts"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom"
+      ],
+      "react-dom/*": [
+        "./node_modules/@types/react-dom/*"
+      ],
+      "@mui/material": [
+        "./node_modules/@mui/material"
+      ],
+      "@mui/material/*": [
+        "./node_modules/@mui/material/*"
+      ],
+      "@mui/icons-material": [
+        "./node_modules/@mui/icons-material"
+      ],
+      "@mui/icons-material/*": [
+        "./node_modules/@mui/icons-material/*"
+      ],
+      "@emotion/react": [
+        "./node_modules/@emotion/react"
+      ],
+      "@emotion/styled": [
+        "./node_modules/@emotion/styled"
+      ],
+      "write-excel-file/browser": [
+        "./node_modules/write-excel-file/browser/index.d.ts"
+      ],
+      "jspdf": [
+        "./node_modules/jspdf/types/index.d.ts"
+      ],
+      "jspdf-autotable": [
+        "./node_modules/jspdf-autotable/dist/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
+}

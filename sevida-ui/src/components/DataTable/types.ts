@@ -1,0 +1,88 @@
+import type { ReactNode } from "react";
+import type { Option } from "../Form/fields";
+
+export type SortDirection = "asc" | "desc";
+export interface SortState {
+  key: string;
+  direction: SortDirection;
+}
+
+/** How a column can be filtered in the Filters panel. */
+export type ColumnFilter =
+  | { type: "text" } //                                  free text: "contains"
+  | { type: "select"; options: Option[]; required?: boolean } // pick one value (or All). With `required` there is no All: the filter always has a value and starts as the first option (for example a Measurement year)
+  | { type: "multiselect"; options: Option[] } //        pick several values
+  | { type: "dateRange"; presets?: DatePreset[] } //    From / To dates (needs accessor returning a Date or "YYYY-MM-DD"). `presets` adds quick-pick buttons above the dates
+  | { type: "numberRange" }; //                         From / To numbers, such as age (needs accessor returning a number)
+
+/** A quick-pick button on a dateRange filter. It fills From and To (give the dates as "YYYY-MM-DD"), or, with `blank`, keeps only rows that have no date. */
+export interface DatePreset {
+  label: string;
+  from?: string;
+  to?: string;
+  /** Keep only rows with no date (for example "No appointment"). */
+  blank?: boolean;
+}
+export interface DateRangeValue {
+  from?: string; // "YYYY-MM-DD", or a number as text for a numberRange
+  to?: string;
+  /** Set by a `blank` preset: only rows with no date. */
+  blank?: boolean;
+}
+export type FilterValue = string | string[] | DateRangeValue;
+/** The chosen filters, keyed by column `key`. */
+export type FilterState = Record<string, FilterValue>;
+
+export interface Column<T> {
+  /** Unique id for the column. */
+  key: string;
+  /** Column heading. Also the label on phone cards, in the Filters panel and in the Columns panel. */
+  header: string;
+  /** Plain-language explanation of this column. Shows an (i) next to the heading. Use it for short forms and calculated numbers. */
+  help?: string;
+  /** Gets the plain value of this column for a row. Used for sorting, search, filters and, if no `render`, for display. A list of text (for a row that can have several values, such as gap names) works with a `multiselect` filter: the row stays if ANY of its values is picked. */
+  accessor?: (row: T) => string | number | Date | string[] | null | undefined;
+  /** Custom cell content (a StatusChip, a link...). Overrides what `accessor` would show. */
+  render?: (row: T) => ReactNode;
+  /** Allow clicking the heading to sort. Needs `accessor`. */
+  sortable?: boolean;
+  align?: "left" | "right" | "center";
+  width?: number | string;
+  /** Phone cards: use this column as the card's title. If none is marked, the first column is used. */
+  primary?: boolean;
+  /** Phone cards: leave this column out. */
+  hideOnMobile?: boolean;
+  /**
+   * Table view only: hide this column on screens narrower than this ('md' = 900px, 'lg' = 1200px).
+   * Use it for the least important columns so a tablet never needs sideways scrolling.
+   * (Hidden columns are still shown on phone cards unless `hideOnMobile` is set.)
+   */
+  hideBelow?: "md" | "lg";
+  /** Never wrap this column's text onto a second line (IDs, dates, phone numbers). */
+  nowrap?: boolean;
+
+  // ---- search, filters, column chooser
+  /** Add this column to the Filters panel. See `ColumnFilter` for the kinds. */
+  filter?: ColumnFilter;
+  /**
+   * Filter on a different value than the one shown. Example: the Age column shows a number but filters on the date of birth with a `dateRange`. Defaults to `accessor`.
+   * The second argument is the whole set of chosen filters, for a filter that depends on another one
+   * (example: "Open care gaps" counts only the measures picked in the Measure filter).
+   */
+  filterAccessor?: (
+    row: T,
+    filters: FilterState,
+  ) => string | number | Date | string[] | null | undefined;
+  /** Name shown in the Filters panel and on the filter chip when it should differ from `header` (for example "Date of birth" for the Age column). */
+  filterLabel?: string;
+  /** Include this column in the search box. Default true for any column with an `accessor`; set false to leave it out. */
+  searchable?: boolean;
+  /** Start hidden. The user can switch it on in the Columns panel. */
+  defaultHidden?: boolean;
+  /** Where this column's filter sits in the Filters panel. Filters follow the column order; give a number to move one (for example 2.5 puts it between the 3rd and 4th column's filters). */
+  filterOrder?: number;
+  /** Start pinned (kept in view while scrolling sideways). The user can unpin it. At most `maxPinned` columns start pinned. */
+  defaultPinned?: boolean;
+  /** The user cannot hide this column. The `primary` column is always like this. */
+  alwaysVisible?: boolean;
+}

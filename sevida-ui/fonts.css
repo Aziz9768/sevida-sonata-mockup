@@ -1,0 +1,15 @@
+/*
+ * Lato (page text) and Roboto (table headers and cells, as in the Leap Metrics app), bundled from the npm package (no Google Fonts, no internet needed at runtime).
+ * Import this ONCE in the app that uses the library:
+ *     import 'sevida-ui/fonts.css';
+ * Only the Latin character sets are included, to keep the download small.
+ */
+@import '@fontsource/lato/latin-400.css';
+@import '@fontsource/lato/latin-700.css';
+@import '@fontsource/lato/latin-900.css';
+@import '@fontsource/lato/latin-ext-400.css';
+@import '@fontsource/lato/latin-ext-700.css';
+@import '@fontsource/roboto/latin-400.css';
+@import '@fontsource/roboto/latin-500.css';
+@import '@fontsource/roboto/latin-ext-400.css';
+@import '@fontsource/roboto/latin-ext-500.css';

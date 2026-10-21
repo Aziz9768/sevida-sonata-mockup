@@ -1,0 +1,61 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Menu, MenuItem, Stack } from "@mui/material";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import { IconButton } from "sevida-ui";
+import { CURRENT_YEAR } from "../data";
+
+/** A ⋮ menu of places to go for the member. The row itself (name, ID or a click on the row) opens the member, so there is no "View details" button. */
+export function RowActions({
+  id,
+  name,
+  year,
+}: {
+  id: string;
+  name: string;
+  year?: number;
+}) {
+  const navigate = useNavigate();
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const go = (tab?: string) => {
+    setEl(null);
+    const q = [
+      tab ? `tab=${tab}` : "",
+      year && year !== CURRENT_YEAR ? `year=${year}` : "",
+    ]
+      .filter(Boolean)
+      .join("&");
+    navigate(`/members/${id}${q ? `?${q}` : ""}`);
+  };
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      justifyContent="flex-end"
+      sx={{ flexWrap: "nowrap" }}
+    >
+      <IconButton
+        size="small"
+        aria-label={`More actions for ${name}`}
+        aria-haspopup="menu"
+        onClick={(e) => setEl(e.currentTarget)}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={el} open={!!el} onClose={() => setEl(null)}>
+        <MenuItem onClick={() => go("gaps")}>Care gaps</MenuItem>
+        <MenuItem onClick={() => go("claims")}>Claims</MenuItem>
+        <MenuItem onClick={() => go("enrollment")}>Enrollment</MenuItem>
+        <MenuItem onClick={() => go("profile")}>Profile</MenuItem>
+        <MenuItem
+          onClick={() => {
+            setEl(null);
+            void navigator.clipboard?.writeText(id);
+          }}
+        >
+          Copy member ID
+        </MenuItem>
+      </Menu>
+    </Stack>
+  );
+}
