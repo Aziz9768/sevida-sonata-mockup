@@ -35,7 +35,7 @@ const NO_NOTES = { fr: false, ask: false };
 const TABS = ["All measures"];
 
 /**
- * Dashboard option 2: every measure on one sheet, drawn to the QuickSight style guide (same frame, controls bar, tiles,
+ * Analytics option 2: every measure on one sheet, drawn to the QuickSight style guide (same frame, controls bar, tiles,
  * column chart and table as option 1). QuickSight has no clickable cards, so opening a measure is a click action from a
  * data point: click its bar or its row. That is the one kind of click action the guide allows.
  */
@@ -117,7 +117,7 @@ export function DashboardCardsPage() {
 
   return (
     <PageContainer
-      title="Dashboard option 2 (QuickSight style)"
+      title="Analytics option 2"
       titleVariant="overview"
       subtitle="All measures on one sheet. Click a bar or a row to open that measure's dashboard."
     >

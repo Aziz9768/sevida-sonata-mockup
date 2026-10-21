@@ -20,6 +20,7 @@ import {
   InfoBanner,
 } from "sevida-ui";
 import type { NavItem } from "sevida-ui";
+import { Typography } from "@mui/material";
 import { RouterLinkAdapter } from "./components/RouterLinkAdapter";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
@@ -38,13 +39,13 @@ import { poweredByDark, poweredByLight } from "./brand";
 const baseNav: NavItem[] = [
   {
     key: "quicksight",
-    label: "Dashboard option 1",
+    label: "Quality measure analytics",
     icon: <InsightsOutlinedIcon />,
     href: "/quicksight",
   },
   {
     key: "dashboards",
-    label: "Dashboard option 2",
+    label: "Analytics option 2",
     icon: <ViewModuleOutlinedIcon />,
     href: "/dashboards",
   },
@@ -201,6 +202,23 @@ function Protected() {
     <AppShell
       items={baseNav}
       activeKey={activeKeyFor(pathname)}
+      brandName="Sevida"
+      // Name only, no mark: the sidebar shows plain "Sevida" (and nothing when it is collapsed).
+      logo={
+        <Typography
+          component="span"
+          noWrap
+          sx={{
+            fontSize: "1.0625rem",
+            fontWeight: 700,
+            letterSpacing: ".01em",
+            color: "onPrimary.text",
+          }}
+        >
+          Sevida
+        </Typography>
+      }
+      logoCollapsed={<span />}
       linkComponent={RouterLinkAdapter}
       user={{
         name: user.name,
