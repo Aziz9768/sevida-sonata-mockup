@@ -6,6 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import ViewModuleOutlinedIcon from "@mui/icons-material/ViewModuleOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
@@ -22,6 +23,7 @@ import type { NavItem } from "sevida-ui";
 import { RouterLinkAdapter } from "./components/RouterLinkAdapter";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
+import { DashboardCardsPage } from "./pages/DashboardCardsPage";
 import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
 import { MeasuresPage } from "./pages/MeasuresPage";
 import { MeasureDetailPage } from "./pages/MeasureDetailPage";
@@ -36,9 +38,15 @@ import { poweredByDark, poweredByLight } from "./brand";
 const baseNav: NavItem[] = [
   {
     key: "quicksight",
-    label: "Dashboard (QuickSight)",
+    label: "Dashboard option 1",
     icon: <InsightsOutlinedIcon />,
     href: "/quicksight",
+  },
+  {
+    key: "dashboards",
+    label: "Dashboard option 2",
+    icon: <ViewModuleOutlinedIcon />,
+    href: "/dashboards",
   },
   {
     key: "members",
@@ -56,7 +64,10 @@ const baseNav: NavItem[] = [
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string) {
   const [first] = pathname.split("/").filter(Boolean);
-  return first === "measures" || first === "dashboard" || first === "quicksight"
+  return first === "measures" ||
+    first === "dashboard" ||
+    first === "quicksight" ||
+    first === "dashboards"
     ? first
     : "members";
 }
@@ -203,6 +214,7 @@ function Protected() {
         <Route path="/" element={<Navigate to="/members" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/quicksight" element={<QuickSightDashboardPage />} />
+        <Route path="/dashboards" element={<DashboardCardsPage />} />
         <Route path="/dashboard/:code" element={<MeasureDashboardPage />} />
         <Route path="/measures" element={<MeasuresPage />} />
         <Route path="/measures/:code" element={<MeasureDetailPage />} />

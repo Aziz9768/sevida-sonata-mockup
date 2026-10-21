@@ -235,7 +235,7 @@ Rule: the same idea has the same name, the same values and the same control on b
 - Left different on purpose: Measure (the dashboard has tabs, the list has a filter), Member (a box in the dashboard block, the table search on the list), and the care-work filters that only make sense for calling people: Gap status, Gap identified, Next appointment, Last contact, Contact result, Care team, Care manager, Age status, Last updated. The full side-by-side list is in `filter-comparison.xlsx`.
 
 
-## Dashboard (QuickSight style) (`/#/quicksight`)
+## Dashboard option 1 (QuickSight style) (`/#/quicksight`)
 
 The same dashboard drawn only with what QuickSight can build, from the Leap QuickSight style guide (leap-context-plane, PR #35). The old Dashboard is hidden from the sidebar (still at `/#/dashboard`). The audit that led to this is `quicksight-audit.xlsx` (70 elements: what works, what changes, what is not possible, what to ask the QuickSight developers).
 

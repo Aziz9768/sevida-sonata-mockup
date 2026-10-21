@@ -987,6 +987,7 @@ export function QsTable<T>({
   label,
   defaultSort,
   exportFile,
+  onRowSelect,
 }: {
   cols: QsCol<T>[];
   rows: T[];
@@ -996,6 +997,8 @@ export function QsTable<T>({
   defaultSort?: { key: string; dir: "asc" | "desc" };
   /** File name for "Export to CSV" in the visual menu (QuickSight exports every visual to CSV). */
   exportFile?: string;
+  /** A click on a row is a click action from a data point (the only kind of click action the guide allows). */
+  onRowSelect?: (r: T) => void;
 }) {
   const [sort, setSort] = useState(defaultSort);
   const sorted = (() => {
@@ -1102,7 +1105,19 @@ export function QsTable<T>({
           </thead>
           <tbody>
             {sorted.map((r, ri) => (
-              <tr key={rowKey(r)}>
+              <tr
+                key={rowKey(r)}
+                onClick={onRowSelect ? () => onRowSelect(r) : undefined}
+                onKeyDown={
+                  onRowSelect
+                    ? (e) => {
+                        if (e.key === "Enter") onRowSelect(r);
+                      }
+                    : undefined
+                }
+                tabIndex={onRowSelect ? 0 : undefined}
+                style={onRowSelect ? { cursor: "pointer" } : undefined}
+              >
                 {cols.map((c, i) => (
                   <Box
                     component="td"

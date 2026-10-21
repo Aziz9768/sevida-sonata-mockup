@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
 import {
   AutocompleteField,
@@ -101,67 +102,81 @@ const BENCHMARK: Record<MeasureCode, number> = {
 };
 const DAY_MS = 86_400_000;
 
+/** Filter names are Title Case (each word starts with a capital). Table headers and tiles keep their own wording. */
+const titleCase = (t: string) =>
+  t.replace(/\b([a-z])/g, (c) => c.toUpperCase());
+const FL = Object.fromEntries(
+  Object.entries(LABEL).map(([k, v]) => [k, titleCase(v)]),
+) as Record<keyof typeof LABEL, string>;
+/** A to Z, by what the viewer reads. */
+const az = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
+const azOpt = <T extends { label: string }>(xs: T[]) =>
+  [...xs].sort((a, b) => a.label.localeCompare(b.label));
+/** Controls in a bar: A to Z by name. */
+const byName = (items: [string, ReactNode][]) =>
+  [...items].sort((a, b) => a[0].localeCompare(b[0])).map((i) => i[1]);
+
 /** Controls that live on one sheet only. A choice made there still filters the other sheets, so those sheets say so. */
 const SHEET_ONLY: {
   sheet: "Overview" | "Details";
   label: string;
   text: (f: DashFilters) => string;
 }[] = [
-  { sheet: "Overview", label: LABEL.result, text: (f) => f.status },
-  { sheet: "Overview", label: LABEL.member, text: (f) => f.memberId.trim() },
+  { sheet: "Overview", label: FL.result, text: (f) => f.status },
+  { sheet: "Overview", label: FL.member, text: (f) => f.memberId.trim() },
   {
     sheet: "Overview",
-    label: LABEL.age,
+    label: FL.age,
     text: (f) =>
       f.ageFrom !== "" || f.ageTo !== ""
         ? `${f.ageFrom || "0"} to ${f.ageTo || "100"}`
         : "",
   },
-  { sheet: "Overview", label: LABEL.sex, text: (f) => f.sex },
+  { sheet: "Overview", label: FL.sex, text: (f) => f.sex },
   {
     sheet: "Overview",
-    label: LABEL.ageGroup,
+    label: FL.ageGroup,
     text: (f) => f.ageGroup.join(", "),
   },
-  { sheet: "Overview", label: LABEL.race, text: (f) => f.race.join(", ") },
+  { sheet: "Overview", label: FL.race, text: (f) => f.race.join(", ") },
   {
     sheet: "Overview",
-    label: LABEL.ethnicity,
+    label: FL.ethnicity,
     text: (f) => f.ethnicity.join(", "),
   },
   {
     sheet: "Overview",
-    label: LABEL.provider,
+    label: FL.provider,
     text: (f) => f.provider.join(", "),
   },
-  { sheet: "Overview", label: LABEL.openGaps, text: (f) => f.openGaps },
-  { sheet: "Overview", label: LABEL.multiGap, text: (f) => f.multiGap },
+  { sheet: "Overview", label: FL.openGaps, text: (f) => f.openGaps },
+  { sheet: "Overview", label: FL.multiGap, text: (f) => f.multiGap },
   {
     sheet: "Details",
-    label: LABEL.dob,
+    label: FL.dob,
     text: (f) =>
       f.dobFrom || f.dobTo ? `${f.dobFrom || "…"} to ${f.dobTo || "…"}` : "",
   },
   {
     sheet: "Details",
-    label: LABEL.excluded,
+    label: FL.excluded,
     text: (f) => f.excluded.join(", "),
   },
   {
     sheet: "Details",
-    label: LABEL.evDate,
+    label: FL.evDate,
     text: (f) =>
       f.evFrom || f.evTo ? `${f.evFrom || "…"} to ${f.evTo || "…"}` : "",
   },
   {
     sheet: "Details",
-    label: LABEL.evSystem,
+    label: FL.evSystem,
     text: (f) => f.evSystem.join(", "),
   },
-  { sheet: "Details", label: LABEL.a1c, text: (f) => f.a1c },
-  { sheet: "Details", label: LABEL.state, text: (f) => f.state },
-  { sheet: "Details", label: LABEL.county, text: (f) => f.county },
-  { sheet: "Details", label: LABEL.military, text: (f) => f.military },
+  { sheet: "Details", label: FL.a1c, text: (f) => f.a1c },
+  { sheet: "Details", label: FL.state, text: (f) => f.state },
+  { sheet: "Details", label: FL.county, text: (f) => f.county },
+  { sheet: "Details", label: FL.military, text: (f) => f.military },
 ];
 
 /** Tells the viewer which choices made on another sheet are still filtering this one (a hidden filter would be a trap). */
@@ -218,7 +233,11 @@ const stateColor: Record<MeasureState, string> = {
  */
 export function QuickSightDashboardPage() {
   const [sheet, setSheet] = useState("Overview");
-  const [code, setCode] = useState<MeasureCode>(measures[0].code);
+  const [params] = useSearchParams();
+  const fromCards = params.get("from") === "cards";
+  const [code, setCode] = useState<MeasureCode>(
+    () => (measureByCode(params.get("m") ?? "") ?? measures[0]).code,
+  );
   const [f, setF] = useState<DashFilters>(emptyFilters());
   const [view, setView] = useState<"" | "Met" | "Gap">("");
   const [notes, setNotes] = useState({ fr: true, ask: false });
@@ -239,20 +258,20 @@ export function QuickSightDashboardPage() {
   const cMeasure = (
     <QsControl key="measure" info="Pick the measure. Every sheet follows it.">
       <SelectField
-        label={LABEL.measure}
+        label={FL.measure}
         value={code}
         onChange={(v) => {
           setCode(v as MeasureCode);
           setView("");
         }}
-        options={measureOptions}
+        options={azOpt(measureOptions)}
       />
     </QsControl>
   );
   const cYear = (
     <QsControl key="year">
       <SelectField
-        label={LABEL.year}
+        label={FL.year}
         value={String(f.year)}
         onChange={(v) => set("year", Number(v))}
         options={[2026, 2025].map((y) => ({
@@ -326,69 +345,100 @@ export function QuickSightDashboardPage() {
 
   const overviewControls = (
     <QsControlsBar fr="703" ask={["Q1", "Q4", "Q12"]}>
-      {cMeasure}
-      {cYear}
-      <QsControl key="result">
-        <SelectField
-          label={LABEL.result}
-          value={f.status}
-          onChange={(v) => set("status", v as DashFilters["status"])}
-          options={[{ value: "", label: ALL }, ...resultOptions]}
-        />
-      </QsControl>
-      <QsControl key="member">
-        <TextField
-          label={LABEL.member}
-          placeholder="ID or name"
-          value={f.memberId}
-          onChange={(e) => set("memberId", e.target.value)}
-        />
-      </QsControl>
-      <QsControl key="age">
-        <QsRangeSlider
-          label={LABEL.age}
-          min={0}
-          max={100}
-          from={f.ageFrom === "" ? null : Number(f.ageFrom)}
-          to={f.ageTo === "" ? null : Number(f.ageTo)}
-          onChange={(a, b) => {
-            set("ageFrom", a === null ? "" : String(a));
-            set("ageTo", b === null ? "" : String(b));
-          }}
-        />
-      </QsControl>
-      {dd("sex", LABEL.sex, options.sex)}
-      {multi("ageGroup", LABEL.ageGroup, optionsOf(options.ageGroup))}
-      {multi("race", LABEL.race, optionsOf(options.race))}
-      {multi("ethnicity", LABEL.ethnicity, optionsOf(options.ethnicity))}
-      {multi("provider", LABEL.provider, optionsOf(options.provider))}
-      {dd(
-        "openGaps",
-        LABEL.openGaps,
-        options.openGaps,
-        "How many measures the member has not met.",
-      )}
-      {dd("multiGap", LABEL.multiGap, YES_NO)}
+      {byName([
+        [FL.measure, cMeasure],
+        [FL.year, cYear],
+        [
+          FL.result,
+          <QsControl key="result">
+            <SelectField
+              label={FL.result}
+              value={f.status}
+              onChange={(v) => set("status", v as DashFilters["status"])}
+              options={[{ value: "", label: ALL }, ...azOpt(resultOptions)]}
+            />
+          </QsControl>,
+        ],
+        [
+          FL.member,
+          <QsControl key="member">
+            <TextField
+              label={FL.member}
+              placeholder="ID or name"
+              value={f.memberId}
+              onChange={(e) => set("memberId", e.target.value)}
+            />
+          </QsControl>,
+        ],
+        [
+          FL.age,
+          <QsControl key="age">
+            <QsRangeSlider
+              label={FL.age}
+              min={0}
+              max={100}
+              from={f.ageFrom === "" ? null : Number(f.ageFrom)}
+              to={f.ageTo === "" ? null : Number(f.ageTo)}
+              onChange={(a, b) => {
+                set("ageFrom", a === null ? "" : String(a));
+                set("ageTo", b === null ? "" : String(b));
+              }}
+            />
+          </QsControl>,
+        ],
+        [FL.sex, dd("sex", FL.sex, az(options.sex))],
+        // Age groups, open gaps, HbA1c bands and years keep their natural order (a number order, not a word order).
+        [
+          FL.ageGroup,
+          multi("ageGroup", FL.ageGroup, optionsOf(options.ageGroup)),
+        ],
+        [FL.race, multi("race", FL.race, optionsOf(az(options.race)))],
+        [
+          FL.ethnicity,
+          multi("ethnicity", FL.ethnicity, optionsOf(az(options.ethnicity))),
+        ],
+        [
+          FL.provider,
+          multi("provider", FL.provider, optionsOf(az(options.provider))),
+        ],
+        [
+          FL.openGaps,
+          dd(
+            "openGaps",
+            FL.openGaps,
+            options.openGaps,
+            "How many measures the member has not met.",
+          ),
+        ],
+        [FL.multiGap, dd("multiGap", FL.multiGap, az(YES_NO))],
+      ])}
     </QsControlsBar>
   );
   const detailControls = (
     <QsControlsBar fr="703" ask={["Q12"]}>
-      {cMeasure}
-      {cYear}
-      {dateRange(LABEL.dob, "dobFrom", "dobTo")}
-      {multi("excluded", LABEL.excluded, measureOptions)}
-      {dateRange(LABEL.evDate, "evFrom", "evTo")}
-      {multi("evSystem", LABEL.evSystem, optionsOf(options.evSystem))}
-      {dd("a1c", LABEL.a1c, options.a1c)}
-      {dd("state", LABEL.state, options.state)}
-      {dd("county", LABEL.county, options.county)}
-      {dd("military", LABEL.military, options.military)}
+      {byName([
+        [FL.measure, cMeasure],
+        [FL.year, cYear],
+        [FL.dob, dateRange(FL.dob, "dobFrom", "dobTo")],
+        [FL.excluded, multi("excluded", FL.excluded, azOpt(measureOptions))],
+        [FL.evDate, dateRange(FL.evDate, "evFrom", "evTo")],
+        [
+          FL.evSystem,
+          multi("evSystem", FL.evSystem, optionsOf(az(options.evSystem))),
+        ],
+        [FL.a1c, dd("a1c", FL.a1c, options.a1c)],
+        [FL.state, dd("state", FL.state, az(options.state))],
+        [FL.county, dd("county", FL.county, az(options.county))],
+        [FL.military, dd("military", FL.military, az(options.military))],
+      ])}
     </QsControlsBar>
   );
   const smallControls = (
     <QsControlsBar>
-      {cMeasure}
-      {cYear}
+      {byName([
+        [FL.measure, cMeasure],
+        [FL.year, cYear],
+      ])}
     </QsControlsBar>
   );
 
@@ -421,7 +471,19 @@ export function QuickSightDashboardPage() {
       titleVariant="overview"
       subtitle="The dashboard drawn only with what QuickSight can build (style guide PR #35)."
       actions={
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 2,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          {fromCards && (
+            <Link to="/dashboards" style={{ color: "inherit" }}>
+              ← All dashboards
+            </Link>
+          )}
           <SwitchField
             label="Requirement tags"
             checked={notes.fr}
