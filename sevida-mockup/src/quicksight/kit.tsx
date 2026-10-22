@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Box, Slider, Typography } from "@mui/material";
-import { InfoTip, StatusChip } from "sevida-ui";
+import { InfoTip, StatusChip, titleCase } from "sevida-ui";
 import { qs } from "./qsTheme";
 
 /* ------------------------------------------------------------------ notes layer (mockup only, not part of QuickSight) */
@@ -170,7 +170,7 @@ export function QsFrame({
               whiteSpace: "nowrap",
             }}
           >
-            {t}
+            {titleCase(t)}
           </Box>
         ))}
       </Box>
@@ -391,7 +391,7 @@ export function QsRangeSlider({
           color: qs.color.secondaryForeground,
         }}
       >
-        {label}
+        {titleCase(label)}
       </Typography>
       <Typography sx={{ fontSize: 13, color: qs.color.mutedText }}>
         {lo} to {hi}
@@ -495,7 +495,7 @@ export function QsTile({
               lineHeight: 1.3,
             }}
           >
-            {title}
+            {titleCase(title)}
           </Typography>
           {subtitle && (
             <Typography
@@ -1093,7 +1093,7 @@ export function QsTable<T>({
                     userSelect: "none",
                   }}
                 >
-                  {c.header}
+                  {titleCase(c.header)}
                   {sort?.key === c.key
                     ? sort.dir === "asc"
                       ? " ▲"

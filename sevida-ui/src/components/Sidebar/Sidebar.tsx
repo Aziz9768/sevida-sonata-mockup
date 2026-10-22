@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ElementType, ReactNode, MouseEvent } from 'react';
 import { Avatar, Box, Collapse, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Menu, MenuItem, Stack, Tooltip, Typography } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -7,6 +7,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { layout } from '../../theme/tokens';
+import { titleCase } from '../../utils/titleCase';
 import { BrandLogo, PoweredBy } from '../Brand/BrandLogo';
 
 export interface NavItem {
@@ -69,9 +70,12 @@ function containsKey(item: NavItem, key?: string): boolean {
  * The main navigation: a full-height coloured panel with logo, links, groups, bottom links and
  * the signed-in user. It can collapse to icons only. On phones AppShell puts it in a slide-in drawer.
  */
+/** Every sidebar label is Title Case, whatever the app wrote. */
+const titled = (list: NavItem[]): NavItem[] => list.map((i) => ({ ...i, label: titleCase(i.label), children: i.children ? titled(i.children) : undefined }));
+
 export function Sidebar({
-  items,
-  bottomItems = [],
+  items: itemsProp,
+  bottomItems: bottomItemsProp = [],
   activeKey,
   onNavigate,
   collapsed = false,
@@ -86,6 +90,8 @@ export function Sidebar({
   mobile = false,
   onCloseMobile,
 }: SidebarProps) {
+  const items = useMemo(() => titled(itemsProp), [itemsProp]);
+  const bottomItems = useMemo(() => titled(bottomItemsProp), [bottomItemsProp]);
   const rail = collapsed && !mobile; // icon-only mode (desktop only)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(items.filter((i) => containsKey(i, activeKey)).map((i) => i.key)));
   const [flyout, setFlyout] = useState<{ anchor: HTMLElement; item: NavItem } | null>(null);

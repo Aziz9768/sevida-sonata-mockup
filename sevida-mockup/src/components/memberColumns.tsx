@@ -6,10 +6,9 @@ import { TableLink } from "./TableLink";
 import {
   outreachResults,
   dataRefreshedOf,
+  evidenceKindsFor,
   fmtDay,
-  gapStatusTone,
-  gapStatuses,
-  statusHelp,
+  parseDay,
   useGaps,
 } from "../careGaps";
 import type { GapView } from "../careGaps";
@@ -29,10 +28,7 @@ import {
   fmtDate,
   measures,
   members,
-  providerHelp,
-  providerOf,
   resultsFor,
-  sourceSystemOf,
   spokenLanguageOf,
   stateLabel,
   stateTone,
@@ -46,10 +42,9 @@ import {
   primaryCareOf,
   NO_PCP,
 } from "../data";
-import type { Evt, Member, MeasureCode } from "../data";
+import type { Member, MeasureCode } from "../data";
 import {
   AGE_GROUPS,
-  EVIDENCE_SYSTEMS,
   LABEL,
   OPEN_GAP_VALUES,
   measureOptions,
@@ -57,7 +52,6 @@ import {
   MILITARY_VALUES,
   RESULT_STATES,
   SEX_VALUES,
-  YES_NO,
   ageGroupFor,
 } from "../sharedFilters";
 
@@ -74,7 +68,7 @@ const iso = (d: Date) =>
 const inDays = (n: number) =>
   new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate() + n);
 /** Quick picks for the Next appointment filter, counted from the demo's today. */
-const apptPresets: DatePreset[] = [
+export const apptPresets: DatePreset[] = [
   { label: "Next 7 days", from: iso(inDays(0)), to: iso(inDays(7)) },
   { label: "Next 14 days", from: iso(inDays(0)), to: iso(inDays(14)) },
   { label: "Later", from: iso(inDays(15)) },
@@ -91,10 +85,7 @@ export const yearOf = (r: MemberRow) => r.year ?? CURRENT_YEAR;
 export const getMemberRowId = (r: MemberRow) => `${r.id}-${yearOf(r)}`;
 /** A past year has final results only: no care manager work, appointments or outreach. */
 const isPast = (r: MemberRow) => yearOf(r) !== CURRENT_YEAR;
-const YEAR_ENDED = "Year ended";
-const ageGroupOf = (r: MemberRow) =>
-  ageGroupFor(ageAtYearEnd(r.dob, yearOf(r)));
-const NOT_CONTACTED = "Not contacted yet";
+export const NOT_CONTACTED = "Not contacted yet";
 const dateCell = (d: Date | null, none = "–") => (d ? fmtDate(d) : none);
 
 /**
@@ -168,6 +159,112 @@ export function memberColumns<T>(
 }
 
 /**
+ * What is still needed to close a gap in this measure: any one of these records. The text is kept short (two names, then "N more")
+ * so a measure with many accepted tests (COL-E) does not make the row tall; the hover shows every one with its date window.
+ */
+export function missingEvidenceFor(code: MeasureCode, year: number) {
+  const kinds = evidenceKindsFor(code, year);
+  const names = kinds.map((k) => k.label.replace(" (sDNA-FIT)", ""));
+  const labels =
+    names.length <= 2
+      ? names.join(" or ")
+      : `${names[0]}, ${names[1]} or ${names.length - 2} more`;
+  const windows = kinds.map((k) => `${k.label} ${k.windowText}`).join(". Or: ");
+  return { labels, windows };
+}
+
+/**
+ * The member facets (age group, race, ethnicity, primary care provider, state, county, military status) as columns.
+ * One definition for every table that lists members or their gaps, so the same filter has the same name and values everywhere.
+ */
+export function memberFacets<T>(
+  of: (row: T) => Member,
+  yearOfRow: (row: T) => number = () => CURRENT_YEAR,
+): Record<
+  "ageGroup" | "race" | "ethnicity" | "pcp" | "state" | "county" | "military",
+  Column<T>
+> {
+  return {
+    ageGroup: {
+      key: "ageGroup",
+      header: "Age group",
+      help: "Age on December 31 of the measurement year, in groups. Use it to find, for example, the 12–17 group for well-care visits.",
+      accessor: (r) => ageGroupFor(ageAtYearEnd(of(r).dob, yearOfRow(r))),
+      sortable: true,
+      defaultHidden: true,
+      filter: {
+        type: "multiselect",
+        ordered: true,
+        options: opt(AGE_GROUPS.map((g) => g.label)),
+      },
+    },
+    race: {
+      key: "race",
+      header: "Race",
+      help: "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races.",
+      accessor: (r) => raceGroupOf(of(r)),
+      sortable: true,
+      defaultHidden: true,
+      hideBelow: "lg",
+      filter: { type: "multiselect", options: opt(raceValues) },
+    },
+    ethnicity: {
+      key: "ethnicity",
+      header: "Ethnicity",
+      help: "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file.",
+      accessor: (r) => ethnicityGroupOf(of(r)),
+      sortable: true,
+      defaultHidden: true,
+      hideBelow: "lg",
+      filter: { type: "multiselect", options: opt(ethnicityValues) },
+    },
+    pcp: {
+      key: "pcp",
+      header: "Primary care provider",
+      help: 'The member\'s primary care provider, from the provider file. Members with none on file show "No primary care provider on file".',
+      accessor: (r) => primaryCareOf(of(r))?.p.name ?? NO_PCP,
+      sortable: true,
+      defaultHidden: true,
+      hideBelow: "lg",
+      filter: { type: "multiselect", options: opt(pcpValues) },
+    },
+    state: {
+      key: "state",
+      header: "State",
+      help: "The state in the member's mailing address, from the member file (State column).",
+      accessor: (r) => stateName(of(r).state),
+      sortable: true,
+      nowrap: true,
+      hideBelow: "lg",
+      filter: { type: "select", options: opt(memberStates) },
+    },
+    county: {
+      key: "county",
+      header: "County",
+      help: "Proposed new column of the member file. The ingestion spec has no County field yet, so it has to be added (or looked up from the Zip code). The values here are sample data.",
+      accessor: (r) => countyOf(of(r)),
+      sortable: true,
+      nowrap: true,
+      hideBelow: "lg",
+      filter: { type: "select", options: opt(memberCounties) },
+    },
+    military: {
+      key: "military",
+      header: "Military status",
+      help: "Proposed new column of the member file. The ingestion spec has no military status field yet, so it has to be added. The values here are sample data.",
+      accessor: (r) => militaryOf(of(r)),
+      sortable: true,
+      nowrap: true,
+      hideBelow: "lg",
+      filter: {
+        type: "select",
+        options: opt(MILITARY_VALUES),
+      },
+    },
+  };
+}
+
+/**
  * Every column of the member table. The Members list and the members inside a quality measure both use this,
  * so the two tables always show the same columns in the same order.
  */
@@ -191,6 +288,7 @@ export function useMemberTableColumns(
             )
             .map((x) => x.code)
         : openOf(m).map((g) => g.def.code);
+    const facets = memberFacets<MemberRow>((m) => m, yearOf);
     const primary = (m: MemberRow): GapView | null => openOf(m)[0] ?? null;
     const yearColumn: Column<MemberRow> = {
       key: "year",
@@ -215,24 +313,50 @@ export function useMemberTableColumns(
       const latest = gapsOf(m).map((g) => g.lastUpdated.getTime());
       return new Date(Math.max(dataRefreshedOf(m).getTime(), ...latest));
     };
-    // The record that made each measure Met. Several measures give several lines, in the usual measure order.
+    // Evidence belongs to the gaps: the record that closed each closed gap, one line per gap, in the usual measure order.
+    const closedOf = (m: MemberRow): GapView[] =>
+      gapsOf(m).filter(
+        (g) => g.status === "Closed" && (!only || g.def.code === only),
+      );
     const evidenceOf = (m: MemberRow) =>
-      measures
-        .filter((x) => !only || x.code === only)
-        .flatMap((x) => {
-          const r = resultsFor(m, yearOf(m))[x.code];
-          return r.state === "Met" && r.evidence
-            ? [{ code: x.code, e: r.evidence }]
-            : [];
-        });
+      closedOf(m).flatMap((g) => {
+        const c = g.work.closed;
+        const rec = c && g.work.evidence.find((x) => x.id === c.evidenceId);
+        return rec
+          ? [
+              {
+                code: g.def.code,
+                date: parseDay(rec.date),
+                title:
+                  rec.value !== undefined
+                    ? `${rec.kind}: ${rec.value}%`
+                    : rec.kind,
+                sub: rec.validation,
+              },
+            ]
+          : [];
+      });
     const latestEvidence = (m: MemberRow) =>
       evidenceOf(m)
-        .map((x) => x.e.date)
+        .map((x) => x.date)
         .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    /** What is still needed to close each open gap: any one of these records. */
+    const missingOf = (m: MemberRow) =>
+      openOf(m)
+        .filter((g) => !only || g.def.code === only)
+        .map((g) => ({
+          code: g.def.code,
+          ...missingEvidenceFor(g.def.code, yearOf(m)),
+        }));
     const evidenceCol = (
       key: string,
       header: string,
-      line: (x: { code: MeasureCode; e: Evt }) => string,
+      line: (x: {
+        code: MeasureCode;
+        date: Date;
+        title: string;
+        sub: string;
+      }) => string,
       extra: Partial<Column<MemberRow>> = {},
     ): Column<MemberRow> => ({
       key,
@@ -270,12 +394,12 @@ export function useMemberTableColumns(
       measures.filter(
         (x) => resultsFor(m, yearOf(m))[x.code].state === "Excluded",
       );
-    // Inside one measure: how this member came out for it (Met, Not Met, Excluded, Needs Review).
+    // Inside one measure: how this member came out for it (Met, Not met, Excluded, Needs review).
     const resultColumn: Column<MemberRow> | null = only
       ? {
           key: "result",
           header: "Measure result",
-          help: "How the member came out for this measure in the measurement year. Not Met is the care gap. Needs Review means the evidence is missing or conflicting, so it is not counted as a gap yet. Excluded members are not in the rate.",
+          help: "How the member came out for this measure in the measurement year. Not met is the care gap. Needs review means the evidence is missing or conflicting, so it is not counted as a gap yet. Excluded members are not in the rate.",
           accessor: (m) => stateLabel[resultsFor(m, yearOf(m))[only].state],
           sortable: true,
           nowrap: true,
@@ -289,7 +413,7 @@ export function useMemberTableColumns(
           },
         }
       : null;
-    return [
+    const all: Column<MemberRow>[] = [
       ...(() => {
         const base = memberColumns<MemberRow>((m) => m, yearOf);
         const lead = [
@@ -302,7 +426,7 @@ export function useMemberTableColumns(
       {
         key: "openCount",
         header: "Open gaps",
-        help: "How many of this member's care gaps are not closed yet. The Gaps and Gap status columns list each one. In the Filters panel, pick measures in the Measure filter first and the count then covers only those measures (2 open gaps across BCS and CCS). For a past year it counts the measures that were not met when the year ended.",
+        help: "How many of this member's care gaps are not closed yet. The Gaps column lists them, and Closed gaps lists the ones already closed this year. In the Filters panel, pick measures in the Measure filter first and the count then covers only those measures (2 open gaps across BCS and CCS). For a past year it counts the measures that were not met when the year ended.",
         accessor: (m) => gapCodes(m).length,
         sortable: true,
         align: "right",
@@ -320,76 +444,25 @@ export function useMemberTableColumns(
         },
         filter: {
           type: "select",
+          ordered: true,
           options: opt(
             only ? ["Has an open gap", "No open gaps"] : OPEN_GAP_VALUES,
           ),
         },
       },
-      {
-        key: "multi",
-        header: "Gaps in several measures",
-        help: "Yes when the member has open gaps in more than one measure, so one visit or call could close several.",
-        accessor: (m) => (gapCodes(m).length > 1 ? "Yes" : "No"),
-        sortable: true,
-        defaultHidden: true,
-        filterLabel: LABEL.multiGap,
-        filter: { type: "select", options: opt(YES_NO) },
-      },
-      {
-        key: "ageGroup",
-        header: "Age group",
-        help: "Age on December 31 of the measurement year, in groups. Use it to find, for example, the 12–17 group for well-care visits.",
-        accessor: ageGroupOf,
-        sortable: true,
-        defaultHidden: true,
-        filter: {
-          type: "multiselect",
-          options: opt(AGE_GROUPS.map((g) => g.label)),
-        },
-      },
-      {
-        key: "race",
-        header: "Race",
-        help: "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races.",
-        accessor: (m) => raceGroupOf(m),
-        sortable: true,
-        defaultHidden: true,
-        hideBelow: "lg",
-        filter: { type: "multiselect", options: opt(raceValues) },
-      },
-      {
-        key: "ethnicity",
-        header: "Ethnicity",
-        help: "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file.",
-        accessor: (m) => ethnicityGroupOf(m),
-        sortable: true,
-        defaultHidden: true,
-        hideBelow: "lg",
-        filter: { type: "multiselect", options: opt(ethnicityValues) },
-      },
-      {
-        key: "pcp",
-        header: "Primary care provider",
-        help: 'The member\'s primary care provider, from the provider file. Members with none on file show "No primary care provider on file".',
-        accessor: (m) => primaryCareOf(m)?.p.name ?? NO_PCP,
-        sortable: true,
-        defaultHidden: true,
-        hideBelow: "lg",
-        filter: { type: "multiselect", options: opt(pcpValues) },
-      },
+      facets.ageGroup,
+      facets.race,
+      facets.ethnicity,
+      facets.pcp,
       {
         key: "gaps",
         header: "Gaps",
         // In the Filters panel this is "Measure", right under Measurement year.
         filterLabel: "Measure",
-        filterOrder: 2.5,
-        help: "Every care gap this member has, open or closed, by the short form of its measure. Hover a short form to read the full name. The Gap status column shows the status of each one, in the same order.",
-        accessor: (m) =>
-          isPast(m) ? gapCodes(m) : gapsOf(m).map((g) => g.def.code),
+        help: "The measures where this member has an open care gap, by the short form of the measure. Hover a short form to read the full name. The Open gaps column counts them. A gap that was closed is not listed here: see Closed gaps.",
+        accessor: (m) => gapCodes(m),
         render: (m) => {
-          const codes = isPast(m)
-            ? gapCodes(m)
-            : gapsOf(m).map((g) => g.def.code);
+          const codes = gapCodes(m);
           return codes.length === 0 ? (
             "None"
           ) : (
@@ -414,54 +487,67 @@ export function useMemberTableColumns(
             },
       },
       {
-        key: "status",
-        header: "Gap status",
-        help:
-          statusHelp.gap +
-          " One status for each gap, in the same order as the Gaps column.",
-        accessor: (m) =>
-          isPast(m)
-            ? gapCodes(m).map(() => YEAR_ENDED)
-            : gapsOf(m).map((g) => g.status),
+        key: "found",
+        header: "Gap identified",
+        help: "The earliest date any of this member's open gaps was found. Demo date: the spec has no such field.",
+        accessor: earliest,
+        render: (m) => dateCell(earliest(m)),
+        sortable: true,
         nowrap: true,
-        filter: {
-          type: "multiselect",
-          options: opt([...gapStatuses, YEAR_ENDED]),
-        },
+        filter: { type: "dateRange" },
+      },
+      {
+        key: "missing",
+        header: "Missing evidence",
+        help: "What is still needed to close each open gap: any one of the listed records. Hover the text to see the date window for each one. Members with no open gap show a dash.",
+        accessor: (m) => missingOf(m).map((x) => `${x.code}: ${x.labels}`),
         render: (m) => {
-          const gs = gapsOf(m);
-          if (isPast(m)) {
-            const codes = gapCodes(m);
-            return codes.length === 0 ? (
-              "–"
-            ) : (
-              <Stack spacing={0.5} alignItems="flex-start">
-                {codes.map((c) => (
-                  <StatusChip
-                    key={c}
-                    tone="neutral"
-                    label={YEAR_ENDED}
-                    tip={`${c}: no care-gap work for a past year. The result is final.`}
-                  />
-                ))}
-              </Stack>
-            );
-          }
-          return gs.length === 0 ? (
+          const ms = missingOf(m);
+          return ms.length === 0 ? (
             "–"
           ) : (
             <Stack spacing={0.5} alignItems="flex-start">
-              {gs.map((g) => (
-                <StatusChip
-                  key={g.id}
-                  tone={gapStatusTone[g.status]}
-                  label={g.status}
-                  tip={`${g.def.code}: ${g.def.name}`}
-                />
+              {ms.map((x) => (
+                <span key={x.code}>
+                  <b>{x.code}</b>: <Term tip={x.windows}>{x.labels}</Term>
+                </span>
               ))}
             </Stack>
           );
         },
+        hideBelow: "lg",
+        width: 260,
+      },
+      {
+        key: "closed",
+        header: "Closed gaps",
+        defaultHidden: true,
+        help: "Gaps closed in the current measurement year (January 1 to December 31), with the day each was closed. A closed gap is no longer counted in Open gaps. The Evidence date and Evidence code columns show the record that closed it. A past year has no care-gap work, so it shows a dash.",
+        accessor: (m) =>
+          closedOf(m).map((g) => `${g.def.code}: ${fmtDay(g.work.closed!.on)}`),
+        render: (m) => {
+          const cs = closedOf(m);
+          return cs.length === 0 ? (
+            "–"
+          ) : (
+            <Stack spacing={0.5} alignItems="flex-start">
+              {cs.map((g) => (
+                <span key={g.id}>
+                  <Term tip={g.def.name}>
+                    <b>{g.def.code}</b>
+                  </Term>
+                  : {fmtDay(g.work.closed!.on)}
+                </span>
+              ))}
+            </Stack>
+          );
+        },
+        hideBelow: "lg",
+        filterLabel: "Closed gap in measure",
+        filterAccessor: (m) => closedOf(m).map((g) => g.def.code),
+        filter: only
+          ? undefined
+          : { type: "multiselect", options: measureOptions },
       },
       {
         key: "excluded",
@@ -494,9 +580,9 @@ export function useMemberTableColumns(
         ...evidenceCol(
           "evDate",
           "Evidence date",
-          (x) => (only ? "" : `${x.code}: `) + fmtDate(x.e.date),
+          (x) => (only ? "" : `${x.code}: `) + fmtDate(x.date),
           {
-            help: "The date of the record that made the measure Met. Only Met measures have one. With several measures there is one line each, in the same order as the other columns; sorting and the date filter use the latest.",
+            help: "The service date of the record that closed each closed gap, one line per gap (same measures as Closed gaps). Open gaps have no evidence yet: see Missing evidence. Sorting and the date filter use the latest.",
             accessor: latestEvidence,
             sortable: true,
             nowrap: true,
@@ -519,7 +605,7 @@ export function useMemberTableColumns(
                       :{" "}
                     </>
                   )}
-                  {fmtDate(x.e.date)}
+                  {fmtDate(x.date)}
                 </span>
               ))}
             </Stack>
@@ -527,15 +613,9 @@ export function useMemberTableColumns(
         },
       },
       {
-        ...evidenceCol(
-          "evCode",
-          "Evidence code",
-          // the description is in the text too, so searching "diabetes" finds the member
-          (x) => `${x.e.code} (${x.e.system}) ${x.e.text}`,
-          {
-            help: "The code of the record that made the measure Met, with the code system in brackets and what the code means underneath (for example a diagnosis name).",
-          },
-        ),
+        ...evidenceCol("evCode", "Evidence", (x) => x.title, {
+          help: "The record that closed each closed gap, one line per gap: what it is (and its result, for a lab) in larger text, with its review status under it. Open gaps have no evidence yet: see Missing evidence.",
+        }),
         render: (m) => {
           const ev = evidenceOf(m);
           return ev.length === 0 ? (
@@ -544,15 +624,14 @@ export function useMemberTableColumns(
             <Stack spacing={0.75} alignItems="flex-start">
               {ev.map((x) => (
                 <span key={x.code}>
-                  <span style={{ whiteSpace: "nowrap" }}>
-                    {x.e.code} ({x.e.system})
-                  </span>
+                  {!only && <b>{x.code}: </b>}
+                  <b>{x.title}</b>
                   <br />
                   <Typography
                     component="span"
                     sx={{ fontSize: ".75rem", color: "ink.500" }}
                   >
-                    {x.e.text}
+                    {x.sub}
                   </Typography>
                 </span>
               ))}
@@ -560,22 +639,6 @@ export function useMemberTableColumns(
           );
         },
       },
-      evidenceCol(
-        "evSystem",
-        "Evidence source system",
-        (x) => sourceSystemOf(x.e),
-        {
-          help: "Paid claim, or supplemental data from the EHR or a lab feed.",
-          nowrap: true,
-          filter: {
-            type: "multiselect",
-            options: opt(EVIDENCE_SYSTEMS),
-          },
-        },
-      ),
-      evidenceCol("evProvider", "Evidence provider", (x) => providerOf(x.e), {
-        help: providerHelp,
-      }),
       {
         key: "a1c",
         header: "Latest HbA1c",
@@ -590,7 +653,7 @@ export function useMemberTableColumns(
         nowrap: true,
         defaultHidden: only !== "GSD",
         filterAccessor: (m) => a1cBandOf(m, yearOf(m)),
-        filter: { type: "select", options: opt(a1cBands) },
+        filter: { type: "select", ordered: true, options: opt(a1cBands) },
       },
       {
         key: "ageStatus",
@@ -633,16 +696,6 @@ export function useMemberTableColumns(
           type: "multiselect",
           options: opt(["Ages out next year", "Just aged in"]),
         },
-      },
-      {
-        key: "found",
-        header: "Gap identified",
-        help: "The earliest date any of this member's open gaps was found. Demo date: the spec has no such field.",
-        accessor: earliest,
-        render: (m) => dateCell(earliest(m)),
-        sortable: true,
-        nowrap: true,
-        filter: { type: "dateRange" },
       },
       {
         key: "appt",
@@ -696,39 +749,9 @@ export function useMemberTableColumns(
         hideBelow: "lg",
         filter: { type: "multiselect", options: opt(careManagers) },
       },
-      {
-        key: "state",
-        header: "State",
-        help: "The state in the member's mailing address, from the member file (State column).",
-        accessor: (m) => stateName(m.state),
-        sortable: true,
-        nowrap: true,
-        hideBelow: "lg",
-        filter: { type: "select", options: opt(memberStates) },
-      },
-      {
-        key: "county",
-        header: "County",
-        help: "Proposed new column of the member file. The ingestion spec has no County field yet, so it has to be added (or looked up from the Zip code). The values here are sample data.",
-        accessor: countyOf,
-        sortable: true,
-        nowrap: true,
-        hideBelow: "lg",
-        filter: { type: "select", options: opt(memberCounties) },
-      },
-      {
-        key: "military",
-        header: "Military status",
-        help: "Proposed new column of the member file. The ingestion spec has no military status field yet, so it has to be added. The values here are sample data.",
-        accessor: militaryOf,
-        sortable: true,
-        nowrap: true,
-        hideBelow: "lg",
-        filter: {
-          type: "select",
-          options: opt(MILITARY_VALUES),
-        },
-      },
+      facets.state,
+      facets.county,
+      facets.military,
       {
         key: "updated",
         header: "Last updated",
@@ -744,5 +767,10 @@ export function useMemberTableColumns(
         filter: { type: "dateRange" },
       },
     ];
+    // The search box looks at the member's name and Member ID only. Without this a name such as "Paul" also found members whose care manager is Paul.
+    return all.map((c) => ({
+      ...c,
+      searchable: c.key === "name" || c.key === "id",
+    }));
   }, [openOfNow, gapsOfNow, only, withYear]);
 }

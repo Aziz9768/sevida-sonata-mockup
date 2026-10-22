@@ -79,7 +79,7 @@ export const raceNames: Record<string, string> = {
   '2054-5': 'Black or African American',
   '2076-8': 'Native Hawaiian or Other Pacific Islander',
   '2106-3': 'White',
-  '2131-1': 'Other Race',
+  '2131-1': 'Other race',
   '2039-6': 'Asian (Japanese)',
   ASKU: 'Asked but no answer',
   UNK: 'Unknown',
@@ -1309,7 +1309,7 @@ export function continuouslyEnrolled(m: Member, year: number = MY): {
 /* ------------------------------------------------------------------ the five measures (simplified demo rules) */
 
 export type MeasureCode = 'WCV' | 'BCS-E' | 'CCS-E' | 'COL-E' | 'GSD';
-/** Gap = "Not Met" on screen. Review = "Needs Review": the evidence is missing, incomplete or conflicting, so it is NOT counted as a care gap. */
+/** Gap = "Not met" on screen. Review = "Needs review": the evidence is missing, incomplete or conflicting, so it is NOT counted as a care gap. */
 export type MeasureState = 'Met' | 'Gap' | 'Excluded' | 'Review' | 'Not eligible';
 
 export interface Rule {
@@ -1596,7 +1596,7 @@ export const measures: MeasureDef[] = [
         where: 'not in the spec',
       },
       {
-        text: 'A final lab with no result value cannot be scored. It shows as Needs Review, not as a gap, until the value arrives.',
+        text: 'A final lab with no result value cannot be scored. It shows as Needs review, not as a gap, until the value arrives.',
         from: 'hedis',
         where: 'lab',
       },
@@ -1683,9 +1683,9 @@ export interface MeasureResult {
 
 export const stateLabel: Record<MeasureState, string> = {
   Met: 'Met',
-  Gap: 'Not Met',
+  Gap: 'Not met',
   Excluded: 'Excluded',
-  Review: 'Needs Review',
+  Review: 'Needs review',
   'Not eligible': 'Not in this measure',
 };
 
@@ -2041,7 +2041,7 @@ export function resultsFor(m: Member, year: number = MY): Results {
 }
 export const openGaps = (m: Member) => measures.filter((x) => resultsFor(m)[x.code].state === 'Gap').length;
 
-/** denominator = met + gap. Needs Review members are in `eligible` but not in the rate until they are decided. eligible = met + gap + review + excluded. */
+/** denominator = met + gap. Needs review members are in `eligible` but not in the rate until they are decided. eligible = met + gap + review + excluded. */
 export interface Tally {
   eligible: number;
   excluded: number;

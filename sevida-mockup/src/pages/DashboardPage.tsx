@@ -11,6 +11,7 @@ import { InputsCard } from "../components/dashboard/InputsCard";
 import { BaselineCard, KpiCards } from "../components/dashboard/KpiBlocks";
 import type { MemberView } from "../components/dashboard/KpiBlocks";
 import { MembersCard } from "../components/dashboard/MembersCard";
+import { useRole } from "../roles";
 import { RunInfo } from "../components/dashboard/RunInfo";
 import { TrendCard } from "../components/dashboard/TrendCard";
 import { filterLines, measureSheets } from "../components/dashboard/exportDoc";
@@ -30,7 +31,8 @@ import {
  */
 export function DashboardPage() {
   const [params, setParams] = useSearchParams();
-  const isAdmin = params.get("tab") === "admin";
+  const { role, memberLists } = useRole();
+  const isAdmin = params.get("tab") === "admin" && role.dataQuality;
   const code = (measureByCode(params.get("m") ?? "") ?? measures[0]).code;
   const [filters, setFilters] = useState(emptyFilters());
   const [how, setHow] = useState(false);
@@ -104,20 +106,22 @@ export function DashboardPage() {
       </Box>
       <DisparityCharts code={code} list={list} year={year} />
       <TrendCard code={code} list={list} />
-      <MembersCard
-        code={code}
-        list={list}
-        year={year}
-        view={view}
-        onView={setView}
-      />
+      {memberLists && (
+        <MembersCard
+          code={code}
+          list={list}
+          year={year}
+          view={view}
+          onView={setView}
+        />
+      )}
       <InputsCard code={code} def={def} list={list} year={year} />
     </Stack>
   );
 
   return (
     <PageContainer
-      title={isAdmin ? "Dashboard admin" : `${def.code} - ${def.name}`}
+      title={isAdmin ? "Dashboard admin" : `${def.code} · ${def.name}`}
       titleVariant="overview"
       subtitle={
         isAdmin
@@ -155,8 +159,10 @@ export function DashboardPage() {
         value={isAdmin ? "admin" : code}
         onChange={go}
         items={[
-          ...measures.map((m) => ({ key: m.code, label: m.short })),
-          { key: "admin", label: "Admin" },
+          ...[...measures]
+            .sort((a, b) => a.short.localeCompare(b.short))
+            .map((m) => ({ key: m.code, label: m.short })),
+          ...(role.dataQuality ? [{ key: "admin", label: "Admin" }] : []),
         ]}
       />
       {isAdmin ? <AdminTab /> : body}

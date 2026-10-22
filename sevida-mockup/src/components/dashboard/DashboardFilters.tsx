@@ -124,30 +124,6 @@ export function DashboardFilters({
           onChange={(v) => set("year", Number(v))}
           options={YEARS.map((y) => ({ value: String(y), label: String(y) }))}
         />
-        <TextField
-          label={LABEL.member}
-          placeholder="ID or name"
-          value={draft.memberId}
-          onChange={(e) => set("memberId", e.target.value)}
-        />
-        <SelectField
-          label={LABEL.result}
-          value={draft.status}
-          onChange={(v) => set("status", v as DashFilters["status"])}
-          options={[{ value: "", label: ALL }, ...resultOptions]}
-        />
-        <RangeField wide label={LABEL.dob}>
-          <DateField
-            slotProps={{ htmlInput: { "aria-label": `${LABEL.dob} from` } }}
-            value={draft.dobFrom}
-            onChange={(e) => set("dobFrom", e.target.value)}
-          />
-          <DateField
-            slotProps={{ htmlInput: { "aria-label": `${LABEL.dob} to` } }}
-            value={draft.dobTo}
-            onChange={(e) => set("dobTo", e.target.value)}
-          />
-        </RangeField>
         <RangeField label={LABEL.age}>
           <TextField
             type="number"
@@ -168,24 +144,6 @@ export function DashboardFilters({
             onChange={(e) => set("ageTo", e.target.value)}
           />
         </RangeField>
-        <SelectField
-          label={LABEL.sex}
-          value={draft.sex}
-          onChange={(v) => set("sex", v)}
-          options={withAll(options.sex)}
-        />
-        <SelectField
-          label={LABEL.openGaps}
-          value={draft.openGaps}
-          onChange={(v) => set("openGaps", v)}
-          options={withAll(options.openGaps)}
-        />
-        <SelectField
-          label={LABEL.multiGap}
-          value={draft.multiGap}
-          onChange={(v) => set("multiGap", v as DashFilters["multiGap"])}
-          options={withAll(YES_NO)}
-        />
         <AutocompleteField
           multiple
           label={LABEL.ageGroup}
@@ -194,14 +152,24 @@ export function DashboardFilters({
           value={draft.ageGroup}
           onChange={(v) => set("ageGroup", v)}
         />
-        <AutocompleteField
-          multiple
-          label={LABEL.race}
-          placeholder={ALL}
-          options={optionsOf(options.race)}
-          value={draft.race}
-          onChange={(v) => set("race", v)}
+        <SelectField
+          label={LABEL.county}
+          value={draft.county}
+          onChange={(v) => set("county", v)}
+          options={withAll(options.county)}
         />
+        <RangeField wide label={LABEL.dob}>
+          <DateField
+            slotProps={{ htmlInput: { "aria-label": `${LABEL.dob} from` } }}
+            value={draft.dobFrom}
+            onChange={(e) => set("dobFrom", e.target.value)}
+          />
+          <DateField
+            slotProps={{ htmlInput: { "aria-label": `${LABEL.dob} to` } }}
+            value={draft.dobTo}
+            onChange={(e) => set("dobTo", e.target.value)}
+          />
+        </RangeField>
         <AutocompleteField
           multiple
           label={LABEL.ethnicity}
@@ -209,22 +177,6 @@ export function DashboardFilters({
           options={optionsOf(options.ethnicity)}
           value={draft.ethnicity}
           onChange={(v) => set("ethnicity", v)}
-        />
-        <AutocompleteField
-          multiple
-          label={LABEL.provider}
-          placeholder={ALL}
-          options={optionsOf(options.provider)}
-          value={draft.provider}
-          onChange={(v) => set("provider", v)}
-        />
-        <AutocompleteField
-          multiple
-          label={LABEL.excluded}
-          placeholder={ALL}
-          options={measureOptions}
-          value={draft.excluded}
-          onChange={(v) => set("excluded", v)}
         />
         <RangeField wide label={LABEL.evDate}>
           <DateField
@@ -246,6 +198,20 @@ export function DashboardFilters({
           value={draft.evSystem}
           onChange={(v) => set("evSystem", v)}
         />
+        <AutocompleteField
+          multiple
+          label={LABEL.excluded}
+          placeholder={ALL}
+          options={measureOptions}
+          value={draft.excluded}
+          onChange={(v) => set("excluded", v)}
+        />
+        <SelectField
+          label={LABEL.multiGap}
+          value={draft.multiGap}
+          onChange={(v) => set("multiGap", v as DashFilters["multiGap"])}
+          options={withAll(YES_NO)}
+        />
         <SelectField
           label={LABEL.a1c}
           value={draft.a1c}
@@ -253,22 +219,56 @@ export function DashboardFilters({
           options={withAll(options.a1c)}
         />
         <SelectField
-          label={LABEL.state}
-          value={draft.state}
-          onChange={(v) => set("state", v)}
-          options={withAll(options.state)}
+          label={LABEL.result}
+          value={draft.status}
+          onChange={(v) => set("status", v as DashFilters["status"])}
+          options={[{ value: "", label: ALL }, ...resultOptions]}
         />
-        <SelectField
-          label={LABEL.county}
-          value={draft.county}
-          onChange={(v) => set("county", v)}
-          options={withAll(options.county)}
+        <TextField
+          label={LABEL.member}
+          placeholder="ID or name"
+          value={draft.memberId}
+          onChange={(e) => set("memberId", e.target.value)}
         />
         <SelectField
           label={LABEL.military}
           value={draft.military}
           onChange={(v) => set("military", v)}
           options={withAll(options.military)}
+        />
+        <SelectField
+          label={LABEL.openGaps}
+          value={draft.openGaps}
+          onChange={(v) => set("openGaps", v)}
+          options={withAll(options.openGaps)}
+        />
+        <AutocompleteField
+          multiple
+          label={LABEL.provider}
+          placeholder={ALL}
+          options={optionsOf(options.provider)}
+          value={draft.provider}
+          onChange={(v) => set("provider", v)}
+        />
+        <AutocompleteField
+          multiple
+          label={LABEL.race}
+          placeholder={ALL}
+          options={optionsOf(options.race)}
+          value={draft.race}
+          onChange={(v) => set("race", v)}
+        />
+        <SelectField
+          label={LABEL.sex}
+          value={draft.sex}
+          onChange={(v) => set("sex", v)}
+          options={withAll(options.sex)}
+        />
+        <SelectField
+          label={LABEL.state}
+          value={draft.state}
+          onChange={(v) => set("state", v)}
+          options={withAll(options.state)}
         />
       </Box>
     </Card>

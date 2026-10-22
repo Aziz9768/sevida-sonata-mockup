@@ -71,7 +71,7 @@ export function MembersCard({
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
         searchPlaceholder="Search by name or ID…"
-        storageKey="demo-dashboard-members-v1"
+        storageKey="demo-dashboard-members-v3"
         exportFile={`${code}-initial-population`}
         onRowClick={(m) =>
           navigate(

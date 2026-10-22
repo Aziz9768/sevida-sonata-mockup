@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useRole } from "../roles";
 import { Box, Stack, Typography } from "@mui/material";
 import {
   Button,
@@ -110,7 +111,7 @@ function MembersTab({ def, year }: { def: MeasureDef; year: number }) {
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
         searchPlaceholder="Search by name or ID…"
-        storageKey="demo-measure-members-v19"
+        storageKey="demo-measure-members-v21"
         savedViews="measure-members"
         exportFile={`${def.code}-members`}
         onRowClick={(m) =>
@@ -407,6 +408,7 @@ function HowTab({ def }: { def: MeasureDef }) {
 
 export function MeasureDetailPage() {
   const { code } = useParams();
+  const { memberLists } = useRole();
   const navigate = useNavigate();
   const baseDef = measureByCode(code);
   const [search, setSearch] = useSearchParams();
@@ -490,12 +492,18 @@ export function MeasureDetailPage() {
           value={tab}
           onChange={(k) => setSearch({ tab: k, ...yq }, { replace: true })}
           items={[
-            {
-              key: "members",
-              label: "Members",
-              count: t.eligible,
-              content: <MembersTab key={membersKey} def={def} year={year} />,
-            },
+            ...(memberLists
+              ? [
+                  {
+                    key: "members",
+                    label: "Members",
+                    count: t.eligible,
+                    content: (
+                      <MembersTab key={membersKey} def={def} year={year} />
+                    ),
+                  },
+                ]
+              : []),
             {
               key: "groups",
               label: "Results by group",

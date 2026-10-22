@@ -2,6 +2,7 @@ import { Box, Stack, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
 import { Breadcrumbs } from './Breadcrumbs';
 import type { BreadcrumbsProps } from './Breadcrumbs';
+import { titleCase } from '../../utils/titleCase';
 
 export interface PageContainerProps {
   /** Trail above the title. Leave out on a top-level page (it would only repeat the title). */
@@ -41,7 +42,7 @@ export function PageContainer({ breadcrumbs, renderLink, title, titleVariant = '
           <Box sx={{ minWidth: 0, flex: { sm: '1 1 0' } }}>
             {title && (
               <Typography variant={titleVariant === 'overview' ? 'h3' : 'h4'} component="h1" sx={{ overflowWrap: 'anywhere' }}>
-                {title}
+                {titleCase(title)}
               </Typography>
             )}
             {subtitle && (

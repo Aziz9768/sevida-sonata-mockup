@@ -81,7 +81,7 @@ export function SavedViewsMenu({
     <>
       <Stack
         direction="row"
-        spacing={0.25}
+        spacing={1}
         alignItems="center"
         sx={{ flex: "0 0 auto" }}
       >
@@ -89,23 +89,21 @@ export function SavedViewsMenu({
           title={`Saved views: ${label}${dirty ? " (unsaved changes)" : ""}`}
         >
           <IconButton
-            size="small"
+            variant="boxed"
             aria-label={`Saved views, ${label}`}
             onClick={(e) => setAnchor(e.currentTarget)}
-            sx={{ color: "ink.700" }}
           >
-            <VisibilityOutlinedIcon sx={{ fontSize: 20 }} />
+            <VisibilityOutlinedIcon />
           </IconButton>
         </Tooltip>
         {dirty && (
           <Tooltip title="Save this view: update it, or save it as a new view">
             <IconButton
-              size="small"
-              color="primary"
+              variant="boxed"
               aria-label="Save view"
               onClick={openSave}
             >
-              <SaveOutlinedIcon sx={{ fontSize: 20 }} />
+              <SaveOutlinedIcon />
             </IconButton>
           </Tooltip>
         )}
@@ -129,7 +127,7 @@ export function SavedViewsMenu({
             </ListItemIcon>
           )}
           <ListItemText inset={activeId !== null}>
-            Reset to default
+            Reset to Default
           </ListItemText>
         </MenuItem>
         {myDefault && (
@@ -142,7 +140,7 @@ export function SavedViewsMenu({
             <ListItemIcon>
               <RestartAltIcon sx={{ fontSize: 17 }} />
             </ListItemIcon>
-            <ListItemText>Reset to my view</ListItemText>
+            <ListItemText>Reset to My View</ListItemText>
           </MenuItem>
         )}
         {views.length > 0 && <Divider />}
@@ -186,7 +184,7 @@ export function SavedViewsMenu({
           <ListItemIcon>
             <SaveOutlinedIcon sx={{ fontSize: 17 }} />
           </ListItemIcon>
-          <ListItemText>Save current view…</ListItemText>
+          <ListItemText>Save Current View…</ListItemText>
         </MenuItem>
         <MenuItem onClick={openManage}>
           <ListItemIcon>
@@ -207,7 +205,7 @@ export function SavedViewsMenu({
               Cancel
             </Button>
             <Button disabled={!name.trim()} onClick={saveAsNew}>
-              Save as new view
+              Save as New View
             </Button>
           </>
         }

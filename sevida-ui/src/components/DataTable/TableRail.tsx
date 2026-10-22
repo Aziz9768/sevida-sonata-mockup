@@ -389,7 +389,7 @@ export function ColumnsPanel<T>({
         }}
       >
         <RestartAltIcon sx={{ fontSize: 15 }} />
-        Reset columns
+        Reset Columns
       </Box>
     </Stack>
   );

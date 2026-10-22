@@ -1,9 +1,9 @@
-// Care gaps: the work around a "Not Met" measure result.
+// Care gaps: the work around a "Not met" measure result.
 //
 // Two separate things, never mixed up:
-//   1. The MEASURE RESULT (Met, Not Met, Excluded, Needs Review). It comes only from the files (src/data.ts).
-//   2. The GAP STATUS (Open, Closed). It is the work on a Not Met result.
-//   3. The EVIDENCE STATUS (Not Requested, Requested, Received, Validated, Rejected). It is about the proof, and is kept apart from both.
+//   1. The MEASURE RESULT (Met, Not met, Excluded, Needs review). It comes only from the files (src/data.ts).
+//   2. The GAP STATUS (Open, Closed). It is the work on a Not met result.
+//   3. The EVIDENCE STATUS (Not requested, Requested, Received, Validated, Rejected). It is about the proof, and is kept apart from both.
 //
 // Nothing about the work is in the ingestion spec. Care managers, outreach, tasks, due dates and the starting status
 // below are MADE UP (the same every time) so the screens can be shown. Changes made in the demo are kept in the browser
@@ -58,16 +58,16 @@ export const gapStatusTone: Record<GapStatus, StatusTone> = {
 };
 
 export type EvidenceStatus =
-  "Not Requested" | "Requested" | "Received" | "Validated" | "Rejected";
+  "Not requested" | "Requested" | "Received" | "Validated" | "Rejected";
 export const evidenceStatuses: EvidenceStatus[] = [
-  "Not Requested",
+  "Not requested",
   "Requested",
   "Received",
   "Validated",
   "Rejected",
 ];
 export const evidenceTone: Record<EvidenceStatus, StatusTone> = {
-  "Not Requested": "neutral",
+  "Not requested": "neutral",
   Requested: "info",
   Received: "primary",
   Validated: "success",
@@ -85,10 +85,10 @@ export const validationTone: Record<Validation, StatusTone> = {
 /** One place that says what every status means. Shown in the (i) next to each status column. */
 export const statusHelp = {
   result:
-    "Measure result, worked out from the files: Met (criteria satisfied), Not Met (an eligible member does not satisfy the criteria), Excluded (an exclusion applies), Needs Review (evidence is missing, incomplete or conflicting, so it is not counted as a care gap).",
-  gap: "Care gap status is the work on a Not Met result: Open (found, not yet closed; the Follow-up and Evidence tabs show the work done so far), Closed (the evidence was validated and the measure was re-evaluated). A completed task or a manual change alone never closes a gap.",
+    "Measure result, worked out from the files: Met (criteria satisfied), Not met (an eligible member does not satisfy the criteria), Excluded (an exclusion applies), Needs review (evidence is missing, incomplete or conflicting, so it is not counted as a care gap).",
+  gap: "Care gap status is the work on a Not met result: Open (found, not yet closed; the Follow-up and Evidence tabs show the work done so far), Closed (the evidence was validated and the measure was re-evaluated). A completed task or a manual change alone never closes a gap.",
   evidence:
-    "Evidence status is about the proof, not the work. Not Requested: nothing has been asked for. Requested: records have been asked for. Received: evidence is in Sonata and waiting for review. Validated: a reviewer accepted it. Rejected: a reviewer did not accept it (the reason is in Activity).",
+    "Evidence status is about the proof, not the work. Not requested: nothing has been asked for. Requested: records have been asked for. Received: evidence is in Sonata and waiting for review. Validated: a reviewer accepted it. Rejected: a reviewer did not accept it (the reason is in Activity).",
 };
 
 /* ------------------------------------------------------------------ what counts as evidence, per measure */
@@ -498,7 +498,7 @@ function seedWork(m: Member, code: MeasureCode): Work {
       by: SYSTEM,
       kind: "Found",
       text: `Gap found when ${code} was calculated: ${resultsFor(m)[code].reason}.`,
-      reason: "The measure result was Not Met.",
+      reason: "The measure result was Not met.",
     },
     {
       id: id("a2"),
@@ -869,7 +869,7 @@ const evidenceStatusOf = (w: Work): EvidenceStatus =>
         ? "Requested"
         : w.evidence.some((e) => e.validation === "Rejected")
           ? "Rejected"
-          : "Not Requested";
+          : "Not requested";
 
 function view(m: Member, code: MeasureCode, w: Work): GapView {
   const def = measures.find((x) => x.code === code)!;
@@ -1355,9 +1355,9 @@ export interface NewEvidence {
 }
 
 interface GapsValue {
-  /** Every Not Met measure for a member, in the usual measure order (closed ones included). */
+  /** Every Not met measure for a member, in the usual measure order (closed ones included). */
   gapsOf: (m: Member) => GapView[];
-  /** Not Met measures whose gap is not closed. */
+  /** Not met measures whose gap is not closed. */
   openOf: (m: Member) => GapView[];
   get: (m: Member, code: MeasureCode) => GapView | null;
   assign: (id: string, who: string, reason?: string) => void;
@@ -1633,7 +1633,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
         ].filter(Boolean);
         const text = ok
           ? `Re-evaluated ${g.def.code} with ${e.kind} dated ${fmtDay(e.date)}. Result with this evidence: Met.`
-          : `Re-evaluated ${g.def.code} with ${e.kind} dated ${fmtDay(e.date)}. Result with this evidence: Not Met (${failed.join(", ") || "member no longer qualifies"}).`;
+          : `Re-evaluated ${g.def.code} with ${e.kind} dated ${fmtDay(e.date)}. Result with this evidence: Not met (${failed.join(", ") || "member no longer qualifies"}).`;
         change(id, (w) =>
           log(
             {
@@ -1712,7 +1712,7 @@ const memberFor = memberById;
 /* ------------------------------------------------------------------ numbers for a member's header (all from the results and the work) */
 
 export interface MemberSummary {
-  /** Not Met and the gap is not closed. */
+  /** Not met and the gap is not closed. */
   open: number;
   pending: number;
   closed: number;

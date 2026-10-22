@@ -2,6 +2,7 @@ import { Box, Dialog, DialogActions, DialogContent, IconButton, Typography } fro
 import CloseIcon from '@mui/icons-material/Close';
 import type { ReactNode } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { titleCase } from '../../utils/titleCase';
 
 export interface ModalProps {
   open: boolean;
@@ -53,7 +54,7 @@ export function Modal({ open, onClose, title, children, actions, size = 'md', pe
         }}
       >
         <Typography id="sevida-modal-title" component="h2" sx={{ fontSize: '1rem', fontWeight: 700, color: 'inherit' }}>
-          {title}
+          {titleCase(title)}
         </Typography>
         <IconButton aria-label="Close" onClick={onClose} sx={{ color: 'onPrimary.text', '&:hover': { bgcolor: 'onPrimary.hoverFill' } }}>
           <CloseIcon fontSize="small" />

@@ -10,8 +10,8 @@ export interface SortState {
 /** How a column can be filtered in the Filters panel. */
 export type ColumnFilter =
   | { type: "text" } //                                  free text: "contains"
-  | { type: "select"; options: Option[]; required?: boolean } // pick one value (or All). With `required` there is no All: the filter always has a value and starts as the first option (for example a Measurement year)
-  | { type: "multiselect"; options: Option[] } //        pick several values
+  | { type: "select"; options: Option[]; required?: boolean; ordered?: boolean } // pick one value (or All). With `required` there is no All: the filter always has a value and starts as the first option (for example a Measurement year). Options are listed A to Z by label, except for a `required` filter or when `ordered` is set, which keep your order
+  | { type: "multiselect"; options: Option[]; ordered?: boolean } // pick several values. Options are listed A to Z by label; set `ordered` to keep your own order when the values have a natural one (age groups, stages, size bands)
   | { type: "dateRange"; presets?: DatePreset[] } //    From / To dates (needs accessor returning a Date or "YYYY-MM-DD"). `presets` adds quick-pick buttons above the dates
   | { type: "numberRange" }; //                         From / To numbers, such as age (needs accessor returning a number)
 
@@ -79,8 +79,6 @@ export interface Column<T> {
   searchable?: boolean;
   /** Start hidden. The user can switch it on in the Columns panel. */
   defaultHidden?: boolean;
-  /** Where this column's filter sits in the Filters panel. Filters follow the column order; give a number to move one (for example 2.5 puts it between the 3rd and 4th column's filters). */
-  filterOrder?: number;
   /** Start pinned (kept in view while scrolling sideways). The user can unpin it. At most `maxPinned` columns start pinned. */
   defaultPinned?: boolean;
   /** The user cannot hide this column. The `primary` column is always like this. */

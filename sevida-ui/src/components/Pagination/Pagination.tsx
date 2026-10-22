@@ -119,7 +119,7 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
         {onPageSizeChange && !isMobile && (
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography sx={{ fontSize: '.8125rem', color: 'text.secondary' }} id="sevida-page-size-label">
-              Rows per page
+              Rows per Page
             </Typography>
             <Select
               size="small"

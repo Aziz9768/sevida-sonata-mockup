@@ -4,16 +4,20 @@ import { Menu, MenuItem, Stack } from "@mui/material";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import { IconButton } from "sevida-ui";
 import { CURRENT_YEAR } from "../data";
+import type { MeasureCode } from "../data";
 
 /** A ⋮ menu of places to go for the member. The row itself (name, ID or a click on the row) opens the member, so there is no "View details" button. */
 export function RowActions({
   id,
   name,
   year,
+  gapCode,
 }: {
   id: string;
   name: string;
   year?: number;
+  /** On a list with one row per care gap: adds "Open this care gap", which goes to that gap's own page. */
+  gapCode?: MeasureCode;
 }) {
   const navigate = useNavigate();
   const [el, setEl] = useState<HTMLElement | null>(null);
@@ -43,6 +47,16 @@ export function RowActions({
         <MoreVertIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={el} open={!!el} onClose={() => setEl(null)}>
+        {gapCode && (
+          <MenuItem
+            onClick={() => {
+              setEl(null);
+              navigate(`/members/${id}/gaps/${gapCode}`);
+            }}
+          >
+            Open this care gap ({gapCode})
+          </MenuItem>
+        )}
         <MenuItem onClick={() => go("gaps")}>Care gaps</MenuItem>
         <MenuItem onClick={() => go("claims")}>Claims</MenuItem>
         <MenuItem onClick={() => go("enrollment")}>Enrollment</MenuItem>

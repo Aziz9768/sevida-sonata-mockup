@@ -97,7 +97,7 @@ export function createSevidaTheme(brand: SevidaBrand = {}): Theme {
       body1: { fontSize: '.875rem', fontWeight: 400, lineHeight: 1.5 }, // Normal text (14 / 400)
       body2: { fontSize: '.8125rem', fontWeight: 400, lineHeight: 1.5 }, // 13
       caption: { fontSize: '.75rem', fontWeight: 400 }, // 12
-      button: { textTransform: 'capitalize', fontWeight: 400, letterSpacing: 'normal', fontSize: '.8125rem' }, // 13 / 400, not capitals
+      button: { textTransform: 'none', fontWeight: 400, letterSpacing: 'normal', fontSize: '.8125rem' }, // 13 / 400, not capitals
     },
   });
 

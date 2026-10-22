@@ -389,6 +389,7 @@ function Evidence({ g }: { g: GapView }) {
       ),
       filter: {
         type: "multiselect",
+        ordered: true,
         options: evidenceStatuses.map((v) => ({ value: v, label: v })),
       },
     },
@@ -516,7 +517,7 @@ function Closure({ g }: { g: GapView }) {
     (e) => e.validation === "Validated",
   ).length;
   const re = w.reeval;
-  const reLabel = c.reevalOk ? "Met" : re && !re.ok ? "Not Met" : "Not run";
+  const reLabel = c.reevalOk ? "Met" : re && !re.ok ? "Not met" : "Not run";
   return (
     <Stack spacing={2}>
       {w.closed && (
@@ -548,7 +549,7 @@ function Closure({ g }: { g: GapView }) {
               ]}
             />
             <InfoBanner tone="info">
-              The measure result in the files still says Not Met. It changes to
+              The measure result in the files still says Not met. It changes to
               Met at the next calculation run, when the evidence reaches the
               files. Until then the gap is shown as Closed and counted
               separately, so totals still add up.
@@ -601,7 +602,7 @@ function Closure({ g }: { g: GapView }) {
                     tone={
                       reLabel === "Met"
                         ? "success"
-                        : reLabel === "Not Met"
+                        : reLabel === "Not met"
                           ? "danger"
                           : "neutral"
                     }
@@ -874,7 +875,7 @@ export function CareGapDetailPage() {
           title="No care gap here"
           description={
             m && def
-              ? `${m.name} has no care gap for ${def.name}. The result is not "Not Met", or the member is not in this measure.`
+              ? `${m.name} has no care gap for ${def.name}. The result is not "Not met", or the member is not in this measure.`
               : "This care gap does not exist."
           }
           action={

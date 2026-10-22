@@ -8,6 +8,7 @@ Mockup screens built **only from `sevida-ui` components** (nothing custom is sty
 | Quality measures | `/#/measures` | DataTable (Measure, Code, Who is counted, Members in measure, Met, Not met, Open care gaps, Excluded; no rate and no data column), InfoBanner |
 | Measure detail (WCV, BCS-E, CCS-E, COL-E, GSD) | `/#/measures/COL-E` | Opens straight on the Members table (no summary card; the very same table and columns as the Members list, only members who are in the measure; a link from a count or group row narrows it, with a "Show all members" button); Tabs, Card, DataTable (filters), StatusChip |
 | Members | `/#/members` | DataTable (search, filters, columns, paging) |
+| Care gaps | `/#/care-gaps` | Tabs (one per measure, with counts) and a DataTable with one row per open care gap. See the Care gaps section below. |
 | Member detail (tabs: Measures, Care gaps, Profile, Enrollment, Diagnoses, Immunizations, Labs, Medications, Claims, Visits and procedures) | `/#/members/M1036` | Card, DetailGrid, Tabs, DataTable, StatusChip, InfoBanner, Modal |
 | Care gap detail | `/#/members/M1036/gaps/COL-E` | Card, DetailGrid, Tabs, DataTable, StepTrace, Modal, form fields |
 | Member measure result (no gap) | `/#/members/M1010/measures/CCS-E` | Card, DetailGrid, Tabs, DataTable, StepTrace |
@@ -81,17 +82,17 @@ Three different things, never mixed:
 
 | | Comes from | Values |
 |---|---|---|
-| **Measure result** | The files only (`src/data.ts`) | Met, Not Met, Excluded, Needs Review |
-| **Care gap status** | The work on a Not Met result (`src/careGaps.tsx`) | Open, Closed |
-| **Evidence status** | The proof, kept apart from both of the above | Not Requested, Requested, Received (waiting for review), Validated, Rejected |
+| **Measure result** | The files only (`src/data.ts`) | Met, Not met, Excluded, Needs review |
+| **Care gap status** | The work on a Not met result (`src/careGaps.tsx`) | Open, Closed |
+| **Evidence status** | The proof, kept apart from both of the above | Not requested, Requested, Received (waiting for review), Validated, Rejected |
 
-- **Needs Review** means the evidence is missing, incomplete or conflicting, so it is **not** counted as a care gap and **not** in the rate. Today two rules produce it: no claims or clinical records at all dated in the measurement year (try member M1010), and a diabetes member whose only HbA1c this year is preliminary. A file that was not received shows as "Partial data" on the dashboard; it does not turn gaps into Needs Review.
-- **Counts add up.** For every measure: eligible = met + not met + needs review + excluded, and rate = met / (met + not met). On a member: open gaps + closed gaps = the member's Not Met results. A closed gap still counts as Not Met in the measure result until the next calculation run reads the evidence (the screens say so).
+- **Needs review** means the evidence is missing, incomplete or conflicting, so it is **not** counted as a care gap and **not** in the rate. Today two rules produce it: no claims or clinical records at all dated in the measurement year (try member M1010), and a diabetes member whose only HbA1c this year is preliminary. A file that was not received shows as "Partial data" on the dashboard; it does not turn gaps into Needs review.
+- **Counts add up.** For every measure: eligible = met + not met + needs review + excluded, and rate = met / (met + not met). On a member: open gaps + closed gaps = the member's Not met results. A closed gap still counts as Not met in the measure result until the next calculation run reads the evidence (the screens say so).
 - **A gap closes only with validated evidence and a re-evaluated measure.** Close gap is unavailable until: evidence is recorded; an authorized reviewer validated it (Evidence tab > Review); it is the right kind of record, dated inside the measurement period, with source and provider recorded (for GSD, HbA1c below 8%); the member still qualifies; and **Re-evaluate measure** was run with that evidence and came out Met. Closing asks for confirmation and records the reason, the supporting evidence, the person and the time. A finished task, a completed appointment, a manual status change or a request for records never closes a gap. Every change is written to the audit trail (History tab) with the user, the time and a reason. Re-evaluation is a simulation: the result in the files changes at the next calculation run.
 - **Care gap page:** a summary with three separate statuses (Measure result, Care gap status, Evidence status) and the next action; one "Actions" button (small, top right) that opens a short menu: Schedule appointment, Add referral (shows "to be built" for now), Reassign care manager (Assign when there is none) and Close gap. Close gap is greyed out until every closing requirement is met; the suggested step is marked "(suggested)" and explained in the (i) next to the button, including which tab to use for evidence steps. Recording evidence is on the Evidence tab, reviewing is a row action there, and re-evaluating and closing are on the Closing tab; Overview (cards: why the gap is open with what counts, the three steps left to close it and the days left in the measurement year; a member snapshot of eligibility, enrollment, exclusions and the last qualifying service; and the exact record behind the gap. The measure rules and the step-by-step check live on the Quality measures page and the member Measures tab, not here); Evidence (one table of records from the files and evidence recorded in Sonata, with missing, conflicting and unmapped records flagged); Follow-up (one table of appointments and referrals; the next scheduled one is shown as the Next action and Due date); History (every change with who, when and why); Closing this gap.
 - **Criteria are not validated against the official MY 2026 specification.** They come from the ingestion spec and simplified demo rules, and the page says so. Points to confirm (age bands in recent HEDIS years have changed for BCS-E, CCS-E and COL-E; accepted tests such as HPV for CCS-E) are listed in `specCheck` in `src/careGaps.tsx` and on each care gap's Measure and criteria card.
 - **Dates:** the demo's "today" is Oct 16, 2026 (`DEMO_NOW` in `src/data.ts`). No service, file, gap or note date is later than today, and no record is dated after the file that carries it. Only due dates, scheduled appointments, one planned colonoscopy (M1004, status "preparation") and coverage end dates look ahead.
-- **Measures tab:** one table with a row for each measure the member is in (measures they are not in are not listed). Columns: measure, code, final result, why, care gap, evidence, evaluation and a three-dot menu. The measure name and a click on the row open the member's own page for that measure: the care gap page when the result is Not Met, otherwise the measure result page (Met, Excluded, Needs Review: why, criteria, the record behind the result, the step-by-step check and the supporting records). "How it was decided" opens the step-by-step check in a popup.
+- **Measures tab:** one table with a row for each measure the member is in (measures they are not in are not listed). Columns: measure, code, final result, why, care gap, evidence, evaluation and a three-dot menu. The measure name and a click on the row open the member's own page for that measure: the care gap page when the result is Not met, otherwise the measure result page (Met, Excluded, Needs review: why, criteria, the record behind the result, the step-by-step check and the supporting records). "How it was decided" opens the step-by-step check in a popup.
 - **Six record tabs (checklist row 25):** the old single "Claims & clinical data" tab is now Diagnoses, Immunizations, Labs, Medications, Claims, and Visits and procedures, each with its own count. Every record sits in exactly one tab, so the counts add up to the member's records. A diagnosis (EHR problem list, or an ICD-10 code on a claim) is in Diagnoses; vaccines in Immunizations; labs and observations in Labs (the only tab with a Result value); pharmacy records in Medications; other claim lines in Claims; the rest in Visits and procedures. Each tab has its own column names and code header (ICD-10, CVX, LOINC, NDC…). Old links with `?tab=clinical` still work: they open the tab that holds the linked record. Columns in each tab: Date | What | Code | Status or Result | Source | Provider, then Last updated (when the file reached Sonata, kept apart from the service date) and Date identified and Measure or care gap. Records tied to a care gap are tinted and say what they did to the measure (decided the result, counted, did not count, context only). Click a row to inspect the source record.
 - **Made up, because the spec has none of it:** care manager, tasks and due dates, contact log (date, method, outcome, notes, follow-up date, care manager), appointments and referrals, records requests, the starting gap status, "gap identified" dates and "last updated" dates. They are the same every time and are marked "Demo" in each column's (i). Changes you make in the demo are kept for the visit. **Access > Partner login > Reset demo data** clears them.
 - **Worked out, not in the spec as a field:** the primary care provider on the Profile tab (the primary-care provider with the most records) and the "primary care gap" (first open gap in the usual measure order).
@@ -113,7 +114,7 @@ Every chart has a text equivalent (hidden data table, values written on bars), s
 
 - **More exclusions:** palliative care in the measurement year (BCS-E, COL-E, GSD), colorectal cancer and total colectomy (COL-E), and hospice is now checked before death. Palliative care is not in the ingestion spec: marked "Standard HEDIS rule" and not yet checked against the official specification.
 - **COL-E tests and windows:** colonoscopy 10 years, CT colonography and flexible sigmoidoscopy 5 years, stool DNA 3 years, FIT this year (`colTests` in `src/data.ts`). The spec gives no windows: they are HEDIS windows and are **not yet validated** against MY 2026. A record that exists but is outside its window is shown as "closest record on file (did not count)".
-- **Why a gap is still open:** a final HbA1c lab with no result value shows as Needs Review (GSD needs the actual value); a screening code that is not mapped to the measure (Z12.31, Z01.419, Z12.11, 83036) is flagged on the Evidence tab and in the record box; files not received are listed on the gap Overview.
+- **Why a gap is still open:** a final HbA1c lab with no result value shows as Needs review (GSD needs the actual value); a screening code that is not mapped to the measure (Z12.31, Z01.419, Z12.11, 83036) is flagged on the Evidence tab and in the record box; files not received are listed on the gap Overview.
 - **Care team:** Care team and Care manager columns in both member tables, and Care team on the gap page. Demo data (`careTeamOf`).
 - **Evidence lineage:** `RecordBox` shows the exact record behind any result (met, did not meet, or caused the exclusion) on the member measure page and the gap Overview.
 - **Demo members for these cases** are added by `withEdgeCases` in `src/data.ts` on a fixed rhythm; the 10 sample members are untouched.
@@ -137,7 +138,7 @@ The **Members** list and the **Quality measures** table have a **Measurement yea
 
 2025 items taken from NCQA's public documents: ages WCV 3–21, BCS-E 50–74, CCS-E 21–64, COL-E 45–75, GSD 18–75; CCS-E also counts a high-risk HPV test in the last 5 years (age 30+ on the test date); WCV no longer counts telehealth well-care visits; BCS-E ignores a mastectomy that appears only on a lab claim when looking for the two-sided mastectomy exclusion. **Not confirmed for 2025:** the colorectal test windows, the BCS-E and CCS-E look-back windows, and the other exclusions. 2026 does not use the HPV, telehealth or lab-claim rules (they are switched on per year in `yearRules` in `src/data.ts`).
 
-Demo records added to show the difference: 6 children whose only well-care visit was by telehealth, 5 women with an HPV test and no Pap test, 3 women with a mastectomy on one side plus one billed on a lab claim (these three are now Excluded in 2026 BCS-E; before they were Not Met).
+Demo records added to show the difference: 6 children whose only well-care visit was by telehealth, 5 women with an HPV test and no Pap test, 3 women with a mastectomy on one side plus one billed on a lab claim (these three are now Excluded in 2026 BCS-E; before they were Not met).
 
 Where it lives: `YEARS`, `yearRules`, `memberForYear`, `measureFor` and the `year` argument of `resultsFor`, `tally`, `evaluate` in `src/data.ts`; `evidenceKindsFor` in `src/careGaps.tsx`; the column and row type in `src/components/memberColumns.tsx` (`MemberRow`, `memberYearRows`).
 
@@ -156,7 +157,7 @@ Each of these tables has the same eye icon as Alert Response, at the left of the
 
 ## Measure result filter (measure page, Members tab)
 
-The Members tab of a measure has a **Measure result** column and filter: Met, Not Met, Needs Review, Excluded. It is for this one measure only. Links from the charts and counts (for example the Not Met count) open the tab with this filter already set; remove or change it in the filters panel like any other filter. The Members list has no such column, because a result means nothing without a measure; use Gaps and Gap status there.
+The Members tab of a measure has a **Measure result** column and filter: Met, Not met, Needs review, Excluded. It is for this one measure only. Links from the charts and counts (for example the Not met count) open the tab with this filter already set; remove or change it in the filters panel like any other filter. The Members list has no such column, because a result means nothing without a measure; use Gaps and Gap status there.
 
 ## Member columns (from the Madigan checklist, points 4 to 9)
 
@@ -172,7 +173,7 @@ The Members tab of a measure has a **Measure result** column and filter: Met, No
 
 ## Filter panel (checklist rows 17 to 23, 29, 30)
 
-- **Order:** Measurement year, then **Measure** (this was called "Gaps"), then the other filters.
+- **Order:** Measurement year first (it is required and always has a value), then every other filter A to Z by its label. The library does this itself (`FilterFields`), on every table, so there is no per-column order to set.
 - **Apply:** changes in the panel are held until you press **Apply** (full-width button at the bottom; off until something changes). Closing the panel drops unapplied choices. On a phone, Apply is in the bottom sheet.
 - **Clear filters** is at the top of the panel.
 - **Pick-many lists:** the picked values show as small chips with an x, so one can be removed without opening the list. Clicking **All** while it is ticked un-ticks everything so you can tick only what you want; closing the list with nothing ticked goes back to All.
@@ -207,7 +208,7 @@ The Members tab of a measure has a **Measure result** column and filter: Met, No
 
 - **Dashboard** (`/dashboard`) has one tab per measure (Well-care visits, Breast cancer, Cervical cancer, Colorectal cancer, Diabetes blood sugar) and an **Admin** tab. Every measure tab has the same layout. The tab is in the address (`/dashboard?m=GSD`); the filters stay when you switch tab.
 - **Order on a measure tab** (same as the wireframe): title (`WCV - name`) with what the measure counts and the period; Last updated / Next update top right; **Filters**; **Whole population** box on the left (does not change with the filters) next to **Results** (Initial population, Eligible, Excluded, Met, Met %, Not met, Not met %; they change with the filters); **Met % by** race, ethnicity, age group, sex and provider; **Trend over time** with its own controls, the numbers table and the line chart; **List of members in the initial population**; what went into the measure; members left out and why; everything that affects this calculation (period, who is counted, who is left out, files, rules, formula, link to the full spec).
-- **Filters** (same names, values and order as the Members list; see "Filters match on both screens" below): Measurement year, Member, Measure result, Date of birth, Age (From / To), Sex, Open care gaps, Gaps in more than one measure, Age group, Race, Ethnicity, Primary care provider, Excluded from, Evidence date, Evidence source system, Latest HbA1c, State, County, Military status. Like the Members list, a choice applies only after **Apply** (Apply sits at the top next to Clear filters; Enter in a box applies too; Clear filters applies at once and keeps the year). No period filter (the period is always Jan 1 to Dec 31). No Care Manager filter.
+- **Filters** (same names and values as the Members list, listed Measurement year first, then A to Z; see "Filters match on both screens" below): Measurement year, Age (From / To), Age group, County, Date of birth, Ethnicity, Evidence date, Evidence source system, Excluded from, Gaps in more than one measure, Latest HbA1c, Measure result, Member, Military status, Open care gaps, Primary care provider, Race, Sex, State. Like the Members list, a choice applies only after **Apply** (Apply sits at the top next to Clear filters; Enter in a box applies too; Clear filters applies at once and keeps the year). No period filter (the period is always Jan 1 to Dec 31). No Care Manager filter.
 - **Trend controls** (in the trend card, they change the trend only): Daily / Weekly / Monthly / Quarterly / Annual, Met % or Not met %, From, To, Compare with last year. Table on the left (period start, period end, met, eligible, rate), chart on the right. On a narrow screen the chart is first.
 - Charts: one color, group size under the name (`met of eligible`), a star when fewer than 10 eligible. A split with one group is a sentence, not a one-bar chart. Bars are not clickable. Each chart card has a small icon that downloads that chart as a PNG (FR-709.2).
 - **Clicking a Results card** (FR-707.1) lists those members below: Met or Met % shows only Met members, Not met or Not met % only Not met, the other cards show everyone. A banner above the list says what is shown and has "Show everyone". The page scrolls to the list.
@@ -225,7 +226,7 @@ Rule: the same idea has the same name, the same values and the same control on b
 
 - **Age group:** one list, Under 3, 3–11, 12–17, 18–21, 22–39, 40–49, 50–64, 65 and over (age on December 31 of the measurement year). The Met % by age group chart uses the same list.
 - **Gaps in more than one measure:** All, Yes, No.
-- **Measure result:** All, Met, Not Met, Needs Review, Excluded (same words as the result chips). On the Members list it exists inside a measure's Members tab only.
+- **Measure result:** All, Met, Not met, Needs review, Excluded (same words as the result chips). On the Members list it exists inside a measure's Members tab only.
 - **Sex:** All, Female, Male (pick one) on both.
 - **"All" means everything.** No "Any" and no "Met and Not met".
 - **Same order** for the filters both screens have. On the Members list use `filterOrder` on a column to place its filter.
@@ -246,3 +247,62 @@ The same dashboard drawn only with what QuickSight can build, from the Leap Quic
 - **Replacements for things QuickSight cannot do:** the Results cards cannot be clicked, so a small Met / Not met column chart is clickable and opens Details filtered. The chart image icon, How-to popup, banners, switches, chips, saved views and column picker are gone (a Help sheet and coloured text-box tiles take their place).
 - **Review tags** (grey `FR-7xx`, amber `Ask Qn`): which requirement a tile answers and which audit question it depends on. They are not part of the dashboard. Switch them off at the top right. Hover an amber tag for the question.
 - **Code:** `src/quicksight/kit.tsx` (frame, controls bar, sheet grid, tile, KPI, column chart, table, text box) and `src/pages/QuickSightDashboardPage.tsx`. Numbers come from the same functions as the old dashboard (`dashboardData.ts`).
+
+
+## Review fixes from the customer (LPP-16069, member list and search)
+
+- **Search (FR-402):** the search box looks at Member name and Member ID only. A care manager, care team or evidence text no longer brings up members.
+- **Count (FR-405):** the Members page title shows how many members match the search and filters, for example "Members (12 of 300)". The library DataTable has a new `onResultCountChange` prop for this. A measure's Members tab already showed a live count in its table title.
+- **Gaps (FR-404):** "Gaps in several measures" is gone (Open gaps already tells that; filter on Open gaps to find members with 2 or more). **Gaps** now lists open gaps only and matches the Open gaps number. The **Gap status** column is gone. New **Closed gaps** column (hidden by default): the measure and the day it was closed, for the current measurement year. A past year has no care-gap work, so it shows a dash.
+- **Missing evidence (new):** for each open gap, the records that would close it (any one of them), with the date windows on hover.
+- **Evidence date and Evidence:** now tied to the closed gaps (the record that closed each one, one line per gap, same measures as Closed gaps), so they no longer show evidence for a measure the member has no gap in. The Evidence column shows what the record is in larger text and its review status under it. Records entered in Sonata carry no code in the demo, so there is no code line.
+- **Removed:** Evidence source system, Evidence provider.
+- **Moved:** Gap identified now sits right after Gaps.
+- Saved table setups were reset (storage keys raised) because columns were removed.
+
+
+## Care gaps screen (FR-601 to FR-610)
+
+A separate item in the sidebar, between Members and Quality measures. It is the worklist for the whole population: every open gap, one row per gap (a member with two open gaps has two rows).
+
+- **Title:** a live count, for example "Care gaps (60 of 145)".
+- **Tabs:** All measures, then one tab per measure, each with its count (the library `Tabs`, like the other screens). The counts follow the search and every filter except Measure. A tab sets the Measure filter; the Measure filter in the Filters panel does the same.
+- **Columns:** Member name, Member ID, Measure, Why, Missing evidence (short text, hover for every accepted record with its date window), Gap identified, Evidence status, Open gaps (the member's total, sortable and filterable), Next appointment, Contact result, Care manager. Hidden until switched on: Last contact, Care team, Date of birth, Age, Sex, Spoken language, State, County, Military status.
+- **Filters:** the same names and values as Members (the member facets come from one helper, `memberFacets` in `memberColumns.tsx`), plus Measure, Evidence status, Gap identified, Contact result and Care manager. Saved views and Export work as on Members.
+- **Sorting:** starts with the oldest gap first. Sort on Open gaps to bring members with several gaps to the top.
+- **Opening things:** the member name, the Member ID and a click on the row all open the member with the **Care gaps tab** in focus (FR-607). The gap's own page is one more click: from that tab, or from the row's ⋮ menu ("Open this care gap").
+- **Search:** member name and Member ID only.
+- **Current measurement year only.** A past year has no care-gap work.
+- **Not built:** FR-611 (gaps closed since a prior run). It needs run history, and the requirements document marks it Stretch.
+
+## Icon buttons: one rule (sevida-ui `IconButton`)
+
+- `variant="boxed"` is for actions in a toolbar or page header: export, download, print, saved views, save view, show/hide details. Always the same 40px outlined square with a 22px icon.
+- Plain (default) is for small helpers inside content: the row menu, the close X, pagination, clear search.
+- Do not hand-style a border onto an IconButton. If it is a toolbar action, use `variant="boxed"`.
+
+## Wording and order rules (one rule for the whole mockup)
+
+- Title Case for every label: buttons, tabs, sidebar items, column headers, filter labels, column chooser, card and page titles, field labels. Small words (a, an, and, as, at, but, by, for, in, nor, of, on, or, the, to, vs, via) stay lowercase unless first, last or after a colon. The sevida-ui components apply this themselves through `titleCase` (src/utils/titleCase.ts), so screens just pass normal text. Values, status chips, sentences and tooltips stay in sentence case (Not met, Needs review, Not requested, Other race). Official measure names stay as NCQA writes them. The theme does not capitalise button text.
+- Code and name are joined with " · " (WCV · Child and Adolescent Well-Care Visits). Never " - " or " – ".
+- Filters in every panel and bar are listed A to Z by label, with Measurement year first.
+- Every dropdown list is A to Z by what the viewer reads, with All first. The table filter does this itself (`sortOptions` in sevida-ui). Set `ordered: true` on the filter only when the values have a natural order: age groups, open-gap counts, HbA1c bands, evidence stages, Daily to Annual. A required filter (Measurement year) keeps your order, newest first.
+- Measure pickers (tabs on Care gaps and the dashboard, every measure dropdown) are A to Z.
+- Page tabs that follow a workflow (Profile, Measures, Care gaps…) keep their logical order. They are navigation, not a list.
+- The QuickSight pages copy QuickSight's own tab strip and toolbar on purpose, so those keep QuickSight's sizes.
+
+## Roles: the "View as" picker (FR-302 to 304, 401, 509, 706)
+
+A picker in the header ("View as (demo only)") switches the role. Real roles will come from Keycloak at sign-in; the role list is a DRAFT from the requirements doc and Madigan has not confirmed it (open question 8). All the rules are in one file, `src/roles.tsx`.
+
+| Role | Menus | Members | Member page tabs removed | Admin sheet |
+|---|---|---|---|---|
+| Administrator | all | all | none | yes |
+| Quality analyst | all | all | none | yes |
+| Care manager (demo: Rita Gomez) | Members, Care gaps | own caseload (the care manager on the Members list) | Claims, All records | no |
+| Clinician (demo: Maria L. Rivera, MD) | Members, Care gaps | own patients (the primary care provider) | Enrollment, Claims, All records | no |
+| Executive | Analytics (both), Quality measures | none: totals and rates only | no member pages | no |
+
+- Hide, never grey out. A hidden address typed by hand opens "You do not have access" (`AccessGate.tsx`).
+- The same member filter applies to Members, Care gaps and every member page. The Executive gets no Members tab on a measure, no member list card on the dashboard and no member list sheet on the QuickSight page.
+- This is a demo of the screens. Real enforcement is server-side (FR-305).

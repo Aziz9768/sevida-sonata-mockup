@@ -1,3 +1,4 @@
+import { titleCase } from "../../utils/titleCase";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -115,14 +116,14 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
           p: 0,
         }}
       >
-        Clear all
+        Clear All
       </Box>
     </>
   );
 
   const title =
     typeof p.title === "string" && p.title.trim()
-      ? `${p.title} (${p.total.toLocaleString()})`
+      ? `${titleCase(p.title)} (${p.total.toLocaleString()})`
       : p.title;
 
   const hasHeader = !!(

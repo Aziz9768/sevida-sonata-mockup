@@ -1,6 +1,7 @@
 import { Paper, Stack, Tooltip, Typography } from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import type { ReactNode } from 'react';
+import { titleCase } from '../../utils/titleCase';
 
 export interface CardProps {
   /** Card heading. Leave out for a plain surface with no header. */
@@ -37,7 +38,7 @@ export function Card({ title, hint, tooltip, action, footer, flush = false, chil
             <Stack direction="row" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
               {title && (
                 <Typography variant="h5" component="h2" sx={{ color: 'primary.main' }}>
-                  {title}
+                  {titleCase(title)}
                 </Typography>
               )}
               {tooltip && (

@@ -709,7 +709,7 @@ export function GapActions({
             <InfoBanner tone={reevalDone ? "success" : "warning"}>
               {reevalDone
                 ? "Result with this evidence: Met. Close gap is now available."
-                : "Result with this evidence: Not Met. See the Closing this gap tab for what is missing."}
+                : "Result with this evidence: Not met. See the Closing this gap tab for what is missing."}
             </InfoBanner>
           )}
         </Stack>

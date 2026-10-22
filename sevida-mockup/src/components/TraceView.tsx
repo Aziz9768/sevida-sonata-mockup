@@ -7,7 +7,7 @@ const look: Record<StepOutcome, Pick<TraceItem, "tone" | "statusLabel">> = {
   pass: { tone: "success", statusLabel: "Passed" },
   fail: { tone: "neutral", statusLabel: "Not in this measure" },
   excluded: { tone: "neutral", statusLabel: "Excluded" },
-  unmet: { tone: "warning", statusLabel: "Not Met" },
+  unmet: { tone: "warning", statusLabel: "Not met" },
   review: { tone: "warning", statusLabel: "Needs review" },
   skipped: { tone: "muted", statusLabel: "Not checked" },
 };

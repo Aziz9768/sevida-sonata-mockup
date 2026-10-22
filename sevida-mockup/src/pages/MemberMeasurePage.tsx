@@ -57,7 +57,7 @@ function whyText(r: MeasureResult): string {
     case "Excluded":
       return `Excluded: ${r.reason}. The member is taken out of the rate, so no care gap was opened.`;
     case "Review":
-      return `Needs Review: ${r.reason}`;
+      return `Needs review: ${r.reason}`;
     default:
       return r.reason;
   }
@@ -98,14 +98,14 @@ function Overview({
               label={r.state === "Gap" ? "Year ended" : "No care gap"}
               tip={
                 r.state === "Gap"
-                  ? `Not Met when ${year} ended. Care-gap work exists for ${MY} only, so this result is final.`
-                  : "A care gap exists only when the result is Not Met. This result did not create one."
+                  ? `Not met when ${year} ended. Care-gap work exists for ${MY} only, so this result is final.`
+                  : "A care gap exists only when the result is Not met. This result did not create one."
               }
             />
           </Stack>
           <Typography>
             {r.state === "Gap"
-              ? `Not Met: ${r.reason}. This is the final result for ${year}.`
+              ? `Not met: ${r.reason}. This is the final result for ${year}.`
               : whyText(r)}
           </Typography>
           {r.state === "Review" && (
@@ -357,7 +357,7 @@ export function MemberMeasurePage() {
               </Field>
               <Field
                 label="Care gap"
-                help="A care gap exists only when the result is Not Met. This result did not create one."
+                help="A care gap exists only when the result is Not met. This result did not create one."
               >
                 <StatusChip
                   tone="neutral"

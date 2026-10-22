@@ -10,6 +10,7 @@ import ViewModuleOutlinedIcon from "@mui/icons-material/ViewModuleOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
+import AssignmentLateOutlinedIcon from "@mui/icons-material/AssignmentLateOutlined";
 import {
   AppShell,
   Button,
@@ -29,12 +30,17 @@ import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
 import { MeasuresPage } from "./pages/MeasuresPage";
 import { MeasureDetailPage } from "./pages/MeasureDetailPage";
 import { MembersListPage } from "./pages/MembersListPage";
+import { CareGapsPage } from "./pages/CareGapsPage";
 import { MemberDetailPage } from "./pages/MemberDetailPage";
 import { CareGapDetailPage } from "./pages/CareGapDetailPage";
 import { MemberMeasurePage } from "./pages/MemberMeasurePage";
 import { initialsOf, useAuth } from "./auth";
-import { effectiveGroups, groupName, samples, useAccess } from "./access";
+import { effectiveGroups, samples, useAccess } from "./access";
 import { poweredByDark, poweredByLight } from "./brand";
+import { RoleProvider, useRole } from "./roles";
+import type { NavKey } from "./roles";
+import { RolePicker } from "./components/RolePicker";
+import { MemberGate, MenuGate } from "./components/AccessGate";
 
 const baseNav: NavItem[] = [
   {
@@ -56,6 +62,12 @@ const baseNav: NavItem[] = [
     href: "/members",
   },
   {
+    key: "care-gaps",
+    label: "Care gaps",
+    icon: <AssignmentLateOutlinedIcon />,
+    href: "/care-gaps",
+  },
+  {
     key: "measures",
     label: "Quality measures",
     icon: <FactCheckOutlinedIcon />,
@@ -66,6 +78,7 @@ const baseNav: NavItem[] = [
 function activeKeyFor(pathname: string) {
   const [first] = pathname.split("/").filter(Boolean);
   return first === "measures" ||
+    first === "care-gaps" ||
     first === "dashboard" ||
     first === "quicksight" ||
     first === "dashboards"
@@ -183,6 +196,7 @@ function Protected() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { personById } = useAccess();
+  const { role, home } = useRole();
   if (!user) return <Navigate to="/login" replace />;
   const me = personById(user.personId ?? "p-admin");
   const signOutNow = () => {
@@ -200,8 +214,9 @@ function Protected() {
   }
   return (
     <AppShell
-      items={baseNav}
+      items={baseNav.filter((i) => role.menus.includes(i.key as NavKey))}
       activeKey={activeKeyFor(pathname)}
+      headerContent={<RolePicker />}
       brandName="Sevida"
       // Name only, no mark: the sidebar shows plain "Sevida" (and nothing when it is collapsed).
       logo={
@@ -221,32 +236,104 @@ function Protected() {
       logoCollapsed={<span />}
       linkComponent={RouterLinkAdapter}
       user={{
-        name: user.name,
-        subtitle: effectiveGroups(me).map(groupName).join(", "),
-        initials: user.initials,
+        name: role.person ?? user.name,
+        subtitle: role.label,
+        initials: role.person ? initialsOf(role.person) : user.initials,
       }}
       poweredBy={poweredByDark}
       onSignOut={signOutNow}
     >
       <Routes>
-        <Route path="/" element={<Navigate to="/members" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/quicksight" element={<QuickSightDashboardPage />} />
-        <Route path="/dashboards" element={<DashboardCardsPage />} />
-        <Route path="/dashboard/:code" element={<MeasureDashboardPage />} />
-        <Route path="/measures" element={<MeasuresPage />} />
-        <Route path="/measures/:code" element={<MeasureDetailPage />} />
-        <Route path="/members" element={<MembersListPage />} />
-        <Route path="/members/:memberId" element={<MemberDetailPage />} />
+        <Route path="/" element={<Navigate to={home} replace />} />
+        <Route
+          path="/dashboard"
+          element={
+            <MenuGate path="/dashboard">
+              <DashboardPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/quicksight"
+          element={
+            <MenuGate path="/quicksight">
+              <QuickSightDashboardPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/dashboards"
+          element={
+            <MenuGate path="/dashboards">
+              <DashboardCardsPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/dashboard/:code"
+          element={
+            <MenuGate path="/dashboard">
+              <MeasureDashboardPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/measures"
+          element={
+            <MenuGate path="/measures">
+              <MeasuresPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/measures/:code"
+          element={
+            <MenuGate path="/measures">
+              <MeasureDetailPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/care-gaps"
+          element={
+            <MenuGate path="/care-gaps">
+              <CareGapsPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/members"
+          element={
+            <MenuGate path="/members">
+              <MembersListPage />
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/members/:memberId"
+          element={
+            <MemberGate>
+              <MemberDetailPage />
+            </MemberGate>
+          }
+        />
         <Route
           path="/members/:memberId/gaps/:code"
-          element={<CareGapDetailPage />}
+          element={
+            <MemberGate>
+              <CareGapDetailPage />
+            </MemberGate>
+          }
         />
         <Route
           path="/members/:memberId/measures/:code"
-          element={<MemberMeasurePage />}
+          element={
+            <MemberGate>
+              <MemberMeasurePage />
+            </MemberGate>
+          }
         />
-        <Route path="*" element={<Navigate to="/members" replace />} />
+        <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
     </AppShell>
   );
@@ -254,9 +341,11 @@ function Protected() {
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginRoute />} />
-      <Route path="/*" element={<Protected />} />
-    </Routes>
+    <RoleProvider>
+      <Routes>
+        <Route path="/login" element={<LoginRoute />} />
+        <Route path="/*" element={<Protected />} />
+      </Routes>
+    </RoleProvider>
   );
 }

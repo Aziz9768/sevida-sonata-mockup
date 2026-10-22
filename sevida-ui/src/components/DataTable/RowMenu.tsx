@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ListItemIcon, Menu, MenuItem } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { IconButton } from '../Button/Button';
+import { titleCase } from '../../utils/titleCase';
 
 export interface RowMenuItem {
   /** What the item says, e.g. "View evaluation details". */
@@ -54,7 +55,7 @@ export function RowMenu({ rowLabel, items }: RowMenuProps) {
             }}
           >
             {it.icon && <ListItemIcon>{it.icon}</ListItemIcon>}
-            {it.label}
+            {titleCase(it.label)}
           </MenuItem>
         ))}
       </Menu>

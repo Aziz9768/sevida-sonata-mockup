@@ -38,7 +38,7 @@ const closedByOf = (g: GapView) => {
 
 const opt = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
 
-/** Every Not Met measure for one member, with the work on it. Needs Review items are listed apart: they are not care gaps. */
+/** Every Not met measure for one member, with the work on it. Needs review items are listed apart: they are not care gaps. */
 export function CareGapsTab({ m, year = MY }: { m: Member; year?: number }) {
   const navigate = useNavigate();
   const { gapsOf } = useGaps();
@@ -94,7 +94,7 @@ export function CareGapsTab({ m, year = MY }: { m: Member; year?: number }) {
     {
       key: "reason",
       header: "Gap reason",
-      help: "Why the result is Not Met, from the measure check.",
+      help: "Why the result is Not met, from the measure check.",
       accessor: (g) => g.result.reason,
       width: 200,
       hideBelow: "md",
@@ -130,7 +130,11 @@ export function CareGapsTab({ m, year = MY }: { m: Member; year?: number }) {
       accessor: (g) => g.evidenceStatus,
       sortable: true,
       nowrap: true,
-      filter: { type: "multiselect", options: opt(evidenceStatuses) },
+      filter: {
+          type: "multiselect",
+          ordered: true,
+          options: opt(evidenceStatuses),
+        },
       render: (g) => (
         <StatusChip
           tone={evidenceTone[g.evidenceStatus]}
@@ -199,7 +203,7 @@ export function CareGapsTab({ m, year = MY }: { m: Member; year?: number }) {
     <Stack spacing={2}>
       {review.length > 0 && (
         <InfoBanner tone="warning">
-          <strong>Needs Review, not a care gap.</strong> The evidence is
+          <strong>Needs review, not a care gap.</strong> The evidence is
           missing, incomplete or conflicting, so{" "}
           {review.map((x) => x.name).join(" and ")}{" "}
           {review.length === 1 ? "is" : "are"} not counted as{" "}
@@ -234,7 +238,7 @@ export function CareGapsTab({ m, year = MY }: { m: Member; year?: number }) {
         emptyState={
           <EmptyState
             title="No care gaps"
-            description={`${m.name} has no Not Met measure results. See the Measures tab for what was checked.`}
+            description={`${m.name} has no Not met measure results. See the Measures tab for what was checked.`}
           />
         }
       />

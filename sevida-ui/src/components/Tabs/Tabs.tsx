@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Box, Tab, Tabs as MuiTabs } from '@mui/material';
+import { titleCase } from '../../utils/titleCase';
 
 export interface TabItem {
   /** Unique id. `value` / `onChange` use it. */
@@ -63,7 +64,7 @@ export function Tabs({ items, value, defaultValue, onChange, ariaLabel, gap = tr
               disabled={i.disabled}
               label={
                 <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
-                  {i.label}
+                  {titleCase(i.label)}
                   {i.count !== undefined && (
                     <Box
                       component="span"

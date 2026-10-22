@@ -1,5 +1,6 @@
 import { Breadcrumbs as MuiBreadcrumbs, Link, Typography } from '@mui/material';
 import type { ReactNode } from 'react';
+import { titleCase } from '../../utils/titleCase';
 
 export interface Crumb {
   label: string;
@@ -31,11 +32,11 @@ export function Breadcrumbs({ crumbs, renderLink, maxItems = 3 }: BreadcrumbsPro
         if (isLast || (!c.href && !c.onClick)) {
           return (
             <Typography key={i} aria-current={isLast ? 'page' : undefined} sx={{ fontSize: '.75rem', lineHeight: 1.17, color: 'text.secondary', fontWeight: 600 }}>
-              {c.label}
+              {titleCase(c.label)}
             </Typography>
           );
         }
-        const content = c.label;
+        const content = titleCase(c.label);
         if (renderLink) return <span key={i}>{renderLink(c, content)}</span>;
         return (
           <Link

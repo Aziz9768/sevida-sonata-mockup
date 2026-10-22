@@ -77,7 +77,7 @@ export function ChartImageButton({
         <IconButton
           aria-label={label}
           disabled={busy}
-          size="small"
+          variant="boxed"
           onClick={async () => {
             if (!target.current) return;
             setBusy(true);
@@ -94,9 +94,8 @@ export function ChartImageButton({
               setBusy(false);
             }
           }}
-          sx={{ color: "primary.main" }}
         >
-          <ImageOutlinedIcon fontSize="small" />
+          <ImageOutlinedIcon />
         </IconButton>
       </span>
     </Tooltip>

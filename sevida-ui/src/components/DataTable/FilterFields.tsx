@@ -133,6 +133,14 @@ function MultiSelectFilter({
   );
 }
 
+/** A to Z by what the viewer reads, numbers in number order ("3-11" before "12-17"). `ordered` keeps the caller's order. */
+export function sortOptions(options: Option[], ordered?: boolean): Option[] {
+  if (ordered) return options;
+  return [...options].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }),
+  );
+}
+
 /** One labelled field for every column that has a `filter`. Used by the Filters panel and the phone sheet. */
 export function FilterFields<T>({
   columns,
@@ -143,11 +151,20 @@ export function FilterFields<T>({
   filters: FilterState;
   onChange: (key: string, value: FilterValue | undefined) => void;
 }) {
+  // A required filter (Measurement year) always has a value, so it stays on top. The rest are A to Z by the label people read.
+  const labelOf = (c: Column<T>) => c.filterLabel ?? c.header;
+  const isRequired = (c: Column<T>) =>
+    (c.filter as { required?: boolean }).required === true;
   const filterable = columns
-    .map((c, i) => ({ c, at: c.filterOrder ?? i }))
-    .filter(({ c }) => c.filter && (c.filterAccessor ?? c.accessor))
-    .sort((x, y) => x.at - y.at)
-    .map(({ c }) => c);
+    .filter((c) => c.filter && (c.filterAccessor ?? c.accessor))
+    .sort(
+      (x, y) =>
+        Number(isRequired(y)) - Number(isRequired(x)) ||
+        labelOf(x).localeCompare(labelOf(y), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+    );
   if (filterable.length === 0) {
     return (
       <Typography sx={{ fontSize: ".8125rem", color: "ink.500" }}>
@@ -188,7 +205,10 @@ export function FilterFields<T>({
                 options={
                   f.required
                     ? f.options
-                    : [{ value: "", label: "All" }, ...f.options]
+                    : [
+                        { value: "", label: "All" },
+                        ...sortOptions(f.options, f.ordered),
+                      ]
                 }
               />
             );
@@ -197,7 +217,7 @@ export function FilterFields<T>({
               <MultiSelectFilter
                 key={c.key}
                 label={label}
-                options={f.options}
+                options={sortOptions(f.options, f.ordered)}
                 value={(value as string[]) ?? []}
                 onChange={(v) => onChange(c.key, v)}
               />

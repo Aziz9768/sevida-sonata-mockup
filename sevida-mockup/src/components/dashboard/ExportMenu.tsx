@@ -32,12 +32,7 @@ export function ExportMenu({
             aria-haspopup="menu"
             disabled={busy}
             onClick={(e) => setAnchor(e.currentTarget)}
-            sx={{
-              border: 1,
-              borderColor: "divider",
-              borderRadius: 1,
-              color: "primary.main",
-            }}
+            variant="boxed"
           >
             <FileDownloadOutlinedIcon />
           </IconButton>

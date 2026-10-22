@@ -47,10 +47,10 @@ export const ALL = "All";
 
 /** The Measure result filter. Same words as the result chips in the app. Not in this measure is not a choice (those members are not counted). */
 export const RESULT_STATES: MeasureState[] = [
-  "Met",
-  "Gap",
-  "Review",
   "Excluded",
+  "Met",
+  "Review",
+  "Gap",
 ];
 export const resultOptions = RESULT_STATES.map((s) => ({
   value: s,
@@ -58,8 +58,8 @@ export const resultOptions = RESULT_STATES.map((s) => ({
 }));
 
 export const SEX_VALUES = ["Female", "Male"];
-export const YES_NO = ["Yes", "No"];
-export const MILITARY_VALUES = ["Active", "Retired", "Not military"];
+export const YES_NO = ["No", "Yes"];
+export const MILITARY_VALUES = ["Active", "Not military", "Retired"];
 
 export const optionsOf = (list: string[]) =>
   list.map((v) => ({ value: v, label: v }));
@@ -74,18 +74,20 @@ export const openGapsLabel = (n: number) =>
 export const OPEN_GAP_VALUES = [0, 1, 2, 3, 4].map(openGapsLabel);
 
 /** Measures as "CODE · full name" (the Measure and Excluded from filters). */
-export const measureOptions = measures.map((x) => ({
-  value: x.code,
-  label: `${x.code} · ${x.name}`,
-}));
+export const measureOptions = [...measures]
+  .sort((a, b) => a.code.localeCompare(b.code))
+  .map((x) => ({
+    value: x.code,
+    label: `${x.code} · ${x.name}`,
+  }));
 
 /** Where a piece of evidence came from. */
 export const EVIDENCE_SYSTEMS = [
-  "Paid claim",
   "Claim (supplemental, $0)",
-  "Lab feed (supplemental)",
   "EHR (supplemental)",
   "EHR pharmacy (supplemental)",
+  "Lab feed (supplemental)",
+  "Paid claim",
   "Pharmacy claim",
 ];
 export const A1C_VALUES: string[] = a1cBands;

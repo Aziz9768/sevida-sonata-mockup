@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import type { TextFieldProps as MuiTextFieldProps } from '@mui/material';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { titleCase } from '../../utils/titleCase';
 
 /* ------------------------------------------------------------------ TextField */
 
@@ -24,7 +25,7 @@ export type TextFieldProps = Omit<MuiTextFieldProps, 'variant'> & {
 };
 
 /** One-line (or multi-line with `multiline`) text input. The label always sits ABOVE the box. */
-export const TextField = forwardRef<HTMLDivElement, TextFieldProps>(function TextField({ maxLength, helperText, value, slotProps, ...rest }, ref) {
+export const TextField = forwardRef<HTMLDivElement, TextFieldProps>(function TextField({ maxLength, helperText, value, slotProps, label, ...rest }, ref) {
   const length = typeof value === 'string' ? value.length : 0;
   const help =
     maxLength !== undefined ? (
@@ -41,6 +42,7 @@ export const TextField = forwardRef<HTMLDivElement, TextFieldProps>(function Tex
       ref={ref}
       variant="outlined"
       value={value}
+      label={typeof label === 'string' ? titleCase(label) : label}
       helperText={help}
       // The label always sits above the box, so it is always "shrunk"; this also keeps placeholders visible.
       slotProps={{ inputLabel: { shrink: true }, ...slotProps, htmlInput: { maxLength, ...(slotProps as { htmlInput?: object } | undefined)?.htmlInput } }}
@@ -122,7 +124,7 @@ export function AutocompleteField(props: AutocompleteFieldProps) {
   const { label, options, placeholder, required, disabled, error, helperText } = props;
   const byValue = (v: string) => options.find((o) => o.value === v) ?? { value: v, label: v };
   const input = (params: Parameters<NonNullable<React.ComponentProps<typeof Autocomplete>['renderInput']>>[0]) => (
-    <MuiTextField {...params} label={label} placeholder={placeholder} required={required} error={error} helperText={helperText} InputLabelProps={{ ...params.InputLabelProps, shrink: true }} />
+    <MuiTextField {...params} label={titleCase(label)} placeholder={placeholder} required={required} error={error} helperText={helperText} InputLabelProps={{ ...params.InputLabelProps, shrink: true }} />
   );
   if (props.multiple) {
     return (
@@ -165,7 +167,7 @@ export function CheckboxField({ label, helperText, error, disabled, checked, onC
     <FormControl error={error} disabled={disabled}>
       <FormControlLabel
         control={<Checkbox checked={checked} onChange={(e) => onChange(e.target.checked)} />}
-        label={label}
+        label={typeof label === "string" ? titleCase(label) : label}
         slotProps={{ typography: { sx: { fontSize: '.875rem', fontWeight: 500 } } }}
       />
       {helperText && <FormHelperText sx={{ mt: -0.5, ml: 4 }}>{helperText}</FormHelperText>}
@@ -178,7 +180,7 @@ export function SwitchField({ label, helperText, error, disabled, checked, onCha
     <FormControl error={error} disabled={disabled}>
       <FormControlLabel
         control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} />}
-        label={label}
+        label={typeof label === "string" ? titleCase(label) : label}
         slotProps={{ typography: { sx: { fontSize: '.875rem', fontWeight: 500 } } }}
       />
       {helperText && <FormHelperText sx={{ mt: -0.5, ml: 6 }}>{helperText}</FormHelperText>}
@@ -203,7 +205,7 @@ export function RadioGroupField({ label, options, value, onChange, helperText, e
   return (
     <FormControl error={error} disabled={disabled} required={required}>
       <FormLabel id={labelId} sx={{ fontSize: '.8125rem', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>
-        {label}
+        {titleCase(label)}
       </FormLabel>
       <RadioGroup aria-labelledby={labelId} value={value} onChange={(e) => onChange(e.target.value)} row={row && !isMobile}>
         {options.map((o) => (

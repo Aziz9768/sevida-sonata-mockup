@@ -131,7 +131,7 @@ export function DashboardCardsPage() {
           <QsControlsBar>
             <QsControl>
               <SelectField
-                label="Measurement Year"
+                label="Measurement year"
                 value={String(year)}
                 onChange={(v) => setYear(Number(v))}
                 options={[MY, MY - 1].map((y) => ({

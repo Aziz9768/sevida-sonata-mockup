@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useRole } from "../roles";
 import {
   Box,
   Collapse,
@@ -103,11 +104,11 @@ function whySentence(r: MeasureResult): string {
     case "Met":
       return `Met: ${r.reason}. This record satisfies the measure.`;
     case "Gap":
-      return `Not Met: ${r.reason}. The member is in the measure and the files were complete enough to decide, so this is a genuine care gap.`;
+      return `Not met: ${r.reason}. The member is in the measure and the files were complete enough to decide, so this is a genuine care gap.`;
     case "Excluded":
       return `Excluded: ${r.reason}. The member is taken out of the rate.`;
     case "Review":
-      return `Needs Review: ${r.reason}`;
+      return `Needs review: ${r.reason}`;
     default:
       return r.reason;
   }
@@ -166,7 +167,7 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
     {
       key: "result",
       header: "Final result",
-      help: "Each measure checks this member in the same order. It stops at the first check that decides the result. The result is Met, Not Met, Excluded or Needs Review. Measures the member is not in are not listed.",
+      help: "Each measure checks this member in the same order. It stops at the first check that decides the result. The result is Met, Not met, Excluded or Needs review. Measures the member is not in are not listed.",
       accessor: (x) => stateLabel[x.r.state],
       sortable: true,
       nowrap: true,
@@ -970,12 +971,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
                 aria-label="Print or export summary"
                 aria-haspopup="menu"
                 onClick={(e) => setSummaryEl(e.currentTarget)}
-                sx={{
-                  border: 1,
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  color: "primary.main",
-                }}
+                variant="boxed"
               >
                 <FileDownloadOutlinedIcon />
               </IconButton>
@@ -1064,7 +1060,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
               aria-expanded={open}
               aria-controls={detailsId}
               onClick={() => setOpen((v) => !v)}
-              sx={{ bgcolor: "action.hover" }}
+              variant="boxed"
             >
               <KeyboardArrowDownIcon
                 sx={{
@@ -1143,6 +1139,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
 
 export function MemberDetailPage() {
   const { memberId } = useParams();
+  const { role } = useRole();
   const navigate = useNavigate();
   const m = memberById(memberId);
   const [search, setSearch] = useSearchParams();
@@ -1250,7 +1247,7 @@ export function MemberDetailPage() {
               count: recordCount(g),
               content: <ClinicalTab m={m} year={year} group={g} />,
             })),
-          ]}
+          ].filter((t) => !role.hiddenTabs.includes(t.key))}
         />
       </Stack>
     </PageContainer>

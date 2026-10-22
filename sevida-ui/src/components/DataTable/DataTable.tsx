@@ -49,6 +49,7 @@ import { SavedViewsMenu } from "./SavedViewsMenu";
 import { useSavedViews } from "./useSavedViews";
 import type { SavedViewsOption } from "./useSavedViews";
 import { sameColumns, sameJson } from "./savedViews";
+import { titleCase } from "../../utils/titleCase";
 import { exportAs, exportFormatLabel } from "./exportFile";
 import type { ExportFormat } from "./exportFile";
 import type { SavedView, SavedViewDraft } from "./savedViews";
@@ -132,6 +133,11 @@ export interface DataTableProps<T> {
   total?: number;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  /**
+   * Called with how many rows match the search and filters (all pages, not only the one you see), each time that number changes.
+   * Use it to show a live count at the top of the page, for example "Members (5 of 300)". Not called in server mode.
+   */
+  onResultCountChange?: (count: number) => void;
 
   // ---- selection
   selectable?: boolean;
@@ -188,12 +194,13 @@ function cellContent<T>(col: Column<T>, row: T): ReactNode {
  * (For ONE record's fields, use DetailGrid instead; a table is for many records.)
  */
 export function DataTable<T>({
-  columns: allColumnDefs,
+  columns: columnsProp,
   rows,
   getRowId,
   ariaLabel,
   toolbar = true,
   title,
+  onResultCountChange,
   toolbarActions,
   exportFile,
   exportFormats: exportFormatsProp,
@@ -228,6 +235,16 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const isMobile = useIsMobile();
   const serverMode = onPageChange !== undefined;
+  // Column headers and filter names are labels: Title Case here, in the column chooser, in the filters and in the export file.
+  const allColumnDefs = useMemo(
+    () =>
+      columnsProp.map((c) => ({
+        ...c,
+        header: titleCase(c.header),
+        filterLabel: c.filterLabel ? titleCase(c.filterLabel) : c.filterLabel,
+      })),
+    [columnsProp],
+  );
 
   // ---- which columns are shown, and in what order
   const config = useColumnConfig(allColumnDefs, storageKey, maxPinned);
@@ -361,6 +378,12 @@ export function DataTable<T>({
     sortControlled,
   ]);
 
+  const resultCount = processed.length;
+  useEffect(() => {
+    if (!serverMode) onResultCountChange?.(resultCount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultCount, serverMode]);
+
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const runExport = async (format: ExportFormat) => {
@@ -416,12 +439,7 @@ export function DataTable<T>({
               }
               disabled={processed.length === 0 || exporting}
               aria-haspopup={exportFormats.length > 1 ? "menu" : undefined}
-              sx={{
-                border: 1,
-                borderColor: "divider",
-                borderRadius: 1,
-                color: "primary.main",
-              }}
+              variant="boxed"
             >
               <FileDownloadOutlinedIcon />
             </IconButton>
@@ -685,7 +703,7 @@ export function DataTable<T>({
         description="Try a different search or remove a filter."
         action={
           <Button variant="secondary" onClick={clearAll}>
-            Clear search and filters
+            Clear Search and Filters
           </Button>
         }
       />
@@ -950,7 +968,7 @@ export function DataTable<T>({
                   setSort(null);
                 }}
               >
-                Clear all
+                Clear All
               </Button>
               <Button
                 fullWidth
@@ -1348,7 +1366,7 @@ export function DataTable<T>({
                       "&:disabled": { color: "ink.300", cursor: "default" },
                     }}
                   >
-                    Clear filters
+                    Clear Filters
                   </Box>
                   {/* Apply sits at the top, next to Clear, so it is always in view (a button at the bottom of a long table is out of sight). */}
                   <Button

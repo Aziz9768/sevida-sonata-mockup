@@ -82,6 +82,7 @@ import {
 import { fileTitle } from "../copy";
 import { MEASURE_VERSION } from "../careGaps";
 import { SMALL_GROUP } from "../insights";
+import { useRole } from "../roles";
 import {
   ALL,
   LABEL,
@@ -102,12 +103,8 @@ const BENCHMARK: Record<MeasureCode, number> = {
 };
 const DAY_MS = 86_400_000;
 
-/** Filter names are Title Case (each word starts with a capital). Table headers and tiles keep their own wording. */
-const titleCase = (t: string) =>
-  t.replace(/\b([a-z])/g, (c) => c.toUpperCase());
-const FL = Object.fromEntries(
-  Object.entries(LABEL).map(([k, v]) => [k, titleCase(v)]),
-) as Record<keyof typeof LABEL, string>;
+/** Filter names are sentence case, like every other screen. */
+const FL = LABEL;
 /** A to Z, by what the viewer reads. */
 const az = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
 const azOpt = <T extends { label: string }>(xs: T[]) =>
@@ -232,6 +229,7 @@ const stateColor: Record<MeasureState, string> = {
  * Where the guide is silent the safe version is drawn and the tile carries an "Ask" tag (see quicksight-audit.xlsx).
  */
 export function QuickSightDashboardPage() {
+  const { role } = useRole();
   const [sheet, setSheet] = useState("Overview");
   const [params] = useSearchParams();
   const fromCards = params.get("from") === "cards";
@@ -493,7 +491,12 @@ export function QuickSightDashboardPage() {
       }
     >
       <NotesContext.Provider value={notes}>
-        <QsFrame tabs={SHEETS} active={sheet} onTab={setSheet} onReset={reset}>
+        <QsFrame
+          tabs={SHEETS.filter((t) => t !== "Admin" || role.dataQuality)}
+          active={sheet}
+          onTab={setSheet}
+          onReset={reset}
+        >
           {sheet === "Overview"
             ? overviewControls
             : sheet === "Details"
@@ -570,7 +573,7 @@ function Overview({
             fontWeight: qs.type.sheetTitle.weight,
           }}
         >
-          {def.code} – {def.name}
+          {def.code} · {def.name}
         </Typography>
         <QsText>
           <p>
@@ -593,7 +596,7 @@ function Overview({
       <QsTile
         cols={12}
         rows={3}
-        title="Eligible Population Baseline Summary"
+        title="Eligible population baseline summary"
         subtitle={`The entire eligible population for ${year}. It does not change with the controls.`}
         fr="702"
         ask={["Q2"]}
@@ -989,6 +992,7 @@ function Details({
   year: number;
   view: "" | "Met" | "Gap";
 }) {
+  const { memberLists } = useRole();
   const shown = useMemo(
     () =>
       view
@@ -1103,6 +1107,20 @@ function Details({
       nowrap: true,
     },
   ];
+  if (!memberLists)
+    return (
+      <QsSheet>
+        <QsTile cols={36} bare tone="info">
+          <QsText>
+            <p>
+              <b>The list of members is not part of your role.</b> You see
+              totals and rates only. Ask your administrator if you need the
+              list.
+            </p>
+          </QsText>
+        </QsTile>
+      </QsSheet>
+    );
   return (
     <QsSheet>
       {view && (

@@ -95,6 +95,10 @@ export type { StickyActionBarProps } from "./components/Page/StickyActionBar";
 // ---- Table + pagination
 export { DataTable } from "./components/DataTable/DataTable";
 export {
+  applyFilters,
+  applySearch,
+} from "./components/DataTable/filters";
+export {
   exportAs,
   downloadCsv,
   downloadXlsx,
@@ -225,3 +229,4 @@ export type {
   NoAccessPageProps,
   ServerErrorPageProps,
 } from "./components/Auth/ErrorPage";
+export { titleCase } from "./utils/titleCase";

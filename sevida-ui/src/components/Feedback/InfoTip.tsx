@@ -77,6 +77,8 @@ export function Term({ tip, children, label }: TermProps) {
           font: 'inherit',
           color: 'inherit',
           cursor: 'help',
+          // A button centers its text by default; the term sits inside running text or a table cell, so it follows the cell.
+          textAlign: 'inherit',
           textDecoration: 'underline dotted',
           textUnderlineOffset: 3,
           '&:focus-visible': { outline: '2px solid', outlineColor: 'secondary.main', outlineOffset: 2, borderRadius: 0.5 },
