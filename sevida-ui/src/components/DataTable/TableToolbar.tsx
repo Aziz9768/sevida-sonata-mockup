@@ -29,6 +29,8 @@ export interface TableToolbarProps<T> {
   /** Wait this long after typing stops before applying the search (use for server-side search). Default 0. */
   searchDebounceMs?: number;
   searchPlaceholder?: string;
+  /** Shorter text for the search box on a phone, where the full text would be cut off. */
+  searchPlaceholderCompact?: string;
 
   columns: Column<T>[];
   filters: FilterState;
@@ -51,7 +53,8 @@ export interface TableToolbarProps<T> {
 export function TableToolbar<T>(p: TableToolbarProps<T>) {
   const [text, setText] = useState(p.search);
   // On a wide screen the saved-views icons sit at the far right, after the action buttons; on a phone they stay beside the search box.
-  const wide = useMediaQuery((t: Theme) => t.breakpoints.up("md"));
+  const phone = useMediaQuery((t: Theme) => t.breakpoints.down("sm"));
+  const wide = useMediaQuery((t: Theme) => t.breakpoints.up("sm"));
 
   // keep the box in step when the parent changes `search` (e.g. Clear all)
   useEffect(() => setText(p.search), [p.search]);
@@ -138,10 +141,12 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
     <>
       {hasHeader && (
         <Stack
-          direction={{ xs: "column", md: "row" }}
-          alignItems={{ xs: "stretch", md: "center" }}
-          spacing={{ xs: 1.25, md: 2 }}
+          direction={{ xs: "column", sm: "row" }}
+          alignItems={{ xs: "stretch", sm: "center" }}
+          spacing={{ xs: 1.25, sm: 2 }}
+          useFlexGap
           sx={{
+            flexWrap: { sm: "wrap", md: "nowrap" },
             px: { xs: 1.5, sm: 2 },
             py: 1.5,
             borderBottom: 1,
@@ -153,7 +158,8 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
             direction="row"
             alignItems="center"
             spacing={2}
-            sx={{ flex: 1, minWidth: 0 }}
+            useFlexGap
+            sx={{ flex: 1, minWidth: 0, flexWrap: "wrap" }}
           >
             {title && (
               <Typography
@@ -169,12 +175,12 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
               </Typography>
             )}
             {p.showSearch && (
-              <Box sx={{ flex: 1, minWidth: 0, maxWidth: { md: 380 } }}>
+              <Box sx={{ flex: "1 1 200px", minWidth: 0, maxWidth: { md: 460 } }}>
                 <TextField
                   size="small"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={p.searchPlaceholder ?? "Search…"}
+                  placeholder={(phone && p.searchPlaceholderCompact) || (p.searchPlaceholder ?? "Search…")}
                   slotProps={{
                     htmlInput: {
                       "aria-label": p.searchPlaceholder ?? "Search",

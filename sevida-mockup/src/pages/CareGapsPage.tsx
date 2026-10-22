@@ -279,8 +279,8 @@ export function CareGapsPage() {
     <PageContainer
       title={
         shown === rows.length
-          ? `Care gaps (${rows.length})`
-          : `Care gaps (${shown} of ${rows.length})`
+          ? `Care Gaps List (${rows.length})`
+          : `Care Gaps List (${shown} of ${rows.length})`
       }
       actions={<ClosedSinceButton />}
     >
@@ -308,6 +308,7 @@ export function CareGapsPage() {
           getRowId={(r) => r.id}
           defaultSort={{ key: "found", direction: "asc" }}
           searchPlaceholder="Search by member name, member ID or insurance number…"
+          searchPlaceholderCompact="Member name, ID, insurance no."
           search={search}
           onSearchChange={setSearch}
           filters={filters}

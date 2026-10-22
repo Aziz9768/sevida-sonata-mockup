@@ -31,8 +31,8 @@ export function MembersListPage() {
     <PageContainer
       title={
         shown === members.length
-          ? `Members (${members.length})`
-          : `Members (${shown} of ${members.length})`
+          ? `Members List (${members.length})`
+          : `Members List (${shown} of ${members.length})`
       }
     >
       <DataTable
@@ -42,6 +42,7 @@ export function MembersListPage() {
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
         searchPlaceholder="Search by member name, member ID or insurance number…"
+        searchPlaceholderCompact="Member name, ID, insurance no."
         onResultCountChange={setShown}
         storageKey="demo-members-v30"
         savedViews="members"

@@ -470,7 +470,7 @@ export function QuickSightDashboardPage() {
     <PageContainer
       title="Quality measure analytics"
       titleVariant="overview"
-      subtitle="The dashboard drawn only with what QuickSight can build (style guide PR #35)."
+      subtitle="The dashboard drawn only with what QuickSight can build."
       actions={
         <Box
           sx={{

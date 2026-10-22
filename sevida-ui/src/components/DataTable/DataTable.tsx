@@ -96,6 +96,8 @@ export interface DataTableProps<T> {
   /** How many columns people may pin (keep in view while scrolling sideways). Default 3. */
   maxPinned?: number;
   searchPlaceholder?: string;
+  /** Shorter text for the search box on a phone, where the full text would be cut off. */
+  searchPlaceholderCompact?: string;
   /** Remembers which columns the user showed / hid / reordered, in this browser, under this name. Leave out to not remember. */
   storageKey?: string;
   /** Pass `search` + `onSearchChange` to control the search text yourself (e.g. when the server searches). */
@@ -206,6 +208,7 @@ export function DataTable<T>({
   exportFormats: exportFormatsProp,
   maxPinned = 3,
   searchPlaceholder,
+  searchPlaceholderCompact,
   storageKey,
   search: searchProp,
   onSearchChange,
@@ -662,6 +665,7 @@ export function DataTable<T>({
         onSearchChange={changeSearch}
         searchDebounceMs={serverMode ? 300 : 0}
         searchPlaceholder={searchPlaceholder}
+        searchPlaceholderCompact={searchPlaceholderCompact}
         columns={allColumnDefs}
         filters={filters}
         activeFilterKeys={activeKeys}

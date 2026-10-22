@@ -111,6 +111,7 @@ function MembersTab({ def, year }: { def: MeasureDef; year: number }) {
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
         searchPlaceholder="Search by member name, member ID or insurance number…"
+        searchPlaceholderCompact="Member name, ID, insurance no."
         storageKey="demo-measure-members-v23"
         savedViews="measure-members"
         exportFile={`${def.code}-members`}

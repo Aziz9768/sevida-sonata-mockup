@@ -6,7 +6,7 @@ import { members } from "../data";
 export function MeasuresPage() {
   return (
     <PageContainer
-      title="Quality measures"
+      title="Quality Measures List"
       subtitle={`${members.length} members`}
     >
       <Stack spacing={2}>

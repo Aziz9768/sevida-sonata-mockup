@@ -23,7 +23,7 @@ import {
   InfoBanner,
 } from "sevida-ui";
 import type { NavItem } from "sevida-ui";
-import { Typography } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { RouterLinkAdapter } from "./components/RouterLinkAdapter";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
@@ -293,6 +293,7 @@ function Protected() {
   }
   return (
     <AppShell
+      defaultCollapsed
       items={baseNav.filter((i) => role.menus.includes(i.key as NavKey))}
       activeKey={activeKeyFor(pathname)}
       headerContent={
@@ -302,7 +303,7 @@ function Protected() {
         </>
       }
       brandName="Sevida"
-      // Name only, no mark: the sidebar shows plain "Sevida" (and nothing when it is collapsed).
+      // Name only, no mark: the sidebar shows plain "Sevida" (a small "S" mark when it is collapsed).
       logo={
         <Typography
           component="span"
@@ -317,7 +318,26 @@ function Protected() {
           Sevida
         </Typography>
       }
-      logoCollapsed={<span />}
+      logoCollapsed={
+        <Box
+          role="img"
+          aria-label="Sevida"
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: "8px",
+            display: "grid",
+            placeItems: "center",
+            bgcolor: "onPrimary.accent",
+            color: "primary.dark",
+            fontWeight: 900,
+            fontSize: "1.0625rem",
+            lineHeight: 1,
+          }}
+        >
+          S
+        </Box>
+      }
       linkComponent={RouterLinkAdapter}
       user={{
         name: role.person ?? user.name,

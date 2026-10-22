@@ -252,7 +252,7 @@ The same dashboard drawn only with what QuickSight can build, from the Leap Quic
 ## Review fixes from the customer (LPP-16069, member list and search)
 
 - **Search (FR-402):** the search box looks at Member name and Member ID only. A care manager, care team or evidence text no longer brings up members.
-- **Count (FR-405):** the Members page title shows how many members match the search and filters, for example "Members (12 of 300)". The library DataTable has a new `onResultCountChange` prop for this. A measure's Members tab already showed a live count in its table title.
+- **Count (FR-405):** the Members page title shows how many members match the search and filters, for example "Members List (12 of 300)". The library DataTable has a new `onResultCountChange` prop for this. A measure's Members tab already showed a live count in its table title.
 - **Gaps (FR-404):** "Gaps in several measures" is gone (Open gaps already tells that; filter on Open gaps to find members with 2 or more). **Gaps** now lists open gaps only and matches the Open gaps number. The **Gap status** column is gone. New **Closed gaps** column (shown by default, next to the evidence columns): the measure and the day it was closed, for the current measurement year. A past year has no care-gap work, so it shows a dash.
 - **Missing evidence (new):** for each open gap, the records that would close it (any one of them), with the date windows on hover.
 - **Evidence date and Evidence:** now tied to the closed gaps (the record that closed each one, one line per gap, same measures as Closed gaps), so they no longer show evidence for a measure the member has no gap in. The Evidence column shows the test or service and its result in larger text, with its technical code under it (for example **Hemoglobin A1c: 7.8%** and 4548-4 (LOINC)). Order: Closed gaps, Evidence date, Evidence, then Excluded from. Evidence entered by staff has no code of its own in the demo, so the code is the usual one for that kind of evidence (`evidenceCodeOf`).
@@ -265,7 +265,7 @@ The same dashboard drawn only with what QuickSight can build, from the Leap Quic
 
 A separate item in the sidebar, between Members and Quality measures. It is the worklist for the whole population: every open gap, one row per gap (a member with two open gaps has two rows).
 
-- **Title:** a live count, for example "Care gaps (60 of 145)".
+- **Title:** a live count, for example "Care Gaps List (60 of 145)".
 - **Tabs:** All measures, then one tab per measure, each with its count (the library `Tabs`, like the other screens). The counts follow the search and every filter except Measure. A tab sets the Measure filter; the Measure filter in the Filters panel does the same.
 - **Columns:** Member name, Member ID, Measure, Why, Missing evidence (short text, hover for every accepted record with its date window), Gap identified, Evidence status, Open gaps (the member's total, sortable and filterable), Next appointment, Contact result, Care manager. Hidden until switched on: Last contact, Care team, Date of birth, Age, Sex, Spoken language, State, County, Military status.
 - **Filters:** the same names and values as Members (the member facets come from one helper, `memberFacets` in `memberColumns.tsx`), plus Measure, Evidence status, Gap identified, Contact result and Care manager. Saved views and Export work as on Members.
@@ -348,3 +348,10 @@ On the Care gaps page, **Gaps closed since an earlier run** picks an earlier run
 ## Dashboard export (FR-709)
 
 The Export icon on the main dashboard has Excel, PDF and CSV (tables and filters), and **Whole page as PDF, with charts** (the print window, landscape, without the menu and header). Each chart also has a picture icon. A whole-page picture is not offered: browsers do not allow drawing a page into an image without an extra library. Analytics Option 2 follows QuickSight: PDF through the print window, no image export (question 6).
+
+## Layout and screen sizes
+
+- **Sidebar:** starts collapsed (icons only) on every screen. The orange "S" mark shows at the top of the collapsed sidebar; the arrow below it opens the full menu with the "Sevida" name. On a phone there is no sidebar; the menu button opens it as a drawer.
+- **List page titles:** "Members List (n)", "Care Gaps List (n)" and "Quality Measures List".
+- **Responsive:** every page was checked at 320, 360, 375, 414, 768, 1024, 1280 and 1920 px wide with no sideways scrolling of the page. Phones show tables as cards with a Sort & Filter sheet; tablets and desktops show the table with Columns and Filters on the right edge.
+- **Search box:** the full wording "Search by member name, member ID or insurance number…" shows on tablet and desktop; a phone shows the shorter "Member name, ID, insurance no." (`searchPlaceholderCompact`).
