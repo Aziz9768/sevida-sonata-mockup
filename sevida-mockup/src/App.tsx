@@ -87,6 +87,10 @@ const baseNav: NavItem[] = [
     href: "/access-log",
   },
 ];
+/** Menu items kept in the code (page, address and access rules still work) but not shown in the sidebar.
+ *  To show Quality measures again, remove "measures" from this list. */
+const HIDDEN_IN_SIDEBAR: string[] = ["measures"];
+
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string) {
   const [first] = pathname.split("/").filter(Boolean);
@@ -294,7 +298,11 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={baseNav.filter((i) => role.menus.includes(i.key as NavKey))}
+      items={baseNav.filter(
+        (i) =>
+          role.menus.includes(i.key as NavKey) &&
+          !HIDDEN_IN_SIDEBAR.includes(i.key),
+      )}
       activeKey={activeKeyFor(pathname)}
       headerContent={
         <>

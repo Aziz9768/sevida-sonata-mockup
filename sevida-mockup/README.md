@@ -355,3 +355,7 @@ The Export icon on the main dashboard has Excel, PDF and CSV (tables and filters
 - **List page titles:** "Members List (n)", "Care Gaps List (n)" and "Quality Measures List".
 - **Responsive:** every page was checked at 320, 360, 375, 414, 768, 1024, 1280 and 1920 px wide with no sideways scrolling of the page. Phones show tables as cards with a Sort & Filter sheet; tablets and desktops show the table with Columns and Filters on the right edge.
 - **Search box:** the full wording "Search by member name, member ID or insurance number…" shows on tablet and desktop; a phone shows the shorter "Member name, ID, insurance no." (`searchPlaceholderCompact`).
+
+## Quality Measures menu hidden
+
+The "Quality measures" item is hidden from the sidebar for now. The page (`/measures`), the measure detail pages, their access rules and the links to them from the dashboards are all still in the code and still work. To show the menu item again, remove `"measures"` from `HIDDEN_IN_SIDEBAR` in `src/App.tsx`.
