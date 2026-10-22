@@ -110,12 +110,12 @@ function MembersTab({ def, year }: { def: MeasureDef; year: number }) {
         onFiltersChange={setFilters}
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
-        searchPlaceholder="Search by name, ID or insurance number…"
+        searchPlaceholder="Search by member name, member ID or insurance number…"
         storageKey="demo-measure-members-v23"
         savedViews="measure-members"
         exportFile={`${def.code}-members`}
         stickyHeader
-        maxHeight="calc(100vh - 340px)"
+        maxHeight="calc(100vh - 342px)"
         onRowClick={(m) =>
           navigate(
             // The care gaps tab is the working view; a past year has no care-gap work, so it opens the measures.

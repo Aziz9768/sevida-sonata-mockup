@@ -41,14 +41,14 @@ export function MembersListPage() {
         rows={rows}
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
-        searchPlaceholder="Search by name, ID or insurance number…"
+        searchPlaceholder="Search by member name, member ID or insurance number…"
         onResultCountChange={setShown}
         storageKey="demo-members-v30"
         savedViews="members"
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
         stickyHeader
-        maxHeight="calc(100vh - 290px)"
+        maxHeight="calc(100vh - 245px)"
         onRowClick={(m) => navigate(withYear(`/members/${m.id}`, yearOf(m)))}
         rowActions={(m) => (
           <RowActions id={m.id} name={m.name} year={yearOf(m)} />

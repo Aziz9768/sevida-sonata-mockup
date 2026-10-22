@@ -307,7 +307,7 @@ export function CareGapsPage() {
           rows={rows}
           getRowId={(r) => r.id}
           defaultSort={{ key: "found", direction: "asc" }}
-          searchPlaceholder="Search by name, ID or insurance number…"
+          searchPlaceholder="Search by member name, member ID or insurance number…"
           search={search}
           onSearchChange={setSearch}
           filters={filters}
@@ -317,7 +317,7 @@ export function CareGapsPage() {
           savedViews="care-gaps"
           exportFile="care-gaps"
           stickyHeader
-          maxHeight="calc(100vh - 360px)"
+          maxHeight="calc(100vh - 318px)"
           onRowClick={(r) => navigate(`/members/${r.m.id}?tab=gaps`)}
           rowActions={(r) => (
             <RowActions

@@ -329,10 +329,10 @@ A picker in the header ("View as (demo only)") switches the role. Real roles wil
 
 ## Member search and filters (FR-402, FR-407)
 
-- **Column names stay in view** (FR-405): the Members list, a measure's Members tab and the Care gaps screen scroll their rows inside the table (`stickyHeader` plus `maxHeight`), so the headings never leave the screen, even at 100 rows per page. The Members list shows 21 columns by default (it was 24).
+- **Column names stay in view** (FR-405): the Members list, a measure's Members tab and the Care gaps screen scroll their rows inside the table (`stickyHeader` plus `maxHeight`), so the headings never leave the screen, even at 100 rows per page. The table height fills the screen down to the paging bar (each screen reserves only the space of what sits above it), so a laptop screen shows as many rows as fit. The Members list shows 21 columns by default (it was 24).
 - **Print summary from a list** (FR-512): the ⋮ menu on a row has **Print summary**. It opens the member and starts the print dialog for the one-page summary (PDF and Excel stay on the member page).
 
-- **Search box** (Members list, a measure's Members tab, Care gaps, dashboard member list): finds a member by name, Member ID or **insurance number**. In the Filters panel, **First name**, **Last name**, **Insurance number** and **Date of birth** can be used alone or together to narrow the list to one person. The insurance number is the spec's *Subscriber or Family ID Number*; the demo members have none, so it is made up (`memberExtras`).
+- **Search box** (Members list, a measure's Members tab, Care gaps, dashboard member list): finds a member by **member name** (the member's own name, never the care manager's), **member ID** or **insurance number**. The box says exactly that: "Search by member name, member ID or insurance number…". In the Filters panel, **First name**, **Last name**, **Insurance number** and **Date of birth** can be used alone or together to narrow the list to one person. The insurance number is the spec's *Subscriber or Family ID Number*; the demo members have none, so it is made up (`memberExtras`).
 - **Diagnosis** filter (hidden column, Filters panel): pick one or more diagnoses (code and name, one entry per code) to find members who have any of them, from claims and the EHR problem list.
 - **Measure result** filter on the Members list (hidden column): for example "BCS-E: Met" or "COL-E: Not met". Inside a measure the existing Measure result column is used.
 

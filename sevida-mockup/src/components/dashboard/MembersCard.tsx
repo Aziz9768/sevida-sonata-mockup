@@ -70,7 +70,7 @@ export function MembersCard({
         onFiltersChange={setFilters}
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
-        searchPlaceholder="Search by name, ID or insurance number…"
+        searchPlaceholder="Search by member name, member ID or insurance number…"
         storageKey="demo-dashboard-members-v5"
         exportFile={`${code}-initial-population`}
         onRowClick={(m) =>
