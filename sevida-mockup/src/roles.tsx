@@ -17,7 +17,12 @@ export type RoleId =
   "administrator" | "quality" | "care-manager" | "clinician" | "executive";
 /** The keys of the sidebar items (see App.tsx). */
 export type NavKey =
-  "quicksight" | "dashboards" | "members" | "care-gaps" | "measures";
+  | "quicksight"
+  | "dashboards"
+  | "members"
+  | "care-gaps"
+  | "measures"
+  | "access-log";
 /** Which members a role sees: everyone, the care manager's own caseload, the clinician's own patients, or none (totals only). */
 export type MemberScope = "all" | "caseload" | "patients" | "none";
 
@@ -30,7 +35,7 @@ export interface RoleDef {
   scope: MemberScope;
   /** Who the demo pretends to be. Only the scoped roles need one: it picks their members. */
   person?: string;
-  /** Member page tabs this role does not get. */
+  /** Member page tabs, and kinds of record inside Records, this role does not get. */
   hiddenTabs: string[];
   /** Sees the Admin sheet: rows the loading step rejected, with member IDs. */
   dataQuality: boolean;
@@ -50,7 +55,7 @@ export const roles: RoleDef[] = [
     label: "Administrator",
     purpose:
       "Everything, including who signed in and who looked at which member.",
-    menus: ALL_MENUS,
+    menus: [...ALL_MENUS, "access-log"],
     scope: "all",
     hiddenTabs: [],
     dataQuality: true,
@@ -127,6 +132,8 @@ export function navKeyForPath(pathname: string): NavKey | "analytics" | null {
       return "care-gaps";
     case "measures":
       return "measures";
+    case "access-log":
+      return "access-log";
     case "quicksight":
       return "quicksight";
     case "dashboards":
@@ -159,6 +166,7 @@ const HREF: Record<NavKey, string> = {
   members: "/members",
   "care-gaps": "/care-gaps",
   measures: "/measures",
+  "access-log": "/access-log",
 };
 
 export function RoleProvider({

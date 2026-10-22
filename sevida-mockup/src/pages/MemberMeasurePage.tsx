@@ -186,7 +186,7 @@ function Records({
   const rows = supportingEvents(memberForYear(m, year), code);
   const open = (e: Evt) =>
     navigate(
-      `/members/${memberId}?tab=${groupOfRecord(e)}&record=${encodeURIComponent(recordKey(e))}${year === MY ? "" : `&year=${year}`}`,
+      `/members/${memberId}?tab=records&records=${groupOfRecord(e)}&record=${encodeURIComponent(recordKey(e))}${year === MY ? "" : `&year=${year}`}`,
     );
   const columns: Column<Evt>[] = [
     {

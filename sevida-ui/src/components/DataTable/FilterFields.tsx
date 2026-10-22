@@ -5,6 +5,7 @@ import {
   Chip,
   ListItemText,
   MenuItem,
+  Slider,
   Stack,
   Typography,
 } from "@mui/material";
@@ -151,7 +152,7 @@ export function FilterFields<T>({
   filters: FilterState;
   onChange: (key: string, value: FilterValue | undefined) => void;
 }) {
-  // A required filter (Measurement year) always has a value, so it stays on top. The rest are A to Z by the label people read.
+  // A required filter (Measurement year) always has a value, so it stays on top. A `filterPinned` filter comes next. The rest are A to Z by the label people read.
   const labelOf = (c: Column<T>) => c.filterLabel ?? c.header;
   const isRequired = (c: Column<T>) =>
     (c.filter as { required?: boolean }).required === true;
@@ -160,6 +161,7 @@ export function FilterFields<T>({
     .sort(
       (x, y) =>
         Number(isRequired(y)) - Number(isRequired(x)) ||
+        Number(y.filterPinned === true) - Number(x.filterPinned === true) ||
         labelOf(x).localeCompare(labelOf(y), undefined, {
           numeric: true,
           sensitivity: "base",
@@ -303,6 +305,13 @@ export function FilterFields<T>({
           }
           case "numberRange": {
             const range = (value as DateRangeValue | undefined) ?? {};
+            const lo = f.min;
+            const hi = f.max;
+            const sliderOn = lo !== undefined && hi !== undefined;
+            const num = (s: string | undefined, d: number) =>
+              s === undefined || s === "" || isNaN(Number(s))
+                ? d
+                : Math.min(hi ?? d, Math.max(lo ?? d, Number(s)));
             return (
               <Box key={c.key}>
                 <Typography
@@ -315,6 +324,29 @@ export function FilterFields<T>({
                 >
                   {label}
                 </Typography>
+                {sliderOn && (
+                  <Box sx={{ px: 1.25, mb: 0.5 }}>
+                    <Slider
+                      size="small"
+                      min={lo}
+                      max={hi}
+                      value={[num(range.from, lo), num(range.to, hi)]}
+                      onChange={(_, v) => {
+                        const [a, z] = v as number[];
+                        // Both handles at the ends = no filter
+                        onChange(c.key, {
+                          ...range,
+                          from: a === lo ? "" : String(a),
+                          to: z === hi ? "" : String(z),
+                        });
+                      }}
+                      valueLabelDisplay="auto"
+                      getAriaLabel={(i) =>
+                        i === 0 ? `${label} from (slider)` : `${label} to (slider)`
+                      }
+                    />
+                  </Box>
+                )}
                 <Stack direction="row" spacing={1}>
                   <TextField
                     type="number"

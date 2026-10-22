@@ -83,11 +83,13 @@ import { fileTitle } from "../copy";
 import { MEASURE_VERSION } from "../careGaps";
 import { SMALL_GROUP } from "../insights";
 import { useRole } from "../roles";
+import { RunDetails, RunNotice, RunSelect } from "../components/RunBits";
+import { fmtRunTime, useRun } from "../runs";
+import type { Run } from "../runs";
 import {
   ALL,
   LABEL,
   openGapsLabel,
-  YES_NO,
   measureOptions,
   optionsOf,
   resultOptions,
@@ -109,6 +111,7 @@ const FL = LABEL;
 const az = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
 const azOpt = <T extends { label: string }>(xs: T[]) =>
   [...xs].sort((a, b) => a.label.localeCompare(b.label));
+const RUN_LABEL = "Results as of Run";
 /** Controls in a bar: A to Z by name. */
 const byName = (items: [string, ReactNode][]) =>
   [...items].sort((a, b) => a[0].localeCompare(b[0])).map((i) => i[1]);
@@ -147,7 +150,6 @@ const SHEET_ONLY: {
     text: (f) => f.provider.join(", "),
   },
   { sheet: "Overview", label: FL.openGaps, text: (f) => f.openGaps },
-  { sheet: "Overview", label: FL.multiGap, text: (f) => f.multiGap },
   {
     sheet: "Details",
     label: FL.dob,
@@ -164,11 +166,6 @@ const SHEET_ONLY: {
     label: FL.evDate,
     text: (f) =>
       f.evFrom || f.evTo ? `${f.evFrom || "…"} to ${f.evTo || "…"}` : "",
-  },
-  {
-    sheet: "Details",
-    label: FL.evSystem,
-    text: (f) => f.evSystem.join(", "),
   },
   { sheet: "Details", label: FL.a1c, text: (f) => f.a1c },
   { sheet: "Details", label: FL.state, text: (f) => f.state },
@@ -266,6 +263,14 @@ export function QuickSightDashboardPage() {
       />
     </QsControl>
   );
+  const cRun = (
+    <QsControl
+      key="run"
+      info="Pick the nightly run the numbers come from. Every sheet follows it."
+    >
+      <RunSelect />
+    </QsControl>
+  );
   const cYear = (
     <QsControl key="year">
       <SelectField
@@ -345,6 +350,7 @@ export function QuickSightDashboardPage() {
     <QsControlsBar fr="703" ask={["Q1", "Q4", "Q12"]}>
       {byName([
         [FL.measure, cMeasure],
+        [RUN_LABEL, cRun],
         [FL.year, cYear],
         [
           FL.result,
@@ -408,7 +414,6 @@ export function QuickSightDashboardPage() {
             "How many measures the member has not met.",
           ),
         ],
-        [FL.multiGap, dd("multiGap", FL.multiGap, az(YES_NO))],
       ])}
     </QsControlsBar>
   );
@@ -416,14 +421,11 @@ export function QuickSightDashboardPage() {
     <QsControlsBar fr="703" ask={["Q12"]}>
       {byName([
         [FL.measure, cMeasure],
+        [RUN_LABEL, cRun],
         [FL.year, cYear],
         [FL.dob, dateRange(FL.dob, "dobFrom", "dobTo")],
         [FL.excluded, multi("excluded", FL.excluded, azOpt(measureOptions))],
         [FL.evDate, dateRange(FL.evDate, "evFrom", "evTo")],
-        [
-          FL.evSystem,
-          multi("evSystem", FL.evSystem, optionsOf(az(options.evSystem))),
-        ],
         [FL.a1c, dd("a1c", FL.a1c, options.a1c)],
         [FL.state, dd("state", FL.state, az(options.state))],
         [FL.county, dd("county", FL.county, az(options.county))],
@@ -435,6 +437,7 @@ export function QuickSightDashboardPage() {
     <QsControlsBar>
       {byName([
         [FL.measure, cMeasure],
+        [RUN_LABEL, cRun],
         [FL.year, cYear],
       ])}
     </QsControlsBar>
@@ -490,6 +493,7 @@ export function QuickSightDashboardPage() {
         </Box>
       }
     >
+      <RunNotice />
       <NotesContext.Provider value={notes}>
         <QsFrame
           tabs={SHEETS.filter((t) => t !== "Admin" || role.dataQuality)}
@@ -534,6 +538,7 @@ function Overview({
   const { initial, t } = kpisFor(code, list, year);
   const whole = kpisFor(code, members, year);
   const run = runInfo();
+  const { run: selectedRun } = useRun();
   /** Claims keep arriving for 90 days, so a period that ends inside the last 90 days can still change. */
   const inProgress = (d: Date) =>
     d.getTime() > run.last.getTime() - 90 * DAY_MS;
@@ -581,7 +586,7 @@ function Overview({
             .
           </p>
           <p>
-            <b>Last updated:</b> {fmtRun(run.last)} · <b>Next update:</b>{" "}
+            <b>Last updated:</b> {fmtRun(selectedRun.at)} · <b>Next update:</b>{" "}
             {fmtRun(run.next)}
           </p>
           <p>
@@ -1086,11 +1091,6 @@ function Details({
       nowrap: true,
     },
     {
-      key: "multi",
-      header: LABEL.multiGap,
-      value: (m) => (openGapCount(m, year) > 1 ? "Yes" : "No"),
-    },
-    {
       key: "excl",
       header: LABEL.excluded,
       value: (m) =>
@@ -1296,6 +1296,8 @@ function AdminSheet({
   onChange: (v: boolean) => void;
 }) {
   const all = useMemo(() => rejectedRows(), []);
+  const { runs } = useRun();
+  const [runOpen, setRunOpen] = useState<Run | null>(null);
   const sum = loadSummary();
   const run = runInfo();
   const reasons = reasonRows(all);
@@ -1465,6 +1467,68 @@ function AdminSheet({
           sub={`at ${run.last.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
           tip="From the execution time of the last run of the calculation engine."
         />
+        <QsTile
+          cols={36}
+          title="Run history"
+          subtitle="Every nightly run. Click a run for its files, problems and measures. Use the Results as of Run control above to see the numbers as they were then."
+          fr="108"
+        >
+          <QsTable<Run>
+            label="Run history"
+            exportFile="run-history"
+            rows={runs}
+            rowKey={(r) => r.id}
+            maxHeight={360}
+            defaultSort={{ key: "at", dir: "desc" }}
+            onRowSelect={(r) => setRunOpen(r)}
+            cols={[
+              {
+                key: "at",
+                header: "Run started",
+                value: (r) => r.at.getTime(),
+                render: (r) => fmtRunTime(r.at),
+                nowrap: true,
+              },
+              { key: "status", header: "Status", value: (r) => r.status },
+              {
+                key: "asof",
+                header: "Data as of",
+                value: (r) => r.dataAsOf.getTime(),
+                render: (r) => fmtDate(r.dataAsOf),
+                nowrap: true,
+              },
+              {
+                key: "files",
+                header: "Files received",
+                value: (r) => r.files.length,
+                render: (r) => `${r.files.length} of ${r.filesTotal}`,
+                align: "right",
+              },
+              {
+                key: "in",
+                header: "Rows in",
+                value: (r) => r.rowsIn,
+                render: (r) => n0(r.rowsIn),
+                align: "right",
+              },
+              {
+                key: "out",
+                header: "Rows out",
+                value: (r) => r.rowsIn - r.rowsRejected,
+                render: (r) => n0(r.rowsIn - r.rowsRejected),
+                align: "right",
+              },
+              {
+                key: "rej",
+                header: "Rows rejected",
+                value: (r) => r.rowsRejected,
+                render: (r) => n0(r.rowsRejected),
+                align: "right",
+              },
+            ]}
+          />
+        </QsTile>
+        <RunDetails run={runOpen} onClose={() => setRunOpen(null)} />
         <QsTile
           cols={36}
           title="Files ingested"

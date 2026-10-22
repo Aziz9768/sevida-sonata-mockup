@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Divider,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -11,11 +12,16 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Button } from "sevida-ui";
 import { members } from "../data";
 import { roles, useRole } from "../roles";
+import { useAudit, useWho } from "../auditLog";
+import { useExpireSession } from "../session";
 
 /** Demo only: one small button in the header. It opens a short list of roles; the whole app changes (menus, member lists, member sections). */
 export function RolePicker() {
   const { role, setRole, visible } = useRole();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const { logSignIn } = useAudit();
+  const who = useWho();
+  const expire = useExpireSession();
   const scope =
     role.scope === "all"
       ? "All members"
@@ -46,6 +52,13 @@ export function RolePicker() {
             key={r.id}
             selected={r.id === role.id}
             onClick={() => {
+              if (r.id !== role.id)
+                logSignIn(
+                  who,
+                  "Role switched (demo)",
+                  "Success",
+                  `From ${role.label} to ${r.label}`,
+                );
               setRole(r.id);
               setAnchor(null);
             }}
@@ -62,6 +75,19 @@ export function RolePicker() {
             />
           </MenuItem>
         ))}
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            expire();
+          }}
+        >
+          <ListItemIcon />
+          <ListItemText
+            primary="Expire Session Now"
+            secondary="Demo shortcut for the idle timeout"
+          />
+        </MenuItem>
       </Menu>
     </>
   );

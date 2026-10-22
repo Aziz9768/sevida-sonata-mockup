@@ -90,7 +90,7 @@ export function KpiCards({
       footer={
         closed !== null ? (
           <span>
-            Gaps closed since the last run ({fmtDate(runInfo().last)}):{" "}
+            Gaps closed by staff since the last run ({fmtDate(runInfo().last)}):{" "}
             <strong>{closed}</strong>. They still count as Not met until the
             next run, then they become Met.
           </span>

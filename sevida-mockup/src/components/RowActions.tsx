@@ -21,10 +21,12 @@ export function RowActions({
 }) {
   const navigate = useNavigate();
   const [el, setEl] = useState<HTMLElement | null>(null);
-  const go = (tab?: string) => {
+  const go = (tab?: string, print?: boolean) => {
     setEl(null);
     const q = [
       tab ? `tab=${tab}` : "",
+      // Opens the member and starts the print dialog for the one-page summary (FR-512).
+      print ? "print=1" : "",
       year && year !== CURRENT_YEAR ? `year=${year}` : "",
     ]
       .filter(Boolean)
@@ -61,6 +63,7 @@ export function RowActions({
         <MenuItem onClick={() => go("claims")}>Claims</MenuItem>
         <MenuItem onClick={() => go("enrollment")}>Enrollment</MenuItem>
         <MenuItem onClick={() => go("profile")}>Profile</MenuItem>
+        <MenuItem onClick={() => go(undefined, true)}>Print summary</MenuItem>
         <MenuItem
           onClick={() => {
             setEl(null);

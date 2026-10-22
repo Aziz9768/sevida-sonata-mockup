@@ -118,6 +118,9 @@ It then shows in the table, is found by the search box and appears in the Column
 | let people sort by it | `sortable: true` |
 | show something other than plain text (chip, link, button) | `render: (row) => <.../>` |
 | let people filter by it | `filter: { type: 'select', options: [...] }`, or `'text'`, `'multiselect'`, `'dateRange'` |
+| give a number filter a slider | `filter: { type: 'numberRange', min: 0, max: 100 }`. A two-handle slider sits above the From / To boxes and stays in step with them. A slider left at both ends means no filter |
+| keep one filter near the top | `filterPinned: true` on the column. It sits right under the required filter (Measurement year), ahead of the A to Z list |
+| keep the column names in view while rows scroll | `stickyHeader` plus `maxHeight` (for example `maxHeight="calc(100vh - 300px)"`). The rows scroll inside the table and the headings stay put |
 | let people save, name and reopen a table setup | `savedViews="members"` on the `DataTable` (the name keeps this table's views apart from other tables'). An eye icon appears beside the search box: pick a view, "Save current view…", "Manage views…" (rename, delete, choose which opens by default). A view keeps filters + columns (order, hidden, pinned) + sort, not search text or column widths. Views live in this browser; pass `savedViews={{ key, store }}` to keep them elsewhere. "Reset to default" goes back to the plain table; "Reset to my view" to your default view |
 | a filter that can never be "All" (for example a Measurement year) | `filter: { type: 'select', options: [...], required: true }`. There is no All row; it starts as the first option and is not counted as an active filter |
 | add quick-pick buttons to a date filter | `filter: { type: 'dateRange', presets: [{ label: 'Next 7 days', from, to }, { label: 'No date', blank: true }] }` (dates as `YYYY-MM-DD`; people can still type their own) |

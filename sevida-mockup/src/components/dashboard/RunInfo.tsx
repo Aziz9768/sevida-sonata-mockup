@@ -2,6 +2,7 @@ import { Stack, Typography } from "@mui/material";
 import { InfoTip } from "sevida-ui";
 import { fmtDate } from "../../data";
 import { fmtRun, runInfo } from "../../dashboardData";
+import { useRun } from "../../runs";
 
 /**
  * Top right of every dashboard: when the numbers were last calculated and when the next run is due.
@@ -9,6 +10,7 @@ import { fmtRun, runInfo } from "../../dashboardData";
  */
 export function RunInfo() {
   const info = runInfo();
+  const { run } = useRun();
   return (
     <Stack spacing={0.25} sx={{ textAlign: { sm: "right" } }}>
       <Stack
@@ -18,7 +20,7 @@ export function RunInfo() {
         justifyContent={{ sm: "flex-end" }}
       >
         <Typography sx={{ fontSize: ".875rem", fontWeight: 700 }}>
-          Last updated: {fmtRun(info.last)}
+          Last updated: {fmtRun(run.at)}
         </Typography>
         <InfoTip label="Source files behind this update">
           <Stack component="span" spacing={0.25} sx={{ display: "flex" }}>

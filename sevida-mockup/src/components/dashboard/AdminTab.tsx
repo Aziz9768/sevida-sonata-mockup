@@ -5,6 +5,7 @@ import {
   DataTable,
   DetailGrid,
   InfoBanner,
+  SelectField,
   StatCard,
   SwitchField,
   StatusChip,
@@ -22,6 +23,7 @@ import {
 } from "../../dashboardData";
 import type { ReasonRow, RejectedRow } from "../../dashboardData";
 import { TableLink } from "../TableLink";
+import { RunsSection } from "../RunBits";
 import { cardGrid, pct } from "./KpiBlocks";
 
 const tone: Record<RejectedRow["result"], StatusTone> = {
@@ -39,6 +41,7 @@ const opts = (xs: string[]) =>
 /** For administrators: every row (or file) the loading step rejected or warned about, with the file, the row, the member and the reason. */
 export function AdminTab() {
   const all = useMemo(() => rejectedRows(), []);
+  const [stopAt, setStopAt] = useState("5");
   const [withWarnings, setWithWarnings] = useState(false);
   // Warnings are used rows with a note. They are counted in "Problems by reason" and shown only when asked for.
   const rows = useMemo(
@@ -238,6 +241,49 @@ export function AdminTab() {
           ]}
         />
       </Card>
+      <Card
+        title="When a run stops"
+        hint="how bad rows are handled"
+        tooltip="A bad row is left out and listed below, and the run goes on. A run stops only when too much of a file is bad, or when a file every measure needs is rejected. The setting is kept per site. In the demo, changing it does not change the runs in the history."
+      >
+        <Stack spacing={2}>
+          <DetailGrid
+            columns={2}
+            items={[
+              {
+                label: "A bad row",
+                value:
+                  "Left out of the results and listed in Rejected rows. The run goes on.",
+              },
+              {
+                label: "A file every measure needs is rejected",
+                value:
+                  "The run stops. These files are member-gm.csv (members) and member-en.csv (enrollment).",
+              },
+            ]}
+          />
+          <Box sx={{ maxWidth: 360 }}>
+            <SelectField
+              label="Stop the run when this share of a file's rows fail"
+              value={stopAt}
+              onChange={setStopAt}
+              options={[
+                { value: "never", label: "Never stop for this" },
+                { value: "1", label: "More than 1%" },
+                { value: "2", label: "More than 2%" },
+                { value: "5", label: "More than 5%" },
+                { value: "10", label: "More than 10%" },
+              ]}
+              helperText={
+                stopAt === "never"
+                  ? "Only a rejected required file stops a run."
+                  : `A file with more than ${stopAt}% of its rows failing is rejected as a whole, and the run stops.`
+              }
+            />
+          </Box>
+        </Stack>
+      </Card>
+      <RunsSection />
       <Card
         title="Latest load"
         tooltip="What arrived in the latest files and how much of it could be used. Rows with a warning are used. A file with a failed check is rejected as a whole."

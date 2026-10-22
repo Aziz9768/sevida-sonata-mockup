@@ -16,7 +16,6 @@ import {
   memberStates,
   militaryOf,
   resultsFor,
-  sourceSystemOf,
   stateName,
   tally,
 } from "./data";
@@ -32,7 +31,6 @@ import { fileTitle } from "./copy";
 import {
   A1C_VALUES,
   AGE_GROUPS,
-  EVIDENCE_SYSTEMS,
   OPEN_GAP_VALUES,
   MILITARY_VALUES,
   SEX_VALUES,
@@ -58,8 +56,6 @@ export interface DashFilters {
   sex: string;
   /** How many measures the member has not met, as a label ("No open gaps", "2 open gaps"). "" = All. */
   openGaps: string;
-  /** Overview only: keep members with a gap in more than one measure. "" = All. */
-  multiGap: "" | "Yes" | "No";
   ageGroup: string[];
   race: string[];
   ethnicity: string[];
@@ -69,7 +65,6 @@ export interface DashFilters {
   /** Date of the record that made the measure Met (latest one), between these two dates. */
   evFrom: string;
   evTo: string;
-  evSystem: string[];
   /** HbA1c band ("Above 9%"...). "" = All. */
   a1c: string;
   /** "" = All. */
@@ -88,7 +83,6 @@ export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
   ageTo: "",
   sex: "",
   openGaps: "",
-  multiGap: "",
   ageGroup: [],
   race: [],
   ethnicity: [],
@@ -96,7 +90,6 @@ export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
   excluded: [],
   evFrom: "",
   evTo: "",
-  evSystem: [],
   a1c: "",
   state: "",
   county: "",
@@ -115,7 +108,7 @@ export const raceOf = groupOf("race");
 export const ethnicityOf = groupOf("ethnicity");
 export const providerOf = groupOf("provider");
 
-/** The measure states of one member for all five measures (used by the "gap in more than one measure" filter). */
+/** The measure states of one member for all five measures. */
 export const openGapCount = (m: Member, year: number) =>
   measures.filter((x) => resultsFor(m, year)[x.code].state === "Gap").length;
 
@@ -169,13 +162,6 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
         .sort((a, b) => b.getTime() - a.getTime())[0];
       if (!inDays(latest, f.evFrom, f.evTo)) return false;
     }
-    if (
-      f.evSystem.length &&
-      !evidenceOf(m, f.year, code).some((e) =>
-        f.evSystem.includes(sourceSystemOf(e)),
-      )
-    )
-      return false;
     if (f.a1c && a1cBandOf(m, f.year) !== f.a1c) return false;
     if (f.state && stateName(m.state) !== f.state) return false;
     if (f.county && countyOf(m) !== f.county) return false;
@@ -188,10 +174,6 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
     if (f.provider.length && !f.provider.includes(providerOf(m))) return false;
     if (f.status && code && resultsFor(m, f.year)[code].state !== f.status)
       return false;
-    if (f.multiGap) {
-      const many = openGapCount(m, f.year) > 1;
-      if ((f.multiGap === "Yes") !== many) return false;
-    }
     return true;
   });
 }
@@ -203,7 +185,6 @@ export const activeFilterCount = (f: DashFilters) =>
     f.openGaps,
     f.excluded.length,
     f.evFrom || f.evTo,
-    f.evSystem.length,
     f.a1c,
     f.sex,
     f.ageFrom || f.ageTo,
@@ -215,7 +196,6 @@ export const activeFilterCount = (f: DashFilters) =>
     f.race.length,
     f.ethnicity.length,
     f.status,
-    f.multiGap,
   ].filter(Boolean).length;
 
 export interface FacetOptions {
@@ -228,7 +208,6 @@ export interface FacetOptions {
   county: string[];
   military: string[];
   openGaps: string[];
-  evSystem: string[];
   a1c: string[];
 }
 const sortedSet = (xs: string[]) =>
@@ -245,7 +224,6 @@ export function facetOptions(): FacetOptions {
     county: memberCounties,
     military: MILITARY_VALUES,
     openGaps: OPEN_GAP_VALUES,
-    evSystem: EVIDENCE_SYSTEMS,
     a1c: A1C_VALUES,
   };
 }

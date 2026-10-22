@@ -15,7 +15,6 @@ import type { DashFilters, FacetOptions } from "../../dashboardData";
 import {
   ALL,
   LABEL,
-  YES_NO,
   measureOptions,
   optionsOf,
   resultOptions,
@@ -192,25 +191,11 @@ export function DashboardFilters({
         </RangeField>
         <AutocompleteField
           multiple
-          label={LABEL.evSystem}
-          placeholder={ALL}
-          options={optionsOf(options.evSystem)}
-          value={draft.evSystem}
-          onChange={(v) => set("evSystem", v)}
-        />
-        <AutocompleteField
-          multiple
           label={LABEL.excluded}
           placeholder={ALL}
           options={measureOptions}
           value={draft.excluded}
           onChange={(v) => set("excluded", v)}
-        />
-        <SelectField
-          label={LABEL.multiGap}
-          value={draft.multiGap}
-          onChange={(v) => set("multiGap", v as DashFilters["multiGap"])}
-          options={withAll(YES_NO)}
         />
         <SelectField
           label={LABEL.a1c}

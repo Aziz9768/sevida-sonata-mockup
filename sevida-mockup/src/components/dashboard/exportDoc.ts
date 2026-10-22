@@ -31,14 +31,12 @@ export function filterLines(f: DashFilters): string[] {
   add(LABEL.dob, span(f.dobFrom, f.dobTo));
   add(LABEL.sex, f.sex);
   add(LABEL.openGaps, f.openGaps);
-  add(LABEL.multiGap, f.multiGap);
   add(LABEL.ageGroup, f.ageGroup.join(", "));
   add(LABEL.race, f.race.join(", "));
   add(LABEL.ethnicity, f.ethnicity.join(", "));
   add(LABEL.provider, f.provider.join(", "));
   add(LABEL.excluded, f.excluded.join(", "));
   add(LABEL.evDate, span(f.evFrom, f.evTo));
-  add(LABEL.evSystem, f.evSystem.join(", "));
   add(LABEL.a1c, f.a1c);
   add(LABEL.state, f.state);
   add(LABEL.county, f.county);
@@ -126,7 +124,7 @@ export function allMeasuresSheet(
       "Met",
       "Not met",
       "Met %",
-      "Gaps closed since last run",
+      "Gaps closed by staff since last run",
     ],
     body: rows.map((r) => [
       r.def.name,

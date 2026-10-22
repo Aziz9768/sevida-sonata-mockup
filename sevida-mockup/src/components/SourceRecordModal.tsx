@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { Stack, Typography } from "@mui/material";
 import { Button, DetailGrid, Modal, StatusChip } from "sevida-ui";
 import { arrivedOn, impactsOf } from "../careGaps";
 import { MY, fmtDate, providerName } from "../data";
 import type { Evt, Member } from "../data";
 import { TableLink } from "./TableLink";
+import { FieldTable } from "./FieldTable";
+import { ProviderModal } from "./ProviderModal";
+import { fieldSections } from "../recordFields";
 
 const outcomeTone = {
   decided: "success",
@@ -26,7 +30,9 @@ export function SourceRecordModal({
 }) {
   const impacts = e ? impactsOf(m, e, year) : [];
   const arrived = e ? arrivedOn(e) : undefined;
+  const [prov, setProv] = useState<string | null>(null);
   return (
+    <>
     <Modal
       open={!!e}
       onClose={onClose}
@@ -57,7 +63,20 @@ export function SourceRecordModal({
               { label: "Status in the file", value: e.status },
               { label: "What", value: e.text, full: true },
               { label: "Code", value: `${e.code} (${e.system})` },
-              { label: "Provider", value: providerName(e.provider) },
+              {
+                label: "Provider",
+                value: e.provider ? (
+                  <Button
+                    variant="tertiary"
+                    size="small"
+                    onClick={() => setProv(e.provider!)}
+                  >
+                    {providerName(e.provider)}
+                  </Button>
+                ) : (
+                  providerName(e.provider)
+                ),
+              },
               { label: "Type", value: e.kind },
               { label: "Source file", value: `${e.file}.csv` },
               {
@@ -71,6 +90,22 @@ export function SourceRecordModal({
                 : []),
             ]}
           />
+          <Stack spacing={2}>
+            <Typography
+              variant="h6"
+              component="h3"
+              sx={{ color: "primary.main" }}
+            >
+              Fields in the file
+            </Typography>
+            {fieldSections(e, m).map((sec) => (
+              <FieldTable
+                key={sec.file}
+                title={sec.title}
+                rows={sec.rows}
+              />
+            ))}
+          </Stack>
           <div>
             <Typography
               variant="h6"
@@ -131,5 +166,7 @@ export function SourceRecordModal({
         </Stack>
       )}
     </Modal>
+      <ProviderModal npi={prov} onClose={() => setProv(null)} />
+    </>
   );
 }

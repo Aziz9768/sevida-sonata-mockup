@@ -104,7 +104,7 @@ export function RecordBox({
             <DetailGrid columns={3} items={rows} />
             <div>
               <TableLink
-                to={`/members/${m.id}?tab=${groupOfRecord(e)}&record=${encodeURIComponent(recordKey(e))}${year === MY ? "" : `&year=${year}`}`}
+                to={`/members/${m.id}?tab=records&records=${groupOfRecord(e)}&record=${encodeURIComponent(recordKey(e))}${year === MY ? "" : `&year=${year}`}`}
               >
                 View this record in {recordGroups[groupOfRecord(e)].label}
               </TableLink>

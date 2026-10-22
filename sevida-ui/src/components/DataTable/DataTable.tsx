@@ -1022,6 +1022,7 @@ export function DataTable<T>({
                       padding="checkbox"
                       sx={{
                         bgcolor: "primary.dark",
+                        ...(stickyHeader && { position: "sticky", top: 0, zIndex: 3 }),
                         ...(hasPins && {
                           position: "sticky",
                           left: 0,
@@ -1076,7 +1077,9 @@ export function DataTable<T>({
                           setOverKey(null);
                         }}
                         sx={{
-                          position: "relative",
+                          // With `stickyHeader` the heading cells must stay `sticky` (top: 0), so the column names stay in view while the rows scroll.
+                          position: stickyHeader ? "sticky" : "relative",
+                          top: stickyHeader ? 0 : undefined,
                           bgcolor: "primary.dark",
                           color: "onPrimary.text",
                           whiteSpace: "nowrap",

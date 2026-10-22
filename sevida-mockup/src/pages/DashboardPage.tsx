@@ -13,6 +13,7 @@ import type { MemberView } from "../components/dashboard/KpiBlocks";
 import { MembersCard } from "../components/dashboard/MembersCard";
 import { useRole } from "../roles";
 import { RunInfo } from "../components/dashboard/RunInfo";
+import { RunNotice, RunSelect } from "../components/RunBits";
 import { TrendCard } from "../components/dashboard/TrendCard";
 import { filterLines, measureSheets } from "../components/dashboard/exportDoc";
 import { useGaps } from "../careGaps";
@@ -136,6 +137,9 @@ export function DashboardPage() {
           sx={{ flexWrap: "wrap", rowGap: 1 }}
         >
           <RunInfo />
+          <Box sx={{ minWidth: 240 }}>
+            <RunSelect />
+          </Box>
           {!isAdmin && (
             <>
               <ExportMenu
@@ -154,6 +158,7 @@ export function DashboardPage() {
         </Stack>
       }
     >
+      <RunNotice />
       <Tabs
         ariaLabel="Dashboards"
         value={isAdmin ? "admin" : code}

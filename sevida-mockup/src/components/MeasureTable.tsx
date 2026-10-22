@@ -126,7 +126,7 @@ const columns: Column<Row>[] = [
   },
   {
     key: "closed",
-    header: "Gaps closed since last run",
+    header: "Gaps closed by staff since last run",
     accessor: (r) => r.closedSinceRun,
     render: (r) => (r.closedSinceRun === null ? "–" : r.closedSinceRun),
     sortable: true,

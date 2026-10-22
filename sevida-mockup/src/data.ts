@@ -2030,11 +2030,46 @@ export function evaluate(member: Member, code: MeasureCode, year: number = MY): 
 
 export type Results = Record<MeasureCode, MeasureResult>;
 const cache = new Map<string, Results>();
+
+/** Which version of the results to show. 0 is the latest run. Each step back is one earlier run that brought new data (see runs.tsx): fewer members had closed their gap yet. */
+let asOfStep = 0;
+export const setAsOfStep = (n: number) => {
+  asOfStep = n;
+};
+export const getAsOfStep = () => asOfStep;
+/** Share of "Met" members that were still open, per step back. A member keeps the same place in the order for every measure and year, so an older run never shows a gap that a newer run did not. */
+const CLOSED_PER_STEP = 0.025;
+/** 0 up to 1, spread evenly, the same for the same text. */
+function unitHash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822519);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+function asOfRun(m: Member, code: MeasureCode, year: number, res: MeasureResult, step: number): MeasureResult {
+  if (step === 0 || res.state !== 'Met') return res;
+  if (unitHash(`${m.id}:${code}:${year}`) >= step * CLOSED_PER_STEP) return res;
+  const reason = 'On the selected run this gap was still open. It closed in a later file, so the latest run shows it as met.';
+  const steps = res.steps.map((st, i) => (i === res.steps.length - 1 ? { ...st, outcome: 'unmet' as const, detail: reason } : st));
+  return { state: 'Gap', reason, steps };
+}
+/**
+ * The oldest results version in which this member's result is already Met, for a result that was still a gap on older runs.
+ * Higher step = older run. A member is a gap on every run whose step is above this number. null = never a gap in the run window.
+ */
+export const RUN_STEPS = 4;
+export function closedStepOf(m: Member, code: MeasureCode, year: number = MY): number | null {
+  if (evaluate(m, code, year).state !== 'Met') return null;
+  const t = unitHash(`${m.id}:${code}:${year}`) / CLOSED_PER_STEP;
+  return t >= RUN_STEPS ? null : Math.floor(t);
+}
 export function resultsFor(m: Member, year: number = MY): Results {
-  const key = `${m.id}:${year}`;
+  const key = `${m.id}:${year}:${asOfStep}`;
   let r = cache.get(key);
   if (!r) {
-    r = Object.fromEntries(measures.map((x) => [x.code, evaluate(m, x.code, year)])) as Results;
+    r = Object.fromEntries(measures.map((x) => [x.code, asOfRun(m, x.code, year, evaluate(m, x.code, year), asOfStep)])) as Results;
     cache.set(key, r);
   }
   return r;

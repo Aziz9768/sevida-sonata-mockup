@@ -151,6 +151,32 @@ export const evidenceKinds: Record<MeasureCode, EvidenceKind[]> = {
     },
   ],
 };
+/** A typical code for each kind of evidence, shown under the evidence name. Evidence recorded by staff has no code of its own, so this is the code such a record would carry. */
+const TAG_CODE: Partial<Record<Tag, string>> = {
+  "well-care": "99393 (CPT)",
+  mammogram: "77067 (CPT)",
+  cytology: "88142 (CPT)",
+  hpv: "87624 (CPT)",
+  colonoscopy: "45378 (CPT)",
+  fit: "82274 (CPT)",
+  "stool-dna": "81528 (CPT)",
+  "ct-colonography": "74263 (CPT)",
+  sigmoidoscopy: "45330 (CPT)",
+  hba1c: "4548-4 (LOINC)",
+};
+const kindOf = (label: string) =>
+  Object.values(evidenceKinds)
+    .flat()
+    .find((k) => k.label === label);
+/** The technical code of a kind of evidence, for the small text under its name. */
+export const evidenceCodeOf = (label: string): string | undefined => {
+  const k = kindOf(label);
+  return k ? TAG_CODE[k.tag] : undefined;
+};
+/** The name to show for a kind of evidence: the test or service itself, without the wording about its status. */
+export const evidenceNameOf = (label: string): string =>
+  kindOf(label)?.tag === "hba1c" ? "Hemoglobin A1c" : label;
+
 /** What counts as evidence in another measurement year (windows move with the year; the HPV test is added where that year's rules allow it). */
 export function evidenceKindsFor(
   code: MeasureCode,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -6,6 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import ManageSearchOutlinedIcon from "@mui/icons-material/ManageSearchOutlined";
 import ViewModuleOutlinedIcon from "@mui/icons-material/ViewModuleOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
@@ -17,6 +18,7 @@ import {
   LoginPage,
   Modal,
   NoAccessPage,
+  SessionExpiredPage,
   RadioGroupField,
   InfoBanner,
 } from "sevida-ui";
@@ -31,15 +33,20 @@ import { MeasuresPage } from "./pages/MeasuresPage";
 import { MeasureDetailPage } from "./pages/MeasureDetailPage";
 import { MembersListPage } from "./pages/MembersListPage";
 import { CareGapsPage } from "./pages/CareGapsPage";
+import { AccessLogPage } from "./pages/AccessLogPage";
 import { MemberDetailPage } from "./pages/MemberDetailPage";
 import { CareGapDetailPage } from "./pages/CareGapDetailPage";
 import { MemberMeasurePage } from "./pages/MemberMeasurePage";
 import { initialsOf, useAuth } from "./auth";
-import { effectiveGroups, samples, useAccess } from "./access";
+import { effectiveGroups, groupName, samples, useAccess } from "./access";
 import { poweredByDark, poweredByLight } from "./brand";
 import { RoleProvider, useRole } from "./roles";
 import type { NavKey } from "./roles";
 import { RolePicker } from "./components/RolePicker";
+import { RunLine } from "./components/RunBits";
+import { RunKeyed, RunProvider } from "./runs";
+import { AuditProvider, useAudit, useWho } from "./auditLog";
+import { IdleWatcher, clearReturnPath, readReturnPath } from "./session";
 import { MemberGate, MenuGate } from "./components/AccessGate";
 
 const baseNav: NavItem[] = [
@@ -73,6 +80,12 @@ const baseNav: NavItem[] = [
     icon: <FactCheckOutlinedIcon />,
     href: "/measures",
   },
+  {
+    key: "access-log",
+    label: "Access log",
+    icon: <ManageSearchOutlinedIcon />,
+    href: "/access-log",
+  },
 ];
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string) {
@@ -81,6 +94,7 @@ function activeKeyFor(pathname: string) {
     first === "care-gaps" ||
     first === "dashboard" ||
     first === "quicksight" ||
+    first === "access-log" ||
     first === "dashboards"
     ? first
     : "members";
@@ -92,29 +106,48 @@ const providers = ["Microsoft", "Okta", "Google"];
 function LoginRoute() {
   const { user, signedOut, signIn, signInAs } = useAuth();
   const { partnerSignIn, personById } = useAccess();
+  const { logSignIn } = useAudit();
   const navigate = useNavigate();
   const [provider, setProvider] = useState<string | null>(null);
   const [pick, setPick] = useState(samples[0].id);
   const [problem, setProblem] = useState("");
-  if (user) return <Navigate to="/members" replace />;
+  if (user) return <Navigate to={readReturnPath() ?? "/"} replace />;
+  const expiredFrom = readReturnPath();
+  const arrive = () => navigate(readReturnPath() ?? "/", { replace: true });
 
   const continueAsPartner = () => {
     const sample = samples.find((s) => s.id === pick)!;
     const result = partnerSignIn(sample.payload);
     if (result.blocked) {
+      logSignIn(
+        { user: sample.payload.name, role: "–" },
+        "Sign-in failed",
+        "Failed",
+        "Person is disabled in Sonata",
+      );
       setProblem(
         "Your account has been disabled. Ask your Sonata administrator.",
       );
       return;
     }
     const person = personById(result.personId)!;
+    const groupsNow = effectiveGroups(person);
+    logSignIn(
+      {
+        user: person.name,
+        role: groupsNow.length ? groupName(groupsNow[0]) : "No access yet",
+      },
+      "Signed in",
+      "Success",
+      `Through ${provider ?? "the partner login"}${result.isNew ? " (first sign-in)" : ""}`,
+    );
     signInAs({
       name: person.name,
       initials: initialsOf(person.name),
       email: person.email,
       personId: person.id,
     });
-    navigate("/members", { replace: true });
+    arrive();
   };
 
   return (
@@ -126,9 +159,14 @@ function LoginRoute() {
         poweredBy={poweredByLight}
         showRememberMe={false}
         notice={
-          signedOut
-            ? { tone: "success", text: "You have been signed out." }
-            : undefined
+          expiredFrom
+            ? {
+                tone: "warning",
+                text: "Your session expired. Sign in to go back to where you were.",
+              }
+            : signedOut
+              ? { tone: "success", text: "You have been signed out." }
+              : undefined
         }
         ssoSlot={providers.map((p) => (
           <Button
@@ -145,11 +183,24 @@ function LoginRoute() {
           </Button>
         ))}
         onSubmit={({ email, password }) => {
-          if (!signIn(email, password))
+          if (!signIn(email, password)) {
+            logSignIn(
+              { user: email.trim() || "(blank)", role: "–" },
+              "Sign-in failed",
+              "Failed",
+              "Wrong username or password",
+            );
             throw new Error(
               "Username or password is incorrect. Use admin and 123.",
             );
-          navigate("/members", { replace: true });
+          }
+          logSignIn(
+            { user: "Admin", role: "Administrator" },
+            "Signed in",
+            "Success",
+            "Username and password",
+          );
+          arrive();
         }}
       />
       <Modal
@@ -191,15 +242,43 @@ function LoginRoute() {
   );
 }
 
+/** Where an idle session ends up (FR-307). "Sign in again" goes to the sign-in page, which sends the person back to the page they were on. */
+function SessionExpiredRoute() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  if (user) return <Navigate to="/" replace />;
+  return (
+    <SessionExpiredPage
+      appName="Sonata"
+      poweredBy={poweredByLight}
+      onSignIn={() => navigate("/login", { replace: true })}
+    />
+  );
+}
+
 function Protected() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { personById } = useAccess();
   const { role, home } = useRole();
-  if (!user) return <Navigate to="/login" replace />;
+  const { logSignIn } = useAudit();
+  const who = useWho();
+  // Once signed in again the saved page has done its job.
+  useEffect(() => {
+    if (user) clearReturnPath();
+  }, [user]);
+  // An expired session (a return path is saved) ends on the Session Expired page, a normal sign-out on the sign-in page.
+  if (!user)
+    return (
+      <Navigate
+        to={readReturnPath() ? "/session-expired" : "/login"}
+        replace
+      />
+    );
   const me = personById(user.personId ?? "p-admin");
   const signOutNow = () => {
+    logSignIn(who, "Signed out", "Success", "Chose Sign out");
     signOut();
     navigate("/login", { replace: true });
   };
@@ -216,7 +295,12 @@ function Protected() {
     <AppShell
       items={baseNav.filter((i) => role.menus.includes(i.key as NavKey))}
       activeKey={activeKeyFor(pathname)}
-      headerContent={<RolePicker />}
+      headerContent={
+        <>
+          <RunLine />
+          <RolePicker />
+        </>
+      }
       brandName="Sevida"
       // Name only, no mark: the sidebar shows plain "Sevida" (and nothing when it is collapsed).
       logo={
@@ -243,6 +327,8 @@ function Protected() {
       poweredBy={poweredByDark}
       onSignOut={signOutNow}
     >
+      <IdleWatcher />
+      <RunKeyed>
       <Routes>
         <Route path="/" element={<Navigate to={home} replace />} />
         <Route
@@ -302,6 +388,14 @@ function Protected() {
           }
         />
         <Route
+          path="/access-log"
+          element={
+            <MenuGate path="/access-log">
+              <AccessLogPage />
+            </MenuGate>
+          }
+        />
+        <Route
           path="/members"
           element={
             <MenuGate path="/members">
@@ -335,17 +429,23 @@ function Protected() {
         />
         <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
+      </RunKeyed>
     </AppShell>
   );
 }
 
 export function App() {
   return (
-    <RoleProvider>
-      <Routes>
-        <Route path="/login" element={<LoginRoute />} />
-        <Route path="/*" element={<Protected />} />
-      </Routes>
-    </RoleProvider>
+    <AuditProvider>
+      <RoleProvider>
+        <RunProvider>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route path="/session-expired" element={<SessionExpiredRoute />} />
+            <Route path="/*" element={<Protected />} />
+          </Routes>
+        </RunProvider>
+      </RoleProvider>
+    </AuditProvider>
   );
 }

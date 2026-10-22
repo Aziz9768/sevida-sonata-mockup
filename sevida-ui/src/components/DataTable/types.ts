@@ -13,7 +13,7 @@ export type ColumnFilter =
   | { type: "select"; options: Option[]; required?: boolean; ordered?: boolean } // pick one value (or All). With `required` there is no All: the filter always has a value and starts as the first option (for example a Measurement year). Options are listed A to Z by label, except for a `required` filter or when `ordered` is set, which keep your order
   | { type: "multiselect"; options: Option[]; ordered?: boolean } // pick several values. Options are listed A to Z by label; set `ordered` to keep your own order when the values have a natural one (age groups, stages, size bands)
   | { type: "dateRange"; presets?: DatePreset[] } //    From / To dates (needs accessor returning a Date or "YYYY-MM-DD"). `presets` adds quick-pick buttons above the dates
-  | { type: "numberRange" }; //                         From / To numbers, such as age (needs accessor returning a number)
+  | { type: "numberRange"; min?: number; max?: number }; // From / To numbers, such as age (needs accessor returning a number). Give `min` and `max` to add a two-handle slider above the From / To boxes; both stay in step. A slider left at both ends means no filter
 
 /** A quick-pick button on a dateRange filter. It fills From and To (give the dates as "YYYY-MM-DD"), or, with `blank`, keeps only rows that have no date. */
 export interface DatePreset {
@@ -73,6 +73,8 @@ export interface Column<T> {
     row: T,
     filters: FilterState,
   ) => string | number | Date | string[] | null | undefined;
+  /** Keep this filter right under the required one (Measurement year), ahead of the A to Z list. Use it for the one or two filters people reach for first (for example Measure). */
+  filterPinned?: boolean;
   /** Name shown in the Filters panel and on the filter chip when it should differ from `header` (for example "Date of birth" for the Age column). */
   filterLabel?: string;
   /** Include this column in the search box. Default true for any column with an `accessor`; set false to leave it out. */

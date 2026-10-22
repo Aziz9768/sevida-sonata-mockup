@@ -12,6 +12,7 @@ import {
 } from "sevida-ui";
 import type { Column, FilterState } from "sevida-ui";
 import { RowActions } from "../components/RowActions";
+import { ClosedSinceButton } from "../components/ClosedSince";
 import { useRole } from "../roles";
 import { TableLink } from "../components/TableLink";
 import {
@@ -281,6 +282,7 @@ export function CareGapsPage() {
           ? `Care gaps (${rows.length})`
           : `Care gaps (${shown} of ${rows.length})`
       }
+      actions={<ClosedSinceButton />}
     >
       <Stack spacing={2}>
         <Tabs
@@ -305,15 +307,17 @@ export function CareGapsPage() {
           rows={rows}
           getRowId={(r) => r.id}
           defaultSort={{ key: "found", direction: "asc" }}
-          searchPlaceholder="Search by name or ID…"
+          searchPlaceholder="Search by name, ID or insurance number…"
           search={search}
           onSearchChange={setSearch}
           filters={filters}
           onFiltersChange={setFilters}
           onResultCountChange={setShown}
-          storageKey="demo-care-gaps-v2"
+          storageKey="demo-care-gaps-v3"
           savedViews="care-gaps"
           exportFile="care-gaps"
+          stickyHeader
+          maxHeight="calc(100vh - 360px)"
           onRowClick={(r) => navigate(`/members/${r.m.id}?tab=gaps`)}
           rowActions={(r) => (
             <RowActions

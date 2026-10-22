@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useRole } from "../roles";
 import {
@@ -31,13 +31,10 @@ import {
 import { tips } from "../copy";
 import type { Column } from "sevida-ui";
 import { CareGapsTab } from "../components/CareGapsTab";
-import {
-  ClinicalTab,
-  allRecords,
-  groupOfRecord,
-  recordGroups,
-} from "../components/ClinicalTab";
-import type { RecordGroup } from "../components/ClinicalTab";
+import { groupOfRecord } from "../components/ClinicalTab";
+import { RecordsTab, isRecordTab, recordTabOrder } from "../components/RecordsTab";
+import { ProviderModal } from "../components/ProviderModal";
+import { memberExtras, benefitsOf } from "../recordFields";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { Field } from "../components/Field";
 import { TableLink } from "../components/TableLink";
@@ -492,6 +489,7 @@ function PrintSummary({ m, year }: { m: Member; year: number }) {
 
 function ProfileTab({ m }: { m: Member }) {
   const pcp = primaryCareOf(m);
+  const [provOpen, setProvOpen] = useState(false);
   return (
     <Stack spacing={2}>
       <LastUpdatedNote files={["member-gm", "member-RES"]} />
@@ -509,9 +507,21 @@ function ProfileTab({ m }: { m: Member }) {
             },
             { label: "Parent / caretaker", value: m.caretaker ?? null },
             {
+              label: "Middle initial",
+              value: `${memberExtras(m).middle} (sample value)`,
+            },
+            {
+              label: "Subscriber or family ID",
+              value: `${memberExtras(m).subscriberId} (sample value)`,
+            },
+            {
               label: "Address",
               value: `${m.street}, ${m.city}, ${stateName(m.state)} ${m.zip}`,
               full: true,
+            },
+            {
+              label: "Mailing address 2",
+              value: memberExtras(m).address2 || "(blank)",
             },
             {
               label: "County (proposed field)",
@@ -536,7 +546,18 @@ function ProfileTab({ m }: { m: Member }) {
               { label: "Provider", value: pcp.p.name },
               { label: "Type", value: pcp.p.type },
               { label: "Organization", value: pcp.p.org ?? null },
-              { label: "NPI", value: pcp.p.npi },
+              {
+                label: "NPI",
+                value: (
+                  <Button
+                    variant="tertiary"
+                    size="small"
+                    onClick={() => setProvOpen(true)}
+                  >
+                    {pcp.p.npi}
+                  </Button>
+                ),
+              },
               {
                 label: "How we know",
                 value: `${pcp.n} record${pcp.n === 1 ? "" : "s"} with this provider (provider.csv)`,
@@ -611,6 +632,10 @@ function ProfileTab({ m }: { m: Member }) {
           ]}
         />
       </Card>
+      <ProviderModal
+        npi={provOpen ? pcp?.p.npi : null}
+        onClose={() => setProvOpen(false)}
+      />
       {m.dod && (
         <Card title="Other" hint="member-gm.csv">
           <DetailGrid
@@ -667,6 +692,86 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
       header: "Drug benefit",
       accessor: (s) => yn(s.drug),
       hideBelow: "md",
+    },
+    {
+      key: "dental",
+      header: "Dental benefit",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).dental),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "mhi",
+      header: "Mental health: inpatient",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).mhInpatient),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "mhx",
+      header: "Mental health: intensive outpatient",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).mhIntensive),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "mho",
+      header: "Mental health: outpatient or ED",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).mhOutpatient),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "cdi",
+      header: "Chemical dependency: inpatient",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).cdInpatient),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "cdx",
+      header: "Chemical dependency: intensive outpatient",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).cdIntensive),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "cdo",
+      header: "Chemical dependency: outpatient or ED",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).cdOutpatient),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "lti2",
+      header: "Long-term services: institutional",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).ltssInstitutional),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "ltsh",
+      header: "Long-term services: home and community",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).ltssHome),
+      defaultHidden: true,
+      hideBelow: "lg",
+    },
+    {
+      key: "emp",
+      header: "Health plan employee",
+      help: "From the enrollment file (member-en.csv). The demo data does not hold this column, so the value is made up.",
+      accessor: (s) => yn(benefitsOf(m, s).employee),
+      defaultHidden: true,
+      hideBelow: "lg",
     },
   ];
   const medColumns: Column<MedicareStatus>[] = [
@@ -759,6 +864,32 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
             { label: "Coverage end", value: fmtEnd(now.end) },
             { label: "Enrollment periods", value: String(sorted.length) },
           ]}
+        />
+      </Card>
+      <Card
+        title="Other benefits"
+        hint="member-en.csv, latest period"
+        tooltip="Columns of the enrollment file that the measures do not use. They are shown so nothing the file holds is hidden. The demo data does not hold them, so the values are made up."
+      >
+        <DetailGrid
+          columns={3}
+          items={[
+            ["Dental benefit", "dental"],
+            ["Mental health: inpatient", "mhInpatient"],
+            ["Mental health: intensive outpatient", "mhIntensive"],
+            ["Mental health: outpatient or ED", "mhOutpatient"],
+            ["Chemical dependency: inpatient", "cdInpatient"],
+            ["Chemical dependency: intensive outpatient", "cdIntensive"],
+            ["Chemical dependency: outpatient or ED", "cdOutpatient"],
+            ["Long-term services: institutional", "ltssInstitutional"],
+            ["Long-term services: home and community", "ltssHome"],
+            ["Health plan employee", "employee"],
+          ].map(([label, k]) => ({
+            label,
+            value: yn(
+              benefitsOf(m, now)[k as keyof ReturnType<typeof benefitsOf>],
+            ),
+          }))}
         />
       </Card>
       <Card
@@ -1145,6 +1276,20 @@ export function MemberDetailPage() {
   const [search, setSearch] = useSearchParams();
   const { gapsOf } = useGaps();
 
+  // "Print summary" in a row menu on a list opens the member with ?print=1: print once, then drop the flag so a refresh does not print again (FR-512).
+  const wantsPrint = search.get("print") === "1";
+  useEffect(() => {
+    if (!wantsPrint || !m) return;
+    const t = window.setTimeout(() => {
+      const next = new URLSearchParams(search);
+      next.delete("print");
+      setSearch(next, { replace: true });
+      window.print();
+    }, 600);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsPrint, memberId]);
+
   if (!m) {
     return (
       <PageContainer
@@ -1169,18 +1314,21 @@ export function MemberDetailPage() {
   }
   const year = yearFromParam(search.get("year"));
   const yearEvents = memberForYear(m, year).events;
-  const recordCount = (g: RecordGroup) =>
-    yearEvents.filter((e) => groupOfRecord(e) === g).length;
-  // Older links say tab=clinical. Send them to the tab that holds the record they point to.
+  // Older links say tab=clinical, or name a kind of record (tab=labs, tab=all). Both now open the Records tab on that kind.
   const rawTab = search.get("tab") ?? "measures";
-  const tab =
+  const legacyKind =
     rawTab === "clinical"
       ? (() => {
           const rec = search.get("record");
           const hit = yearEvents.find((e) => recordKey(e) === rec);
           return hit ? groupOfRecord(hit) : "claims";
         })()
-      : rawTab;
+      : isRecordTab(rawTab)
+        ? rawTab
+        : null;
+  const tab = legacyKind ? "records" : rawTab;
+  const recordsParam = search.get("records");
+  const recordSub = legacyKind ?? (isRecordTab(recordsParam) ? recordsParam : "all");
   const yq: Record<string, string> = year === MY ? {} : { year: String(year) };
   const sum = summaryOf(m, year === MY ? gapsOf(m) : [], year);
 
@@ -1236,18 +1384,31 @@ export function MemberDetailPage() {
               content: <EnrollmentTab m={m} year={year} />,
             },
             {
-              key: "all",
-              label: allRecords.label,
-              count: yearEvents.length,
-              content: <ClinicalTab m={m} year={year} group="all" />,
+              key: "records",
+              label: "Records",
+              // Count only the kinds this role may open (care managers do not see claims).
+              count: yearEvents.filter(
+                (e) => !role.hiddenTabs.includes(groupOfRecord(e)),
+              ).length,
+              content: (
+                <RecordsTab
+                  m={m}
+                  year={year}
+                  sub={recordSub}
+                  hidden={role.hiddenTabs}
+                  onSub={(k) =>
+                    setSearch({ tab: "records", records: k, ...yq }, { replace: true })
+                  }
+                />
+              ),
             },
-            ...(Object.keys(recordGroups) as RecordGroup[]).map((g) => ({
-              key: g,
-              label: recordGroups[g].label,
-              count: recordCount(g),
-              content: <ClinicalTab m={m} year={year} group={g} />,
-            })),
-          ].filter((t) => !role.hiddenTabs.includes(t.key))}
+          ].filter(
+            (t) =>
+              !role.hiddenTabs.includes(t.key) &&
+              // Records is hidden only when every kind of record is hidden.
+              (t.key !== "records" ||
+                recordTabOrder.some((k) => !role.hiddenTabs.includes(k))),
+          )}
         />
       </Stack>
     </PageContainer>

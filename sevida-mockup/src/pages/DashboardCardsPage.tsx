@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageContainer, SelectField } from "sevida-ui";
+import { RunNotice, RunSelect } from "../components/RunBits";
 import { MY, measures, members } from "../data";
 import { kpisFor, openGapCount } from "../dashboardData";
 import {
@@ -121,6 +122,7 @@ export function DashboardCardsPage() {
       titleVariant="overview"
       subtitle="All measures on one sheet. Click a bar or a row to open that measure's dashboard."
     >
+      <RunNotice />
       <NotesContext.Provider value={NO_NOTES}>
         <QsFrame
           tabs={TABS}
@@ -139,6 +141,9 @@ export function DashboardCardsPage() {
                   label: String(y),
                 }))}
               />
+            </QsControl>
+            <QsControl>
+              <RunSelect />
             </QsControl>
           </QsControlsBar>
           <QsSheet>

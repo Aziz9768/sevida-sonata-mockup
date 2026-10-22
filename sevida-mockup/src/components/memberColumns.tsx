@@ -3,10 +3,14 @@ import { Stack, Typography } from "@mui/material";
 import { StatusChip, Term } from "sevida-ui";
 import type { Column, DatePreset } from "sevida-ui";
 import { TableLink } from "./TableLink";
+import { groupOfRecord } from "./ClinicalTab";
+import { memberExtras } from "../recordFields";
 import {
   outreachResults,
   dataRefreshedOf,
   evidenceKindsFor,
+  evidenceCodeOf,
+  evidenceNameOf,
   fmtDay,
   parseDay,
   useGaps,
@@ -41,6 +45,7 @@ import {
   ethnicityGroupOf,
   primaryCareOf,
   NO_PCP,
+  memberForYear,
 } from "../data";
 import type { Member, MeasureCode } from "../data";
 import {
@@ -74,6 +79,36 @@ export const apptPresets: DatePreset[] = [
   { label: "Later", from: iso(inDays(15)) },
   { label: "No appointment", blank: true },
 ];
+/**
+ * One name per diagnosis code, so the filter lists a code once: the longest description the data uses for it, without the notes in
+ * brackets ("(problem list)", "(supplemental claim, $0)").
+ */
+const cleanDx = (t: string) => t.replace(/\s*\(.*\)\s*$/, "").trim();
+const dxName = new Map<string, string>();
+for (const m of members)
+  for (const e of m.events)
+    if (groupOfRecord(e) === "diagnoses") {
+      const t = cleanDx(e.text);
+      if (t.length > (dxName.get(e.code)?.length ?? 0)) dxName.set(e.code, t);
+    }
+/** "E11.9 · Type 2 diabetes without complications" for each diagnosis the member has in a year (claims and EHR problem list). */
+const diagnosesOfYear = (m: Member, year: number) =>
+  sortedSet(
+    memberForYear(m, year)
+      .events.filter((e) => groupOfRecord(e) === "diagnoses")
+      .map((e) => `${e.code} · ${dxName.get(e.code) ?? cleanDx(e.text)}`),
+  );
+const diagnosisValues = sortedSet(
+  YEARS.flatMap((y) => members.flatMap((m) => diagnosesOfYear(m, y))),
+);
+const resultValues = sortedSet(
+  measures.flatMap((x) =>
+    (["Met", "Gap", "Review", "Excluded"] as const).map(
+      (st) => `${x.code}: ${stateLabel[st]}`,
+    ),
+  ),
+);
+
 /** A member in one measurement year. A row without a year is the current year. */
 export type MemberRow = Member & { year?: number };
 /** One row per member per measurement year, newest year first. */
@@ -120,6 +155,36 @@ export function memberColumns<T>(
       ),
     },
     {
+      key: "insurance",
+      header: "Insurance number",
+      help: "The number on the member's insurance card (Subscriber or Family ID in the member file). Type it in the search box or the filter to find one member. Demo values: the demo members have no such number, so it is made up.",
+      accessor: (r) => memberExtras(of(r)).subscriberId,
+      sortable: true,
+      nowrap: true,
+      hideBelow: "lg",
+      filter: { type: "text" },
+    },
+    {
+      key: "first",
+      header: "First name",
+      help: "The member's first name. Use it with Last name, Date of birth or Insurance number in the Filters panel to narrow the list to one person.",
+      accessor: (r) => of(r).first,
+      sortable: true,
+      defaultHidden: true,
+      hideBelow: "lg",
+      filter: { type: "text" },
+    },
+    {
+      key: "last",
+      header: "Last name",
+      help: "The member's last name. Use it with First name, Date of birth or Insurance number in the Filters panel to narrow the list to one person.",
+      accessor: (r) => of(r).last,
+      sortable: true,
+      defaultHidden: true,
+      hideBelow: "lg",
+      filter: { type: "text" },
+    },
+    {
       key: "dob",
       header: "Date of birth",
       help: "The member's date of birth. Use it with the name and Member ID to be sure it is the right person.",
@@ -137,7 +202,8 @@ export function memberColumns<T>(
       sortable: true,
       align: "right",
       hideBelow: "md",
-      filter: { type: "numberRange" },
+      // Slider plus From / To boxes: pick any range, not only the preset age groups.
+      filter: { type: "numberRange", min: 0, max: 100 },
     },
     {
       key: "sex",
@@ -236,6 +302,8 @@ export function memberFacets<T>(
       sortable: true,
       nowrap: true,
       hideBelow: "lg",
+      // Off by default so the table stays short enough to read a row without scrolling sideways. Switch on in Columns.
+      defaultHidden: true,
       filter: { type: "select", options: opt(memberStates) },
     },
     county: {
@@ -246,6 +314,7 @@ export function memberFacets<T>(
       sortable: true,
       nowrap: true,
       hideBelow: "lg",
+      defaultHidden: true,
       filter: { type: "select", options: opt(memberCounties) },
     },
     military: {
@@ -256,6 +325,7 @@ export function memberFacets<T>(
       sortable: true,
       nowrap: true,
       hideBelow: "lg",
+      defaultHidden: true,
       filter: {
         type: "select",
         options: opt(MILITARY_VALUES),
@@ -288,6 +358,13 @@ export function useMemberTableColumns(
             )
             .map((x) => x.code)
         : openOf(m).map((g) => g.def.code);
+    const diagnosesOf = (m: MemberRow) => diagnosesOfYear(m, yearOf(m));
+    /** "BCS-E: Met" for every measure the member is in (not for measures that do not apply to them). */
+    const resultLines = (m: MemberRow) =>
+      measures.flatMap((x) => {
+        const st = resultsFor(m, yearOf(m))[x.code].state;
+        return st === "Not eligible" ? [] : [`${x.code}: ${stateLabel[st]}`];
+      });
     const facets = memberFacets<MemberRow>((m) => m, yearOf);
     const primary = (m: MemberRow): GapView | null => openOf(m)[0] ?? null;
     const yearColumn: Column<MemberRow> = {
@@ -329,9 +406,10 @@ export function useMemberTableColumns(
                 date: parseDay(rec.date),
                 title:
                   rec.value !== undefined
-                    ? `${rec.kind}: ${rec.value}%`
-                    : rec.kind,
-                sub: rec.validation,
+                    ? `${evidenceNameOf(rec.kind)}: ${rec.value}%`
+                    : evidenceNameOf(rec.kind),
+                // The technical code goes in the small text, under the name of the test or service.
+                sub: evidenceCodeOf(rec.kind) ?? "",
               },
             ]
           : [];
@@ -459,6 +537,7 @@ export function useMemberTableColumns(
         header: "Gaps",
         // In the Filters panel this is "Measure", right under Measurement year.
         filterLabel: "Measure",
+        filterPinned: true,
         help: "The measures where this member has an open care gap, by the short form of the measure. Hover a short form to read the full name. The Open gaps column counts them. A gap that was closed is not listed here: see Closed gaps.",
         accessor: (m) => gapCodes(m),
         render: (m) => {
@@ -521,7 +600,7 @@ export function useMemberTableColumns(
       {
         key: "closed",
         header: "Closed gaps",
-        defaultHidden: true,
+        defaultHidden: false,
         help: "Gaps closed in the current measurement year (January 1 to December 31), with the day each was closed. A closed gap is no longer counted in Open gaps. The Evidence date and Evidence code columns show the record that closed it. A past year has no care-gap work, so it shows a dash.",
         accessor: (m) =>
           closedOf(m).map((g) => `${g.def.code}: ${fmtDay(g.work.closed!.on)}`),
@@ -548,33 +627,6 @@ export function useMemberTableColumns(
         filter: only
           ? undefined
           : { type: "multiselect", options: measureOptions },
-      },
-      {
-        key: "excluded",
-        header: "Excluded from",
-        help: "The measures this member is excluded from, because an exclusion applies (for example a colectomy for COL-E). An excluded member has no care gap for that measure.",
-        accessor: (m) => excludedOf(m).map((x) => x.code),
-        render: (m) => {
-          const ex = excludedOf(m);
-          return ex.length === 0 ? (
-            "None"
-          ) : (
-            <Stack spacing={0.5} alignItems="flex-start">
-              {ex.map((x) => (
-                <StatusChip
-                  key={x.code}
-                  tone="neutral"
-                  label={x.code}
-                  tip={x.name}
-                />
-              ))}
-            </Stack>
-          );
-        },
-        filter: {
-          type: "multiselect",
-          options: measureOptions,
-        },
       },
       {
         ...evidenceCol(
@@ -614,7 +666,7 @@ export function useMemberTableColumns(
       },
       {
         ...evidenceCol("evCode", "Evidence", (x) => x.title, {
-          help: "The record that closed each closed gap, one line per gap: what it is (and its result, for a lab) in larger text, with its review status under it. Open gaps have no evidence yet: see Missing evidence.",
+          help: "The record that closed each closed gap, one line per gap: the test or service (and its result, for a lab) in larger text, with its code under it, for example Hemoglobin A1c: 7.8% and 4548-4 (LOINC). Open gaps have no evidence yet: see Missing evidence.",
         }),
         render: (m) => {
           const ev = evidenceOf(m);
@@ -626,19 +678,100 @@ export function useMemberTableColumns(
                 <span key={x.code}>
                   {!only && <b>{x.code}: </b>}
                   <b>{x.title}</b>
-                  <br />
-                  <Typography
-                    component="span"
-                    sx={{ fontSize: ".75rem", color: "ink.500" }}
-                  >
-                    {x.sub}
-                  </Typography>
+                  {x.sub && (
+                    <>
+                      <br />
+                      <Typography
+                        component="span"
+                        sx={{ fontSize: ".75rem", color: "ink.500" }}
+                      >
+                        {x.sub}
+                      </Typography>
+                    </>
+                  )}
                 </span>
               ))}
             </Stack>
           );
         },
       },
+      {
+        key: "excluded",
+        header: "Excluded from",
+        help: "The measures this member is excluded from, because an exclusion applies (for example a colectomy for COL-E). An excluded member has no care gap for that measure.",
+        accessor: (m) => excludedOf(m).map((x) => x.code),
+        render: (m) => {
+          const ex = excludedOf(m);
+          return ex.length === 0 ? (
+            "None"
+          ) : (
+            <Stack spacing={0.5} alignItems="flex-start">
+              {ex.map((x) => (
+                <StatusChip
+                  key={x.code}
+                  tone="neutral"
+                  label={x.code}
+                  tip={x.name}
+                />
+              ))}
+            </Stack>
+          );
+        },
+        filter: {
+          type: "multiselect",
+          options: measureOptions,
+        },
+      },
+      {
+        key: "diagnosis",
+        header: "Diagnosis",
+        help: "The diagnoses on file for the member in the measurement year, from claims and the EHR problem list (code and name). Pick one or more in the Filters panel to find members who have any of them.",
+        accessor: (m) => diagnosesOf(m),
+        render: (m) => {
+          const d = diagnosesOf(m);
+          return d.length === 0 ? (
+            "–"
+          ) : (
+            <Stack spacing={0.5} alignItems="flex-start">
+              {d.map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </Stack>
+          );
+        },
+        defaultHidden: true,
+        hideBelow: "lg",
+        filter: { type: "multiselect", options: opt(diagnosisValues) },
+      },
+      ...(only
+        ? []
+        : [
+            {
+              key: "results",
+              header: "Measure results",
+              help: "How the member came out in each measure they are in: Met, Not met, Excluded or Needs review. Pick, for example, BCS-E: Met in the Filters panel to find the members who met breast cancer screening.",
+              accessor: (m: MemberRow) => resultLines(m),
+              render: (m: MemberRow) => {
+                const l = resultLines(m);
+                return l.length === 0 ? (
+                  "–"
+                ) : (
+                  <Stack spacing={0.5} alignItems="flex-start">
+                    {l.map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
+                  </Stack>
+                );
+              },
+              defaultHidden: true,
+              hideBelow: "lg",
+              filterLabel: "Measure result",
+              filter: {
+                type: "multiselect" as const,
+                options: opt(resultValues),
+              },
+            } as Column<MemberRow>,
+          ]),
       {
         key: "a1c",
         header: "Latest HbA1c",
@@ -767,10 +900,10 @@ export function useMemberTableColumns(
         filter: { type: "dateRange" },
       },
     ];
-    // The search box looks at the member's name and Member ID only. Without this a name such as "Paul" also found members whose care manager is Paul.
+    // The search box looks at the member's name, Member ID and insurance number only. Without this a name such as "Paul" also found members whose care manager is Paul.
     return all.map((c) => ({
       ...c,
-      searchable: c.key === "name" || c.key === "id",
+      searchable: c.key === "name" || c.key === "id" || c.key === "insurance",
     }));
   }, [openOfNow, gapsOfNow, only, withYear]);
 }
