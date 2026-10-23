@@ -427,6 +427,7 @@ function versionTwo(
         extra.eligible,
         {
           ...c,
+          filterLabel: "Open gaps",
           help: c.help?.replace("the Measure filter", "the Gap Measures filter"),
         },
       );
