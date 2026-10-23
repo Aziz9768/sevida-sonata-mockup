@@ -337,6 +337,7 @@ export function memberFacets<T>(
 
 /** Columns that version 2 of the Members list no longer shows (they stay in the code and in version 1). */
 const REMOVED_IN_V2 = new Set([
+  "excluded",
   "first",
   "last",
   "lang",

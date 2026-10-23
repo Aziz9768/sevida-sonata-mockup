@@ -53,7 +53,7 @@ export function MembersListPage() {
           v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
         }
         onResultCountChange={setShown}
-        storageKey={v2 ? "demo-members-v30-ver2-c" : "demo-members-v30"}
+        storageKey={v2 ? "demo-members-v30-ver2-d" : "demo-members-v30"}
         savedViews={v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).

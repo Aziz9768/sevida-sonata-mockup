@@ -325,6 +325,68 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
   );
 }
 
+/** Version 2: the measures this member is excluded from and why. It replaces the "Excluded from" column of the Members list. */
+function ExclusionsTab({ m, year }: { m: Member; year: number }) {
+  const navigate = useNavigate();
+  const results = resultsFor(m, year);
+  const rows = measures
+    .filter((def) => results[def.code].state === "Excluded")
+    .map((def) => ({ def, r: results[def.code] }));
+  const path = (code: string) =>
+    `/members/${m.id}/measures/${code}${year === MY ? "" : `?year=${year}`}`;
+  const columns: Column<(typeof rows)[number]>[] = [
+    {
+      key: "name",
+      header: "Measure",
+      accessor: (x) => x.def.name,
+      sortable: true,
+      primary: true,
+      width: 280,
+      help: "Opens the measure result for this member.",
+      render: (x) => <TableLink to={path(x.def.code)}>{x.def.name}</TableLink>,
+    },
+    {
+      key: "code",
+      header: "Code",
+      accessor: (x) => x.def.code,
+      sortable: true,
+      nowrap: true,
+    },
+    {
+      key: "result",
+      header: "Final result",
+      accessor: () => "Excluded",
+      nowrap: true,
+      render: () => <StatusChip tone="neutral" label="Excluded" />,
+    },
+    {
+      key: "why",
+      header: "Why excluded",
+      help: "The exclusion that applies, for example a colectomy for COL-E. An excluded member has no care gap for that measure and is taken out of the rate.",
+      accessor: (x) => x.r.reason,
+      width: 360,
+    },
+  ];
+  return (
+    <DataTable
+      ariaLabel="Exclusions"
+      title="Excluded from"
+      columns={columns}
+      rows={rows}
+      getRowId={(x) => x.def.code}
+      paginated={false}
+      toolbar={{ search: false }}
+      emptyState={
+        <EmptyState
+          title="Not excluded from any measure"
+          description={`No exclusion applies to this member in measurement year ${year}.`}
+        />
+      }
+      onRowClick={(x) => navigate(path(x.def.code))}
+    />
+  );
+}
+
 /* ------------------------------------------------------------------ profile tab */
 
 /** When the file behind a tab was last received. These tabs come from one file each, so one date covers every row. */
@@ -1311,6 +1373,7 @@ export function MemberDetailPage() {
   const m = memberById(memberId);
   const [search, setSearch] = useSearchParams();
   const { gapsOf } = useGaps();
+  const { version } = useVersion();
 
   // "Print summary" in a row menu on a list opens the member with ?print=1: print once, then drop the flag so a refresh does not print again (FR-512).
   const wantsPrint = search.get("print") === "1";
@@ -1414,6 +1477,18 @@ export function MemberDetailPage() {
               count: year === MY ? sum.open : undefined,
               content: <CareGapsTab m={m} year={year} />,
             },
+            ...(version.id === 2
+              ? [
+                  {
+                    key: "exclusions",
+                    label: "Excluded from",
+                    count: measures.filter(
+                      (d) => resultsFor(m, year)[d.code].state === "Excluded",
+                    ).length,
+                    content: <ExclusionsTab m={m} year={year} />,
+                  },
+                ]
+              : []),
             {
               key: "enrollment",
               label: "Enrollment",
