@@ -9,6 +9,7 @@ import {
   yearOf,
 } from "../components/memberColumns";
 import { CURRENT_YEAR } from "../data";
+import { useVersion } from "../version";
 import { useRole } from "../roles";
 
 /** A past year opens the member (or a tab of it) for that year. */
@@ -20,7 +21,9 @@ const withYear = (path: string, year: number) =>
 export function MembersListPage() {
   const navigate = useNavigate();
 
-  const columns = useMemberTableColumns(undefined, true);
+  const { version } = useVersion();
+  const v2 = version.id === 2;
+  const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
   const { visible: members } = useRole();
   const [shown, setShown] = useState(members.length);
@@ -41,11 +44,17 @@ export function MembersListPage() {
         rows={rows}
         getRowId={getMemberRowId}
         defaultSort={{ key: "id", direction: "asc" }}
-        searchPlaceholder="Search by member name, member ID or insurance number…"
-        searchPlaceholderCompact="Member name, ID, insurance no."
+        searchPlaceholder={
+          v2
+            ? "Search by member name, member ID or subscriber ID…"
+            : "Search by member name, member ID or insurance number…"
+        }
+        searchPlaceholderCompact={
+          v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
+        }
         onResultCountChange={setShown}
-        storageKey="demo-members-v30"
-        savedViews="members"
+        storageKey={v2 ? "demo-members-v30-ver2-c" : "demo-members-v30"}
+        savedViews={v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
         stickyHeader

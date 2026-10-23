@@ -359,3 +359,25 @@ The Export icon on the main dashboard has Excel, PDF and CSV (tables and filters
 ## Quality Measures menu hidden
 
 The "Quality measures" item is hidden from the sidebar for now. The page (`/measures`), the measure detail pages, their access rules and the links to them from the dashboards are all still in the code and still work. To show the menu item again, remove `"measures"` from `HIDDEN_IN_SIDEBAR` in `src/App.tsx`.
+
+## Versions (Version 1 and Version 2)
+
+A **Version** dropdown in the header (next to View As) switches the whole mockup between versions. Each version has a date. The latest version (Version 2) opens first. The choice is remembered for the browser tab until it is closed.
+
+| Version | Date | What it is |
+| --- | --- | --- |
+| Version 1 | 23 Oct 2026 | The mockup exactly as it was before the member table change list. Frozen: do not change it. |
+| Version 2 | 23 Oct 2026 | Member search column updates from the 10/22 call (Jira LPP-16069), following its Proof Point column, plus the earlier member table change list. |
+
+**Version 2 changes**
+
+- *Names:* Insurance Number is now **Subscriber ID**, Sex is now **Gender**, Gaps is now **Gap Measures**, Gap Identified is now **Gap Identified Date**.
+- *Removed from the Members list (columns and filters):* First Name, Last Name, Spoken Language, Age Group, Age Status, Primary Care Provider, Care Team, Care Manager, State, County, Military Status, Closed Gaps, Evidence Date, Evidence, Diagnosis, Measure Results, Latest HbA1c, Next Appointment, Last Contact, Contact Result, Last Updated. The code for all of them is still there and Version 1 still shows them.
+- *Added:* Race and Ethnicity shown with new **Race Source** and **Ethnicity Source** columns (the member file keeps one source for both, so they match for now), and **HEDIS Measures Eligibility**, listing every measure the member is part of (the same list as Members in Measure on the Quality Measures page). **Gap Identified Date** shows one dated line for each gap measure, for example "COL-E: 08/18/2026". Missing Evidence is kept as is.
+- *Grouping:* columns sit under **Demographics** and **Care Gaps**, A to Z inside each group, in the table and in the Columns panel (Member Name and Member ID stay first). The library `Column` has a new optional `group` for this.
+- *Member page:* a **Diagnosis codes** card on the Measures tab; **HbA1c values** (every value of the year, newest first) at the top of the Labs sub-tab; a new **Observation (Procedure)** sub-tab under Records (Version 1 lists these records with the labs).
+- *Sidebar:* Access Log and Analytics Option 2 are hidden, and Quality Measure Analytics is called **Analytics** (the page title too). The pages are still in the code.
+- *Where the Jira table's POC column differs:* the POC column keeps Closed Gaps, Evidence, Evidence Date, Next Appointment, Last Contact, Contact Result, State and County, and wants a shorter Missing Evidence per measure. Version 2 follows the Proof Point column; the POC build would be a Version 3.
+- *Not changed in Version 2:* the Care Gaps list, Measures pages and dashboards look the same in both versions.
+
+**For the tech team:** the versions are listed in `src/version.tsx` (id, date, one-line summary, list of changes). Screens read `useVersion()`; the Members list columns for Version 2 are built by `versionTwo()` in `src/components/memberColumns.tsx`. Version 1 code paths are untouched. To add Version 3, add a row to `VERSIONS` and branch where the screens differ.

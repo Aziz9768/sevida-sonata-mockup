@@ -6,7 +6,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import ViewColumnOutlinedIcon from "@mui/icons-material/ViewColumnOutlined";
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
@@ -295,6 +295,17 @@ export function ColumnsPanel<T>({
   onTogglePin: (key: string) => void;
   onReset: () => void;
 }) {
+  // Columns without a group first (in table order), then each group, with its columns A to Z.
+  const sections: { name: string; columns: Column<T>[] }[] = [];
+  const loose = columns.filter((c) => !c.group);
+  if (loose.length) sections.push({ name: "", columns: loose });
+  for (const g of [...new Set(columns.filter((c) => c.group).map((c) => c.group!))])
+    sections.push({
+      name: g,
+      columns: columns
+        .filter((c) => c.group === g)
+        .sort((a, b) => a.header.localeCompare(b.header)),
+    });
   return (
     <Stack spacing={1}>
       <Typography sx={{ fontSize: ".75rem", color: "ink.500" }}>
@@ -302,7 +313,25 @@ export function ColumnsPanel<T>({
         to keep them visible while scrolling.
       </Typography>
       <Stack spacing={0.25}>
-        {columns.map((c) => {
+        {sections.map((sec) => (
+          <Fragment key={sec.name || "_"}>
+            {sec.name && (
+              <Typography
+                component="h3"
+                sx={{
+                  fontSize: ".75rem",
+                  fontWeight: 700,
+                  color: "primary.main",
+                  textTransform: "uppercase",
+                  letterSpacing: ".04em",
+                  pt: 1,
+                  pb: 0.25,
+                }}
+              >
+                {sec.name}
+              </Typography>
+            )}
+            {sec.columns.map((c) => {
           const locked = isLocked(c);
           const isPinned = pinnedKeys.includes(c.key);
           const pinDisabled = !isPinned && pinnedKeys.length >= maxPinned;
@@ -367,7 +396,9 @@ export function ColumnsPanel<T>({
               </Tooltip>
             </Stack>
           );
-        })}
+            })}
+          </Fragment>
+        ))}
       </Stack>
       <Box
         component="button"

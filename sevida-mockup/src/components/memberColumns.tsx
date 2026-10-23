@@ -48,6 +48,7 @@ import {
   memberForYear,
 } from "../data";
 import type { Member, MeasureCode } from "../data";
+import type { VersionId } from "../version";
 import {
   AGE_GROUPS,
   LABEL,
@@ -92,7 +93,7 @@ for (const m of members)
       if (t.length > (dxName.get(e.code)?.length ?? 0)) dxName.set(e.code, t);
     }
 /** "E11.9 · Type 2 diabetes without complications" for each diagnosis the member has in a year (claims and EHR problem list). */
-const diagnosesOfYear = (m: Member, year: number) =>
+export const diagnosesOfYear = (m: Member, year: number) =>
   sortedSet(
     memberForYear(m, year)
       .events.filter((e) => groupOfRecord(e) === "diagnoses")
@@ -334,6 +335,124 @@ export function memberFacets<T>(
   };
 }
 
+/** Columns that version 2 of the Members list no longer shows (they stay in the code and in version 1). */
+const REMOVED_IN_V2 = new Set([
+  "first",
+  "last",
+  "lang",
+  "ageGroup",
+  "pcp",
+  "state",
+  "county",
+  "military",
+  "ageStatus",
+  "closed",
+  "evDate",
+  "evCode",
+  "appt",
+  "lastContact",
+  "contactResult",
+  "team",
+  "cm",
+  "updated",
+  "diagnosis",
+  "results",
+  "a1c",
+]);
+const raceSourceValues = sortedSet(members.map((m) => m.raceSource));
+
+/** In the Columns panel of version 2, columns sit under these headings (A to Z inside each). Member name and Member ID stay first, with no heading. */
+const V2_GROUP: Record<string, string> = {
+  age: "Demographics",
+  dob: "Demographics",
+  ethnicity: "Demographics",
+  ethnicitySource: "Demographics",
+  sex: "Demographics",
+  race: "Demographics",
+  raceSource: "Demographics",
+  insurance: "Demographics",
+  year: "Care Gaps",
+  eligible: "Care Gaps",
+  openCount: "Care Gaps",
+  gaps: "Care Gaps",
+  found: "Care Gaps",
+  missing: "Care Gaps",
+  excluded: "Care Gaps",
+};
+
+/**
+ * Version 2 of the Members list (Jira LPP-16069, "Member search column updates from 10/22 call", Proof Point column):
+ * the same columns as version 1 with some taken out, some renamed (Subscriber ID, Gender, Gap Measures, Gap Identified Date),
+ * Race and Ethnicity shown with their sources, one gap date per gap measure, and a HEDIS Measures Eligibility column.
+ * Columns sit under Demographics and Care Gaps, A to Z. Diagnosis and HbA1c moved to the member page.
+ */
+function versionTwo(
+  all: Column<MemberRow>[],
+  extra: { eligible: Column<MemberRow>; found: Column<MemberRow> },
+): Column<MemberRow>[] {
+  const byKey = (k: string) => all.find((c) => c.key === k)!;
+  const sourceCol = (
+    label: string,
+    key: string,
+    what: string,
+  ): Column<MemberRow> => ({
+    key,
+    header: label,
+    help: `Where the member's ${what} came from, for example Health Plan Collected or the enrollment files. The member file records one source for race and ethnicity together, so the two columns match for now.`,
+    accessor: (m) => m.raceSource,
+    sortable: true,
+    hideBelow: "lg",
+    filter: { type: "multiselect", options: opt(raceSourceValues) },
+  });
+  const list: Column<MemberRow>[] = [];
+  for (const c of all) {
+    if (REMOVED_IN_V2.has(c.key) || c.key === "race" || c.key === "ethnicity")
+      continue;
+    if (c.key === "insurance") {
+      list.push({
+        ...c,
+        header: "Subscriber ID",
+        help: "The ID on the member's insurance card (Subscriber or Family ID in the member file). Type it in the search box or the filter to find one member. Demo values: the demo members have no such ID, so it is made up.",
+      });
+    } else if (c.key === "sex") {
+      list.push(
+        { ...c, header: "Gender" },
+        { ...byKey("race"), defaultHidden: false },
+        { ...byKey("ethnicity"), defaultHidden: false },
+        sourceCol("Race source", "raceSource", "race"),
+        sourceCol("Ethnicity source", "ethnicitySource", "ethnicity"),
+      );
+    } else if (c.key === "openCount") {
+      list.push(
+        extra.eligible,
+        {
+          ...c,
+          help: c.help?.replace("the Measure filter", "the Gap Measures filter"),
+        },
+      );
+    } else if (c.key === "gaps") {
+      list.push({
+        ...c,
+        header: "Gap measures",
+        filterLabel: "Gap measures",
+        help: c.help?.replace("The Gaps column", "This column"),
+      });
+    } else if (c.key === "found") {
+      list.push(extra.found);
+    } else {
+      list.push(c);
+    }
+  }
+  // Table order: Member name and Member ID first, then Demographics A to Z, then Care Gaps A to Z.
+  const grouped = list.map((c) => ({ ...c, group: V2_GROUP[c.key] }));
+  const lead = grouped.filter((c) => !c.group);
+  const sortAZ = (g: string) =>
+    grouped
+      .filter((c) => c.group === g)
+      .sort((a, b) => a.header.localeCompare(b.header));
+  return [...lead, ...sortAZ("Demographics"), ...sortAZ("Care Gaps")];
+}
+
 /**
  * Every column of the member table. The Members list and the members inside a quality measure both use this,
  * so the two tables always show the same columns in the same order.
@@ -341,6 +460,8 @@ export function memberFacets<T>(
 export function useMemberTableColumns(
   only?: MeasureCode,
   withYear = false,
+  /** Which version of the mockup to build the columns for. Version 1 is the table as it was; version 2 is the slimmer table (see src/version.tsx). */
+  version: VersionId = 1,
 ): Column<MemberRow>[] {
   const { openOf: openOfNow, gapsOf: gapsOfNow } = useGaps();
   return useMemo<Column<MemberRow>[]>(() => {
@@ -900,10 +1021,74 @@ export function useMemberTableColumns(
         filter: { type: "dateRange" },
       },
     ];
+    // Version 2 only. Gap identified shows one date per open gap instead of the earliest one.
+    const foundMulti: Column<MemberRow> = {
+      key: "found",
+      header: "Gap identified date",
+      help: "The date each open care gap was found, one line per gap, with the measure it belongs to (same measures as Gap Measures). Sorting and the date filter use the earliest one. Demo dates: the spec has no such field.",
+      accessor: earliest,
+      render: (m) => {
+        // Same order as the Gap Measures column, so each date lines up with its measure.
+        const gs = openOf(m);
+        return gs.length === 0 ? (
+          dateCell(null)
+        ) : (
+          <Stack spacing={0.5} alignItems="flex-start">
+            {gs.map((g) => (
+              <span key={g.id}>
+                <Term tip={g.def.name}>
+                  <b>{g.def.code}</b>
+                </Term>
+                : {fmtDate(g.identified)}
+              </span>
+            ))}
+          </Stack>
+        );
+      },
+      sortable: true,
+      nowrap: true,
+      filter: { type: "dateRange" },
+    };
+    // Version 2 only. The measures whose eligible population (the members a measure counts) the member is in.
+    const eligibleOf = (m: MemberRow) =>
+      measures.filter(
+        (x) =>
+          (!only || x.code === only) &&
+          resultsFor(m, yearOf(m))[x.code].state !== "Not eligible",
+      );
+    const eligibleCol: Column<MemberRow> = {
+      key: "eligible",
+      header: "HEDIS measures eligibility",
+      help: "All the HEDIS measures this member is part of, by the short form of the measure. Hover a short form to read the full name. It is the same list as Members in Measure on the Quality Measures page, so a member who is excluded from a measure still shows it here. A dash means no measure counts the member.",
+      accessor: (m) => eligibleOf(m).map((x) => x.code),
+      render: (m) => {
+        const l = eligibleOf(m);
+        return l.length === 0 ? (
+          "–"
+        ) : (
+          <Stack spacing={0.5} alignItems="flex-start">
+            {l.map((x) => (
+              <StatusChip
+                key={x.code}
+                tone="neutral"
+                label={x.code}
+                tip={x.name}
+              />
+            ))}
+          </Stack>
+        );
+      },
+      filterLabel: "HEDIS measures eligibility",
+      filter: only ? undefined : { type: "multiselect", options: measureOptions },
+    };
+    const final =
+      version === 2
+        ? versionTwo(all, { eligible: eligibleCol, found: foundMulti })
+        : all;
     // The search box looks at the member's name, Member ID and insurance number only. Without this a name such as "Paul" also found members whose care manager is Paul.
-    return all.map((c) => ({
+    return final.map((c) => ({
       ...c,
       searchable: c.key === "name" || c.key === "id" || c.key === "insurance",
     }));
-  }, [openOfNow, gapsOfNow, only, withYear]);
+  }, [openOfNow, gapsOfNow, only, withYear, version]);
 }

@@ -79,6 +79,8 @@ export interface Column<T> {
   filterLabel?: string;
   /** Include this column in the search box. Default true for any column with an `accessor`; set false to leave it out. */
   searchable?: boolean;
+  /** Heading this column sits under in the Columns panel (for example "Demographics", "Care Gaps"). When any column has one, the panel lists the columns without a group first, then each group with its columns A to Z. The table itself keeps the order of the `columns` array. */
+  group?: string;
   /** Start hidden. The user can switch it on in the Columns panel. */
   defaultHidden?: boolean;
   /** Start pinned (kept in view while scrolling sideways). The user can unpin it. At most `maxPinned` columns start pinned. */

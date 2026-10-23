@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Stack, Typography } from "@mui/material";
 import { Button, DataTable, EmptyState, StatusChip } from "sevida-ui";
 import type { Column, StatusTone } from "sevida-ui";
+import { getVersion } from "../version";
 import { arrivedOn, impactsOf, recordKey, useGaps } from "../careGaps";
 import {
   MY,
@@ -49,13 +50,17 @@ export type RecordGroup =
   | "labs"
   | "medications"
   | "claims"
-  | "procedures";
+  | "procedures"
+  | "observations";
 export const groupOfRecord = (e: Evt): RecordGroup =>
   e.kind === "EHR diagnosis" || (e.kind === "Claim" && e.system === "ICD-10")
     ? "diagnoses"
     : e.kind === "Vaccine"
       ? "immunizations"
-      : e.kind === "Lab" || e.kind === "Observation"
+      : // Version 2 gives Observation records a tab of their own; version 1 keeps them with the labs.
+        e.kind === "Observation" && getVersion() === 2
+        ? "observations"
+        : e.kind === "Lab" || e.kind === "Observation"
         ? "labs"
         : e.kind === "Pharmacy"
           ? "medications"
@@ -147,7 +152,31 @@ export const recordGroups: Record<RecordGroup, GroupConfig> = {
     empty: "No visits or procedures were sent for this member.",
     systemShown: true,
   },
+  // Version 2 only: the screening and other observations that version 1 lists with the labs.
+  observations: {
+    label: "Observation (Procedure)",
+    title: "Observation (Procedure)",
+    dateHeader: "Observation date",
+    whatHeader: "Observation",
+    codeHeader: "Code",
+    codeHelp:
+      "The code of the observation, with the code system in brackets (LOINC, SNOMED…). These are screening results and findings recorded as observations, for example a screening that counts toward a measure.",
+    statusHeader: "Status in the file",
+    empty: "No observations were sent for this member.",
+    result: true,
+  },
 };
+
+/** The kinds of record that exist in the version being shown (the Observation (Procedure) tab is version 2 only). */
+export const recordGroupKeys = (): RecordGroup[] =>
+  (Object.keys(recordGroups) as RecordGroup[]).filter(
+    (k) => k !== "observations" || getVersion() === 2,
+  );
+/** In version 2 the Labs tab holds labs only, so its title no longer says "and observations". */
+export const groupConfig = (g: RecordGroup): GroupConfig =>
+  g === "labs" && getVersion() === 2
+    ? { ...recordGroups.labs, title: "Labs" }
+    : recordGroups[g];
 
 /** The All records tab: every record in one list, newest first (checklist row 55). It only has the columns every kind shares. */
 export type RecordTab = RecordGroup | "all";
@@ -174,7 +203,7 @@ export function ClinicalTab({
   year?: number;
   group: RecordTab;
 }) {
-  const g = group === "all" ? allRecords : recordGroups[group];
+  const g = group === "all" ? allRecords : groupConfig(group);
   const { get: getGap } = useGaps();
   // Care gap work exists for the current year only.
   const get = (mm: Member, code: Parameters<typeof getGap>[1]) =>
@@ -223,7 +252,7 @@ export function ClinicalTab({
             nowrap: true,
             filter: {
               type: "multiselect",
-              options: opt(Object.values(recordGroups).map((x) => x.label)),
+              options: opt(recordGroupKeys().map((k) => recordGroups[k].label)),
             },
           },
         ] as Column<Evt>[])

@@ -32,6 +32,8 @@ import { tips } from "../copy";
 import type { Column } from "sevida-ui";
 import { CareGapsTab } from "../components/CareGapsTab";
 import { groupOfRecord } from "../components/ClinicalTab";
+import { diagnosesOfYear } from "../components/memberColumns";
+import { useVersion } from "../version";
 import { RecordsTab, isRecordTab, recordTabOrder } from "../components/RecordsTab";
 import { ProviderModal } from "../components/ProviderModal";
 import { memberExtras, benefitsOf } from "../recordFields";
@@ -244,8 +246,10 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
     },
   ];
 
+  const { version } = useVersion();
   return (
-    <>
+    <Stack spacing={2}>
+      {version.id === 2 && year === MY && <ClinicalSummaryCard m={m} />}
       <DataTable
         ariaLabel="Measures"
         title="Measures"
@@ -317,7 +321,7 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
           </Stack>
         )}
       </Modal>
-    </>
+    </Stack>
   );
 }
 
@@ -484,6 +488,37 @@ function PrintSummary({ m, year }: { m: Member; year: number }) {
         </p>
       </div>
     </>
+  );
+}
+
+/** Version 2: what used to be the Diagnosis column of the Members list, now on the member's own page. (HbA1c values are on the Labs tab of Records.) */
+function ClinicalSummaryCard({ m }: { m: Member }) {
+  const dx = diagnosesOfYear(m, MY);
+  return (
+    <Card
+      title="Diagnosis codes"
+      hint="diag.csv"
+      tooltip={`From the records of measurement year ${MY}. Every record is in the Diagnoses sub-tab of Records. Version 2 moved this here from the Members list.`}
+    >
+      <DetailGrid
+        columns={1}
+        items={[
+          {
+            label: "Diagnosis codes",
+            value:
+              dx.length === 0 ? (
+                "None on file"
+              ) : (
+                <Stack spacing={0.5}>
+                  {dx.map((t) => (
+                    <span key={t}>{t}</span>
+                  ))}
+                </Stack>
+              ),
+          },
+        ]}
+      />
+    </Card>
   );
 }
 
@@ -983,6 +1018,7 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
  * The arrow opens everything else about the member.
  */
 function MemberHeader({ m, year }: { m: Member; year: number }) {
+  const { version } = useVersion();
   const [open, setOpen] = useState(false);
   const { gapsOf } = useGaps();
   const results = resultsFor(m, year);
@@ -1015,7 +1051,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
               ["Member ID", m.id],
               ["Date of birth", fmtDate(m.dob)],
               ["Age", ageAtYearEnd(m.dob, year)],
-              ["Sex", m.gender === "female" ? "Female" : "Male"],
+              [version.id === 2 ? "Gender" : "Sex", m.gender === "female" ? "Female" : "Male"],
               ["Enrollment status", `${enroll.label} ${enroll.detail}`],
               ["Plan", productLineOfMember(m)],
             ],
@@ -1147,7 +1183,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
             }}
           >
             <Field label="Member ID">{m.id}</Field>
-            <Field label="Age · sex">
+            <Field label={version.id === 2 ? "Age · gender" : "Age · sex"}>
               {ageAtYearEnd(m.dob, year)} ·{" "}
               {m.gender === "female" ? "Female" : "Male"}
             </Field>
@@ -1407,7 +1443,7 @@ export function MemberDetailPage() {
               !role.hiddenTabs.includes(t.key) &&
               // Records is hidden only when every kind of record is hidden.
               (t.key !== "records" ||
-                recordTabOrder.some((k) => !role.hiddenTabs.includes(k))),
+                recordTabOrder().some((k) => !role.hiddenTabs.includes(k))),
           )}
         />
       </Stack>

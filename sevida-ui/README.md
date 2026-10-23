@@ -186,3 +186,4 @@ export to Excel/CSV, Toast notifications, Stepper/Wizard, Timeline. Add these on
 `RingGauge`, `LineChart`, `BarChart`, `Funnel`, `Pipeline`, `StackedBar` (components/Charts). Theme colours only, drawn as SVG at real pixel size, each with a screen-reader data table or text alternative.
 
 - **DataTable `searchPlaceholderCompact`:** shorter search-box text used on a phone, where the full `searchPlaceholder` would be cut off. On a tablet (600 px and wider) the search box, buttons and saved views sit on one row that wraps if it must.
+- **DataTable `Column.group`:** a heading for the Columns panel (for example "Demographics"). When any column has one, the panel lists the columns without a group first, then each group with its columns A to Z. The table keeps the order of the `columns` array.

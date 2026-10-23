@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useVersion } from "../version";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
@@ -226,6 +227,7 @@ const stateColor: Record<MeasureState, string> = {
  * Where the guide is silent the safe version is drawn and the tile carries an "Ask" tag (see quicksight-audit.xlsx).
  */
 export function QuickSightDashboardPage() {
+  const { version } = useVersion();
   const { role } = useRole();
   const [sheet, setSheet] = useState("Overview");
   const [params] = useSearchParams();
@@ -468,7 +470,7 @@ export function QuickSightDashboardPage() {
 
   return (
     <PageContainer
-      title="Quality measure analytics"
+      title={version.id === 2 ? "Analytics" : "Quality measure analytics"}
       titleVariant="overview"
       subtitle="The dashboard drawn only with what QuickSight can build."
       actions={

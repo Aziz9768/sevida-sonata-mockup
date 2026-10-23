@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -43,6 +43,7 @@ import { poweredByDark, poweredByLight } from "./brand";
 import { RoleProvider, useRole } from "./roles";
 import type { NavKey } from "./roles";
 import { RolePicker } from "./components/RolePicker";
+import { VersionPicker, VersionProvider, useVersion } from "./version";
 import { RunLine } from "./components/RunBits";
 import { RunKeyed, RunProvider } from "./runs";
 import { AuditProvider, useAudit, useWho } from "./auditLog";
@@ -90,6 +91,8 @@ const baseNav: NavItem[] = [
 /** Menu items kept in the code (page, address and access rules still work) but not shown in the sidebar.
  *  To show Quality measures again, remove "measures" from this list. */
 const HIDDEN_IN_SIDEBAR: string[] = ["measures"];
+/** Also hidden in version 2: the Access Log (no data to show yet) and Analytics Option 2 (only one Analytics entry is kept, and it is relabelled "Analytics"). */
+const HIDDEN_IN_SIDEBAR_V2: string[] = ["access-log", "dashboards"];
 
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string) {
@@ -266,6 +269,7 @@ function Protected() {
   const { user, signOut } = useAuth();
   const { personById } = useAccess();
   const { role, home } = useRole();
+  const { version } = useVersion();
   const { logSignIn } = useAudit();
   const who = useWho();
   // Once signed in again the saved page has done its job.
@@ -298,15 +302,23 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={baseNav.filter(
-        (i) =>
-          role.menus.includes(i.key as NavKey) &&
-          !HIDDEN_IN_SIDEBAR.includes(i.key),
-      )}
+      items={baseNav
+        .filter(
+          (i) =>
+            role.menus.includes(i.key as NavKey) &&
+            !HIDDEN_IN_SIDEBAR.includes(i.key) &&
+            !(version.id === 2 && HIDDEN_IN_SIDEBAR_V2.includes(i.key)),
+        )
+        .map((i) =>
+          version.id === 2 && i.key === "quicksight"
+            ? { ...i, label: "Analytics" }
+            : i,
+        )}
       activeKey={activeKeyFor(pathname)}
       headerContent={
         <>
           <RunLine />
+          <VersionPicker />
           <RolePicker />
         </>
       }
@@ -357,6 +369,7 @@ function Protected() {
     >
       <IdleWatcher />
       <RunKeyed>
+      <Fragment key={`version-${version.id}`}>
       <Routes>
         <Route path="/" element={<Navigate to={home} replace />} />
         <Route
@@ -457,6 +470,7 @@ function Protected() {
         />
         <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
+      </Fragment>
       </RunKeyed>
     </AppShell>
   );
@@ -465,6 +479,7 @@ function Protected() {
 export function App() {
   return (
     <AuditProvider>
+      <VersionProvider>
       <RoleProvider>
         <RunProvider>
           <Routes>
@@ -474,6 +489,7 @@ export function App() {
           </Routes>
         </RunProvider>
       </RoleProvider>
+      </VersionProvider>
     </AuditProvider>
   );
 }
