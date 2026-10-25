@@ -10,6 +10,8 @@ import path from 'node:path';
 const lib = path.resolve(__dirname, '../sevida-ui');
 
 export default defineConfig({
+  // Relative asset paths, so the build works from any address (GitHub Pages serves it from /<repo-name>/). The app uses HashRouter, so there are no server routes to break.
+  base: './',
   plugins: [react()],
   resolve: {
     alias: [
