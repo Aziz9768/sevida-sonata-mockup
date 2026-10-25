@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageContainer, SelectField } from "sevida-ui";
 import { RunNotice, RunSelect } from "../components/RunBits";
-import { MY, measures, members } from "../data";
-import { kpisFor, openGapCount } from "../dashboardData";
+import { MY, allMembers, measures } from "../data";
+import { V3_GAP_LABEL, gapShort } from "../v3Data";
+import { kpisFor, openGapCount, periodText } from "../dashboardData";
 import {
   NotesContext,
   QsColumnChart,
@@ -17,6 +18,7 @@ import {
   QsTile,
 } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
+import { useVersion } from "../version";
 import type { QsBar, QsCol } from "../quicksight/kit";
 
 interface Row {
@@ -41,15 +43,32 @@ const TABS = ["All measures"];
  * data point: click its bar or its row. That is the one kind of click action the guide allows.
  */
 export function DashboardCardsPage() {
+  const { version } = useVersion();
   const nav = useNavigate();
   const [year, setYear] = useState(MY);
+  const v3 = version.id === 3;
+  /** Version 3: keep only members who have a gap in more than one measure (Overview only). */
+  const [multi, setMulti] = useState("");
+  const pop = useMemo(
+    () =>
+      !v3 || !multi
+        ? allMembers()
+        : allMembers().filter(
+            (m) => (openGapCount(m, year) > 1) === (multi === "Yes"),
+          ),
+    [v3, multi, year],
+  );
   const open = (code: string) => nav(`/quicksight?m=${code}&from=cards`);
 
-  const rows: Row[] = measures.map((m) => {
-    const { initial, t } = kpisFor(m.code, members, year);
+  /** Version 3 lists the measures in the menu order: BCS, CCS, COL, GSD, WCV. */
+  const ordered = v3
+    ? [...measures].sort((a, b) => gapShort(a.code).localeCompare(gapShort(b.code)))
+    : measures;
+  const rows: Row[] = ordered.map((m) => {
+    const { initial, t } = kpisFor(m.code, pop, year);
     return {
       code: m.code,
-      label: `${m.code} · ${m.short}`,
+      label: v3 ? V3_GAP_LABEL[m.code] : `${m.code} · ${m.short}`,
       rate: t.rate,
       met: t.met,
       gap: t.gap,
@@ -61,17 +80,17 @@ export function DashboardCardsPage() {
     };
   });
   const bars: QsBar[] = rows.map((r) => ({
-    label: r.code,
+    label: v3 ? gapShort(r.code) : r.code,
     value: r.rate,
     detail: `${r.met} met, ${r.gap} not met, ${r.eligible} eligible`,
   }));
   const gapBars: QsBar[] = rows.map((r) => ({
-    label: r.code,
+    label: v3 ? gapShort(r.code) : r.code,
     value: r.gap,
     detail: `${r.gap} of ${r.eligible} eligible members have not met it`,
     color: qs.meaning.gap,
   }));
-  const withGaps = members.filter((m) => openGapCount(m, year) > 0).length;
+  const withGaps = pop.filter((m) => openGapCount(m, year) > 0).length;
   const lowest = rows.reduce((a, b) => (b.rate < a.rate ? b : a));
   const cols: QsCol<Row>[] = [
     { key: "label", header: "Measure", value: (r) => r.label, nowrap: true },
@@ -118,7 +137,7 @@ export function DashboardCardsPage() {
 
   return (
     <PageContainer
-      title="Analytics option 2"
+      title={version.id === 3 ? "Overview" : "Analytics option 2"}
       titleVariant="overview"
       subtitle="All measures on one sheet. Click a bar or a row to open that measure's dashboard."
     >
@@ -128,7 +147,10 @@ export function DashboardCardsPage() {
           tabs={TABS}
           active={TABS[0]}
           onTab={() => undefined}
-          onReset={() => setYear(MY)}
+          onReset={() => {
+            setYear(MY);
+            setMulti("");
+          }}
         >
           <QsControlsBar>
             <QsControl>
@@ -145,14 +167,37 @@ export function DashboardCardsPage() {
             <QsControl>
               <RunSelect />
             </QsControl>
+            {v3 && (
+              <QsControl info="Members who have not met two or more measures.">
+                <SelectField
+                  label="Gap in more than one measure"
+                  value={multi}
+                  onChange={(v) => setMulti(v)}
+                  options={[
+                    { value: "", label: "All" },
+                    { value: "Yes", label: "Yes" },
+                    { value: "No", label: "No" },
+                  ]}
+                />
+              </QsControl>
+            )}
           </QsControlsBar>
           <QsSheet>
             <QsTile cols={36} bare>
               <QsText>
                 <p>
-                  <b>All measures, {year}.</b> The numbers are for the whole
-                  population, with no filters. Click a bar or a row to open that
-                  measure's dashboard.
+                  <b>All measures, {year}.</b>{" "}
+                  {v3 ? (
+                    <>
+                      Measurement period: {periodText(year)}.{" "}
+                      {multi
+                        ? `Only members ${multi === "Yes" ? "with" : "without"} a gap in more than one measure.`
+                        : "The numbers are for the whole population."}
+                    </>
+                  ) : (
+                    "The numbers are for the whole population, with no filters."
+                  )}{" "}
+                  Click a bar or a row to open that measure's dashboard.
                 </p>
               </QsText>
             </QsTile>
@@ -165,7 +210,7 @@ export function DashboardCardsPage() {
             <QsKpi
               cols={9}
               label="Members"
-              value={members.length.toLocaleString("en-US")}
+              value={pop.length.toLocaleString("en-US")}
               tip="Everyone in the files (initial population)."
             />
             <QsKpi
@@ -212,7 +257,7 @@ export function DashboardCardsPage() {
             <QsTile
               cols={36}
               title="All numbers by measure"
-              subtitle="Click a row to open that measure. Diabetes blood sugar (GSD) shows its first rate here."
+              subtitle={`Click a row to open that measure. ${v3 ? "GSD" : "Diabetes blood sugar (GSD)"} shows its first rate here.`}
             >
               <QsTable
                 label="All numbers by measure"

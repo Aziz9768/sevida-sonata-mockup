@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useVersion } from "../version";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -38,6 +38,7 @@ import {
   measureByCode,
   measureFor,
   measures,
+  allMembers,
   members,
   resultsFor,
   stateLabel,
@@ -49,6 +50,7 @@ import {
   compareSeries,
   ethnicityOf,
   openGapCount,
+  v3Code,
   providerOf,
   raceOf,
   emptyFilters,
@@ -66,6 +68,7 @@ import {
   rejectedRows,
   runInfo,
   secondRate,
+  a1cCounts,
   sexOf,
   trendRows,
 } from "../dashboardData";
@@ -78,8 +81,22 @@ import type {
 } from "../dashboardData";
 import {
   TrendChart,
+  rangePresets,
   useTrendControls,
 } from "../components/dashboard/TrendCard";
+import {
+  V3_DEFINITION,
+  V3_EXCLUSIONS,
+  V3_GAP_LABEL,
+  V3_MET,
+  gapShort,
+  ageLabel,
+  ageParts,
+  militaryV3,
+  tricareIdOf,
+} from "../v3Data";
+
+const ageMonths = (dob: Date) => ageParts(dob).months;
 import { fileTitle } from "../copy";
 import { MEASURE_VERSION } from "../careGaps";
 import { SMALL_GROUP } from "../insights";
@@ -91,7 +108,7 @@ import {
   ALL,
   LABEL,
   openGapsLabel,
-  measureOptions,
+  measureOptionsFor,
   optionsOf,
   resultOptions,
 } from "../sharedFilters";
@@ -115,7 +132,10 @@ const azOpt = <T extends { label: string }>(xs: T[]) =>
 const RUN_LABEL = "Results as of Run";
 /** Controls in a bar: A to Z by name. */
 const byName = (items: [string, ReactNode][]) =>
-  [...items].sort((a, b) => a[0].localeCompare(b[0])).map((i) => i[1]);
+  [...items]
+    .filter((i) => i[1] !== null)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map((i) => i[1]);
 
 /** Controls that live on one sheet only. A choice made there still filters the other sheets, so those sheets say so. */
 const SHEET_ONLY: {
@@ -123,55 +143,97 @@ const SHEET_ONLY: {
   label: string;
   text: (f: DashFilters) => string;
 }[] = [
-  { sheet: "Overview", label: FL.result, text: (f) => f.status },
-  { sheet: "Overview", label: FL.member, text: (f) => f.memberId.trim() },
+  { sheet: "Overview", get label() {
+      return FL.result;
+    }, text: (f) => f.status },
+  { sheet: "Overview", get label() {
+      return FL.member;
+    }, text: (f) => f.memberId.trim() },
   {
     sheet: "Overview",
-    label: FL.age,
+    get label() {
+      return FL.age;
+    },
     text: (f) =>
       f.ageFrom !== "" || f.ageTo !== ""
         ? `${f.ageFrom || "0"} to ${f.ageTo || "100"}`
         : "",
   },
-  { sheet: "Overview", label: FL.sex, text: (f) => f.sex },
+  { sheet: "Overview", get label() {
+      return FL.sex;
+    }, text: (f) => f.sex },
   {
     sheet: "Overview",
-    label: FL.ageGroup,
+    get label() {
+      return FL.ageGroup;
+    },
     text: (f) => f.ageGroup.join(", "),
   },
-  { sheet: "Overview", label: FL.race, text: (f) => f.race.join(", ") },
+  { sheet: "Overview", get label() {
+      return FL.race;
+    }, text: (f) => f.race.join(", ") },
   {
     sheet: "Overview",
-    label: FL.ethnicity,
+    get label() {
+      return FL.ethnicity;
+    },
     text: (f) => f.ethnicity.join(", "),
   },
   {
     sheet: "Overview",
-    label: FL.provider,
+    get label() {
+      return FL.provider;
+    },
     text: (f) => f.provider.join(", "),
   },
-  { sheet: "Overview", label: FL.openGaps, text: (f) => f.openGaps },
+  { sheet: "Overview", get label() {
+      return FL.openGaps;
+    }, text: (f) => f.openGaps.replace("|", " ") },
+  {
+    sheet: "Overview",
+    label: "Age Min",
+    text: (f) => f.ageMin.replace("|", " "),
+  },
+  {
+    sheet: "Overview",
+    label: "Age Max",
+    text: (f) => f.ageMax.replace("|", " "),
+  },
   {
     sheet: "Details",
-    label: FL.dob,
+    get label() {
+      return FL.dob;
+    },
     text: (f) =>
       f.dobFrom || f.dobTo ? `${f.dobFrom || "…"} to ${f.dobTo || "…"}` : "",
   },
   {
     sheet: "Details",
-    label: FL.excluded,
+    get label() {
+      return FL.excluded;
+    },
     text: (f) => f.excluded.join(", "),
   },
   {
     sheet: "Details",
-    label: FL.evDate,
+    get label() {
+      return FL.evDate;
+    },
     text: (f) =>
       f.evFrom || f.evTo ? `${f.evFrom || "…"} to ${f.evTo || "…"}` : "",
   },
-  { sheet: "Details", label: FL.a1c, text: (f) => f.a1c },
-  { sheet: "Details", label: FL.state, text: (f) => f.state },
-  { sheet: "Details", label: FL.county, text: (f) => f.county },
-  { sheet: "Details", label: FL.military, text: (f) => f.military },
+  { sheet: "Details", get label() {
+      return FL.a1c;
+    }, text: (f) => f.a1c },
+  { sheet: "Details", get label() {
+      return FL.state;
+    }, text: (f) => f.state },
+  { sheet: "Details", get label() {
+      return FL.county;
+    }, text: (f) => f.county },
+  { sheet: "Details", get label() {
+      return FL.military;
+    }, text: (f) => f.military },
 ];
 
 /** Tells the viewer which choices made on another sheet are still filtering this one (a hidden filter would be a trap). */
@@ -235,9 +297,17 @@ export function QuickSightDashboardPage() {
   const [code, setCode] = useState<MeasureCode>(
     () => (measureByCode(params.get("m") ?? "") ?? measures[0]).code,
   );
+  // Version 3: the sidebar picks the measure (Analytics > BCS, CCS, ...), so the page follows the address.
+  const mParam = params.get("m");
+  useEffect(() => {
+    if (version.id === 3 && mParam && measureByCode(mParam)) {
+      setCode(measureByCode(mParam)!.code);
+      setView("");
+    }
+  }, [version.id, mParam]);
   const [f, setF] = useState<DashFilters>(emptyFilters());
   const [view, setView] = useState<"" | "Met" | "Gap">("");
-  const [notes, setNotes] = useState({ fr: true, ask: false });
+  const [notes, setNotes] = useState({ fr: version.id !== 3, ask: false });
   const [withWarnings, setWithWarnings] = useState(false);
   const options = useMemo(() => facetOptions(), []);
   const set = <K extends keyof DashFilters>(key: K, value: DashFilters[K]) =>
@@ -252,7 +322,7 @@ export function QuickSightDashboardPage() {
   const def = measureFor(measureByCode(code)!, year);
 
   /* ---- controls (each one is a QuickSight control) ---- */
-  const cMeasure = (
+  const cMeasure = version.id === 3 ? null : (
     <QsControl key="measure" info="Pick the measure. Every sheet follows it.">
       <SelectField
         label={FL.measure}
@@ -261,7 +331,7 @@ export function QuickSightDashboardPage() {
           setCode(v as MeasureCode);
           setView("");
         }}
-        options={azOpt(measureOptions)}
+        options={azOpt(measureOptionsFor())}
       />
     </QsControl>
   );
@@ -348,6 +418,81 @@ export function QuickSightDashboardPage() {
     </QsControl>
   );
 
+  /** Version 3: the same two-part controls as the member lists. Age Min and Age Max are a number and a unit; # Open Gaps is an operator and a number. */
+  const ageField = (key: "ageMin" | "ageMax", label: string) => {
+    const [num = "", unit = "year"] = (f[key] || "").split("|");
+    const put = (n: string, u: string) =>
+      set(key, n === "" ? "" : `${n}|${u}`);
+    return (
+      <QsControl key={key}>
+        <Typography
+          sx={{
+            fontSize: 14,
+            fontWeight: 400,
+            color: qs.color.secondaryForeground,
+            mb: 0.625,
+          }}
+        >
+          {label}
+        </Typography>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <TextField
+            slotProps={{ htmlInput: { "aria-label": `${label} number`, min: 0, type: "number" } }}
+            value={num}
+            onChange={(e) =>
+              put(e.target.value.replace(/[^0-9]/g, ""), unit)
+            }
+          />
+          <SelectField
+            label=""
+            value={unit}
+            onChange={(v) => put(num, v)}
+            options={[
+              { value: "month", label: "months" },
+              { value: "year", label: "years" },
+            ]}
+          />
+        </Box>
+      </QsControl>
+    );
+  };
+  const openGapsField = () => {
+    const [op0, num = ""] = (f.openGaps || "").split("|");
+    const op = op0 || "=";
+    const put = (o: string, n: string) =>
+      set("openGaps", n === "" ? "" : `${o}|${n}`);
+    return (
+      <QsControl key="openGaps" info="How many measures the member has not met.">
+        <Typography
+          sx={{
+            fontSize: 14,
+            fontWeight: 400,
+            color: qs.color.secondaryForeground,
+            mb: 0.625,
+          }}
+        >
+          {FL.openGaps}
+        </Typography>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <SelectField
+            label=""
+            value={op}
+            onChange={(v) => put(v, num)}
+            options={["=", "<", "<=", ">", ">="].map((o) => ({
+              value: o,
+              label: o,
+            }))}
+          />
+          <TextField
+            slotProps={{ htmlInput: { "aria-label": `${FL.openGaps} number`, min: 0, type: "number" } }}
+            value={num}
+            onChange={(e) => put(op, e.target.value.replace(/[^0-9]/g, ""))}
+          />
+        </Box>
+      </QsControl>
+    );
+  };
+
   const overviewControls = (
     <QsControlsBar fr="703" ask={["Q1", "Q4", "Q12"]}>
       {byName([
@@ -370,15 +515,23 @@ export function QuickSightDashboardPage() {
           <QsControl key="member">
             <TextField
               label={FL.member}
-              placeholder="ID or name"
+              placeholder={
+                version.id === 3 ? "Member Name or Tricare ID" : "ID or name"
+              }
               value={f.memberId}
               onChange={(e) => set("memberId", e.target.value)}
             />
           </QsControl>,
         ],
+        ...(version.id === 3
+          ? ([
+              ["Age Min", ageField("ageMin", "Age Min")],
+              ["Age Max", ageField("ageMax", "Age Max")],
+            ] as [string, ReactNode][])
+          : []),
         [
           FL.age,
-          <QsControl key="age">
+          version.id === 3 ? null : <QsControl key="age">
             <QsRangeSlider
               label={FL.age}
               min={0}
@@ -409,12 +562,14 @@ export function QuickSightDashboardPage() {
         ],
         [
           FL.openGaps,
-          dd(
-            "openGaps",
-            FL.openGaps,
-            options.openGaps,
-            "How many measures the member has not met.",
-          ),
+          version.id === 3
+            ? openGapsField()
+            : dd(
+                "openGaps",
+                FL.openGaps,
+                options.openGaps,
+                "How many measures the member has not met.",
+              ),
         ],
       ])}
     </QsControlsBar>
@@ -426,7 +581,7 @@ export function QuickSightDashboardPage() {
         [RUN_LABEL, cRun],
         [FL.year, cYear],
         [FL.dob, dateRange(FL.dob, "dobFrom", "dobTo")],
-        [FL.excluded, multi("excluded", FL.excluded, azOpt(measureOptions))],
+        [FL.excluded, multi("excluded", FL.excluded, azOpt(measureOptionsFor()))],
         [FL.evDate, dateRange(FL.evDate, "evFrom", "evTo")],
         [FL.a1c, dd("a1c", FL.a1c, options.a1c)],
         [FL.state, dd("state", FL.state, az(options.state))],
@@ -470,9 +625,13 @@ export function QuickSightDashboardPage() {
 
   return (
     <PageContainer
-      title={version.id === 2 ? "Analytics" : "Quality measure analytics"}
+      title={version.id >= 2 ? "Analytics" : "Quality measure analytics"}
       titleVariant="overview"
-      subtitle="The dashboard drawn only with what QuickSight can build."
+      subtitle={
+        version.id === 3
+          ? V3_GAP_LABEL[code]
+          : "The dashboard drawn only with what QuickSight can build."
+      }
       actions={
         <Box
           sx={{
@@ -482,16 +641,18 @@ export function QuickSightDashboardPage() {
             alignItems: "center",
           }}
         >
-          {fromCards && (
+          {fromCards && version.id !== 3 && (
             <Link to="/dashboards" style={{ color: "inherit" }}>
               ← All dashboards
             </Link>
           )}
-          <SwitchField
-            label="Requirement tags"
-            checked={notes.fr}
-            onChange={(v) => setNotes({ ...notes, fr: v })}
-          />
+          {version.id !== 3 && (
+            <SwitchField
+              label="Requirement tags"
+              checked={notes.fr}
+              onChange={(v) => setNotes({ ...notes, fr: v })}
+            />
+          )}
         </Box>
       }
     >
@@ -537,18 +698,21 @@ function Overview({
   def: ReturnType<typeof measureFor>;
   onBar: (v: "Met" | "Gap") => void;
 }) {
+  const { version } = useVersion();
+  const v3 = version.id === 3;
   const { initial, t } = kpisFor(code, list, year);
-  const whole = kpisFor(code, members, year);
+  const whole = kpisFor(code, allMembers(), year);
   const run = runInfo();
   const { run: selectedRun } = useRun();
   /** Claims keep arriving for 90 days, so a period that ends inside the last 90 days can still change. */
   const inProgress = (d: Date) =>
     d.getTime() > run.last.getTime() - 90 * DAY_MS;
   const metPct = share(t.met, t.denominator);
-  const gsd = code === "GSD" ? secondRate(list, year) : null;
+  const gsd = code === "GSD" && !v3 ? secondRate(list, year) : null;
+  const a1c = code === "GSD" && v3 ? a1cCounts(list, year) : null;
   const dims: { dim: Dimension; title: string; cols: number }[] = [
-    { dim: "sex", title: "Met % by sex", cols: 12 },
-    { dim: "ageGroup", title: "Met % by age group", cols: 12 },
+    { dim: "sex", title: `Met % by ${FL.sex.toLowerCase()}`, cols: 12 },
+    { dim: "ageGroup", title: `Met % by ${FL.ageGroup.toLowerCase()}`, cols: 12 },
     { dim: "ethnicity", title: "Met % by ethnicity", cols: 18 },
     { dim: "race", title: "Met % by race", cols: 18 },
     { dim: "provider", title: "Met % by primary care provider", cols: 36 },
@@ -572,6 +736,7 @@ function Overview({
   return (
     <QsSheet>
       <QsTile cols={36} bare fr="701" ask={["Q9", "Q21"]}>
+        {!v3 && (
         <Typography
           component="h2"
           sx={{
@@ -582,6 +747,7 @@ function Overview({
         >
           {def.code} · {def.name}
         </Typography>
+        )}
         <QsText>
           <p>
             {def.population}. {def.needs} Measurement period: {periodText(year)}
@@ -652,10 +818,26 @@ function Overview({
         fr="702"
         label="Eligible"
         value={n0(t.denominator)}
-        tip="Members counted in the rate."
+        tip={
+          v3
+            ? `${V3_DEFINITION[code]} Eligible = initial population minus exclusions.`
+            : "Members counted in the rate."
+        }
       />
-      <QsKpi cols={8} fr="702" label="Excluded" value={n0(t.excluded)} />
-      <QsKpi cols={6} fr="702" label="Met" value={n0(t.met)} />
+      <QsKpi
+        cols={8}
+        fr="702"
+        label="Excluded"
+        value={n0(t.excluded)}
+        tip={v3 ? V3_EXCLUSIONS[code] : undefined}
+      />
+      <QsKpi
+        cols={6}
+        fr="702"
+        label="Met"
+        value={n0(t.met)}
+        tip={v3 ? V3_MET[code] : undefined}
+      />
       <QsKpi
         cols={6}
         fr="702"
@@ -672,6 +854,47 @@ function Overview({
         value={t.denominator ? p1(100 - metPct) : p1(0)}
         color={qs.meaning.gapText}
       />
+      {a1c && (
+        <>
+          <QsKpi
+            cols={12}
+            fr="702"
+            label="HbA1c result: Total"
+            value={n0(a1c.total)}
+            tip="Denominator: eligible members counted in the rate. Each member's result is their lowest final HbA1c of the period."
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="HbA1c > 8%"
+            value={n0(a1c.over8)}
+            tip="Members whose lowest result is 8% or higher."
+            color={qs.meaning.gapText}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="HbA1c > 8%: % of total"
+            value={p1(share(a1c.over8, a1c.total))}
+            color={qs.meaning.gapText}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="HbA1c > 9%"
+            value={n0(a1c.over9)}
+            tip="Members whose lowest result is above 9%."
+            color={qs.meaning.gapText}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="HbA1c > 9%: % of total"
+            value={p1(share(a1c.over9, a1c.total))}
+            color={qs.meaning.gapText}
+          />
+        </>
+      )}
       {gsd && (
         <>
           <QsKpi
@@ -730,20 +953,37 @@ function Overview({
               { value: "notmet", label: "Not met %" },
             ]}
           />
-          <DateField
-            label="From"
-            disabled={c.comparing}
-            value={isoDay(c.range.from)}
-            onChange={(e) =>
-              e.target.value && c.setFrom(fromIso(e.target.value))
-            }
-          />
-          <DateField
-            label="To"
-            disabled={c.comparing}
-            value={isoDay(c.range.to)}
-            onChange={(e) => e.target.value && c.setTo(fromIso(e.target.value))}
-          />
+          {v3 ? (
+            <SelectField
+              label="Date range"
+              value={c.preset}
+              disabled={c.comparing}
+              onChange={(v) => c.setPreset(v)}
+              options={rangePresets[c.g].map((x) => ({
+                value: x.value,
+                label: x.label,
+              }))}
+            />
+          ) : (
+            <>
+              <DateField
+                label="From"
+                disabled={c.comparing}
+                value={isoDay(c.range.from)}
+                onChange={(e) =>
+                  e.target.value && c.setFrom(fromIso(e.target.value))
+                }
+              />
+              <DateField
+                label="To"
+                disabled={c.comparing}
+                value={isoDay(c.range.to)}
+                onChange={(e) =>
+                  e.target.value && c.setTo(fromIso(e.target.value))
+                }
+              />
+            </>
+          )}
           <SelectField
             label="Compare with last year"
             value={c.comparing ? "Yes" : "No"}
@@ -898,6 +1138,7 @@ function Overview({
       >
         <CalcList year={year} def={def} />
       </QsTile>
+      {!v3 && (
       <QsTile
         cols={36}
         bare
@@ -936,6 +1177,7 @@ function Overview({
           </ul>
         </QsText>
       </QsTile>
+      )}
     </QsSheet>
   );
 }
@@ -970,7 +1212,7 @@ function CalcList({
           <b>Rules applied:</b>
           <ul>
             {def.rules.map((r) => (
-              <li key={r.text}>{r.text}</li>
+              <li key={r.text}>{v3Code(r.text)}</li>
             ))}
           </ul>
         </li>
@@ -1000,6 +1242,7 @@ function Details({
   view: "" | "Met" | "Gap";
 }) {
   const { memberLists } = useRole();
+  const v3 = useVersion().version.id === 3;
   const shown = useMemo(
     () =>
       view
@@ -1011,7 +1254,7 @@ function Details({
   const cols: QsCol<Member>[] = [
     {
       key: "name",
-      header: "Member name",
+      header: v3 ? "Member Name" : "Member name",
       value: (m) => m.name,
       nowrap: true,
       render: (m) => (
@@ -1024,9 +1267,19 @@ function Details({
       ),
     },
     { key: "id", header: "Member ID", value: (m) => m.id, nowrap: true },
+    ...(v3
+      ? [
+          {
+            key: "tricare",
+            header: "Tricare ID",
+            value: (m: Member) => tricareIdOf(m),
+            nowrap: true,
+          } as QsCol<Member>,
+        ]
+      : []),
     {
       key: "dob",
-      header: "Date of birth",
+      header: FL.dob,
       value: (m) => m.dob.getTime(),
       render: (m) => fmtDate(m.dob),
       nowrap: true,
@@ -1034,19 +1287,20 @@ function Details({
     {
       key: "age",
       header: "Age",
-      value: (m) => ageAtYearEnd(m.dob, year),
+      value: (m) => (v3 ? ageMonths(m.dob) : ageAtYearEnd(m.dob, year)),
+      render: (m) => (v3 ? ageLabel(m.dob) : ageAtYearEnd(m.dob, year)),
       align: "right",
     },
-    { key: "sex", header: "Sex", value: sexOf },
+    { key: "sex", header: FL.sex, value: sexOf },
     {
       key: "ag",
-      header: "Age group",
+      header: FL.ageGroup,
       value: (m) => ageGroupOf(m, year),
       nowrap: true,
     },
     {
       key: "res",
-      header: "Measure result",
+      header: FL.result,
       value: (m) => stateLabel[stateOf(m)],
       nowrap: true,
       render: (m) => (
@@ -1055,7 +1309,7 @@ function Details({
     },
     {
       key: "ev",
-      header: "Evidence date",
+      header: FL.evDate,
       value: (m) => resultsFor(m, year)[code].evidence?.date.getTime() ?? 0,
       render: (m) => {
         const e = resultsFor(m, year)[code].evidence;
@@ -1063,12 +1317,12 @@ function Details({
       },
       nowrap: true,
     },
-    { key: "state", header: "State", value: (m) => stateName(m.state) },
+    { key: "state", header: FL.state, value: (m) => stateName(m.state) },
     { key: "county", header: LABEL.county, value: countyOf, nowrap: true },
     {
       key: "military",
       header: LABEL.military,
-      value: militaryOf,
+      value: (m) => (v3 ? militaryV3(m, year) : militaryOf(m)),
       nowrap: true,
     },
     { key: "race", header: LABEL.race, value: raceOf, nowrap: true },
@@ -1086,9 +1340,10 @@ function Details({
     },
     {
       key: "open",
-      header: "Open care gaps",
+      header: FL.openGaps,
       value: (m) => openGapCount(m, year),
-      render: (m) => openGapsLabel(openGapCount(m, year)),
+      render: (m) =>
+        v3 ? openGapCount(m, year) : openGapsLabel(openGapCount(m, year)),
       align: "right",
       nowrap: true,
     },
@@ -1098,7 +1353,7 @@ function Details({
       value: (m) =>
         measures
           .filter((x) => resultsFor(m, year)[x.code].state === "Excluded")
-          .map((x) => x.code)
+          .map((x) => (v3 ? gapShort(x.code) : x.code))
           .join(", ") || "–",
       nowrap: true,
     },
@@ -1297,6 +1552,8 @@ function AdminSheet({
   withWarnings: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const { version } = useVersion();
+  const v3 = version.id === 3;
   const all = useMemo(() => rejectedRows(), []);
   const { runs } = useRun();
   const [runOpen, setRunOpen] = useState<Run | null>(null);
@@ -1318,11 +1575,11 @@ function AdminSheet({
   const rejectedPct = share(sum.rowsRejected, sum.rowsReceived);
   const overThreshold = rejectedPct > ADMIN_EXAMPLE.threshold;
   const fileColor = (st: string) =>
-    st === "Accepted" || st === "Succeeded"
+    st === "Accepted" || st.startsWith("Succeeded")
       ? qs.meaning.met
       : st === "Accepted with warnings" || st.startsWith("Scheduled")
         ? qs.meaning.gapText
-        : st === "Failed" || st.startsWith("Rejected")
+        : st.startsWith("Failed") || st.startsWith("Rejected")
           ? qs.tone.danger.border
           : qs.meaning.neutral;
   const nextDay = (d: Date) =>
@@ -1337,14 +1594,15 @@ function AdminSheet({
     rejected: f.status === "Failed" ? f.rows : 0,
     days: daysSince(f.receivedOn),
   }));
-  const loads = dataFiles.map((f) => {
+  const loads = dataFiles.flatMap((f) => {
     const status =
       f.status === "Failed"
         ? "Rejected (after three failed attempts)"
         : f.status === "Not received"
           ? "Scheduled retry"
           : "Succeeded";
-    return {
+    const one = {
+      key: f.id,
       f,
       title: fileTitle(f.id),
       status,
@@ -1354,6 +1612,31 @@ function AdminSheet({
       affected: f.status === "Failed" ? f.rows : 0,
       next: f.status === "Not received" ? nextDay(run.last) : null,
     };
+    if (!v3) return [one];
+    // Version 3 adds the two retry outcomes. Demo history: a file that was not received fails its retry and waits for the third try;
+    // a lab file that timed out on the first try loads on the second.
+    if (f.status === "Not received")
+      return [
+        {
+          ...one,
+          key: `${f.id}:2`,
+          status: "Failed on retry",
+          attempt: 2,
+          next: nextDay(run.last),
+        },
+        { ...one, key: `${f.id}:3`, attempt: 3 },
+      ];
+    if (f.id === "lab")
+      return [
+        {
+          ...one,
+          key: `${f.id}:2`,
+          status: "Succeeded on retry",
+          attempt: 2,
+          reason: "Transfer timed out on attempt 1 (demo example)",
+        },
+      ];
+    return [one];
   });
   const artifacts = dataFiles
     .filter((f) => f.status !== "Not received")
@@ -1469,6 +1752,33 @@ function AdminSheet({
           sub={`at ${run.last.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
           tip="From the execution time of the last run of the calculation engine."
         />
+        {v3 && (
+          <QsTile
+            cols={36}
+            title="Nightly Run History Trend"
+            subtitle="Rows received in each recent nightly run. A sudden drop means data went missing. Runs are daily here; each file type's delivery schedule is still to be confirmed."
+          >
+            <QsColumnChart
+              label="Rows received per nightly run"
+              bars={[...runs]
+                .sort((a, b) => a.at.getTime() - b.at.getTime())
+                .slice(-14)
+                .map((r) => ({
+                  label: `${r.at.getMonth() + 1}/${r.at.getDate()}`,
+                  value: r.rowsIn,
+                  detail: `${r.status}: ${n0(r.rowsIn)} rows in, ${n0(r.rowsRejected)} rejected, ${r.files.length} of ${r.filesTotal} files`,
+                  color:
+                    r.status === "Failed" ? qs.meaning.gap : undefined,
+                }))}
+              max={Math.max(
+                100,
+                Math.ceil(Math.max(...runs.map((r) => r.rowsIn)) / 100) * 100,
+              )}
+              unit=""
+              decimals={0}
+            />
+          </QsTile>
+        )}
         <QsTile
           cols={36}
           title="Run history"
@@ -1654,7 +1964,7 @@ function AdminSheet({
           <QsTable
             label="File loads"
             exportFile="file-loads"
-            rowKey={(r) => r.f.id}
+            rowKey={(r) => r.key}
             maxHeight={360}
             cols={[
               {
@@ -1701,10 +2011,14 @@ function AdminSheet({
             rows={loads}
           />
         </QsTile>
-        <QsTile cols={36} title="Problems by reason" fr="710">
+        <QsTile
+          cols={36}
+          title={v3 ? "Rejected Rows by Reason" : "Problems by reason"}
+          fr="710"
+        >
           <QsTable
-            label="Problems by reason"
-            exportFile="problems-by-reason"
+            label={v3 ? "Rejected rows by reason" : "Problems by reason"}
+            exportFile={v3 ? "rejected-rows-by-reason" : "problems-by-reason"}
             rowKey={(r) => r.reason}
             maxHeight={300}
             cols={[
@@ -1865,14 +2179,26 @@ function AdminSheet({
 /* ================================================================== Help */
 
 function HelpSheet() {
+  const v3 = useVersion().version.id === 3;
   return (
     <QsSheet>
       <QsTile cols={36} title="How to use this dashboard" fr="701">
         <QsText>
           <ul>
             <li>
-              <b>Measure and year</b> are at the top of every sheet. Pick them
-              first. Your other choices follow you from sheet to sheet.
+              {v3 ? (
+                <>
+                  <b>Measure:</b> pick it from Analytics in the left menu.{" "}
+                  <b>Year</b> is at the top of every sheet. Your other choices
+                  follow you from sheet to sheet.
+                </>
+              ) : (
+                <>
+                  <b>Measure and year</b> are at the top of every sheet. Pick
+                  them first. Your other choices follow you from sheet to
+                  sheet.
+                </>
+              )}
             </li>
             <li>
               <b>Overview</b> shows the results, the charts by group and the
@@ -1902,8 +2228,9 @@ function HelpSheet() {
               are at the top of Overview.
             </li>
             <li>
-              The measurement period is always the whole calendar year, January
-              1 to December 31.
+              {v3
+                ? "The measurement period is the calendar year, January 1 to December 31. For the current year it runs from January 1 to the last run date (year to date)."
+                : "The measurement period is always the whole calendar year, January 1 to December 31."}
             </li>
           </ul>
         </QsText>

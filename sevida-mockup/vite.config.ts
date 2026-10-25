@@ -10,8 +10,6 @@ import path from 'node:path';
 const lib = path.resolve(__dirname, '../sevida-ui');
 
 export default defineConfig({
-  // Relative paths so the site works under https://<user>.github.io/<repo>/
-  base: './',
   plugins: [react()],
   resolve: {
     alias: [

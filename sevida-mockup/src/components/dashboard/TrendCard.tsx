@@ -10,6 +10,7 @@ import {
 } from "sevida-ui";
 import type { Column, LineSeries } from "sevida-ui";
 import { fmtDate, measures } from "../../data";
+import { getVersion } from "../../version";
 import type { Member, MeasureCode } from "../../data";
 import {
   compareSeries,
@@ -37,17 +38,75 @@ const limitText: Record<Granularity, string> = {
   annual: "10 years",
 };
 
+/**
+ * Version 3: the date range is picked from a short list that depends on the granularity (for example 9 or 18 weeks, 12, 18 or 36 months,
+ * 4, 8 or 12 quarters). It always ends on the last run date.
+ */
+export interface RangePreset {
+  value: string;
+  label: string;
+  /** Length in the unit of the granularity. 0 = everything the demo has. */
+  n: number;
+}
+export const rangePresets: Record<Granularity, RangePreset[]> = {
+  daily: [
+    { value: "30", label: "30 days", n: 30 },
+    { value: "60", label: "60 days", n: 60 },
+    { value: "90", label: "90 days", n: 90 },
+  ],
+  weekly: [
+    { value: "9", label: "9 weeks", n: 9 },
+    { value: "18", label: "18 weeks", n: 18 },
+  ],
+  monthly: [
+    { value: "12", label: "12 months", n: 12 },
+    { value: "18", label: "18 months", n: 18 },
+    { value: "36", label: "36 months", n: 36 },
+  ],
+  quarterly: [
+    { value: "4", label: "4 quarters", n: 4 },
+    { value: "8", label: "8 quarters", n: 8 },
+    { value: "12", label: "12 quarters", n: 12 },
+  ],
+  annual: [{ value: "0", label: "All years", n: 0 }],
+};
+const defaultPreset: Record<Granularity, string> = {
+  daily: "90",
+  weekly: "18",
+  monthly: "12",
+  quarterly: "4",
+  annual: "0",
+};
+export function presetRange(g: Granularity, value: string): { from: Date; to: Date } {
+  const end = defaultRange("annual").to;
+  const n = rangePresets[g].find((x) => x.value === value)?.n ?? 0;
+  if (!n) return defaultRange("annual");
+  if (g === "daily") return { from: new Date(end.getFullYear(), end.getMonth(), end.getDate() - n + 1), to: end };
+  if (g === "weekly") return { from: new Date(end.getFullYear(), end.getMonth(), end.getDate() - n * 7 + 1), to: end };
+  const months = g === "quarterly" ? n * 3 : n;
+  return { from: new Date(end.getFullYear(), end.getMonth() - months, end.getDate() + 1), to: end };
+}
+
 /** Granularity, range and compare choices shared by the single trend and the five small ones on the Overview. */
 export function useTrendControls() {
+  const v3 = getVersion() === 3;
   const [g, setG] = useState<Granularity>("monthly");
-  const [range, setRange] = useState(defaultRange("monthly"));
+  const [preset, setPresetValue] = useState(defaultPreset.monthly);
+  const [range, setRange] = useState(v3 ? presetRange("monthly", defaultPreset.monthly) : defaultRange("monthly"));
   const [which, setWhich] = useState<TrendMetric>("met");
   const [compare, setCompare] = useState(false);
   const canCompare = g === "monthly" || g === "quarterly";
   const comparing = compare && canCompare;
   const pickG = (next: Granularity) => {
     setG(next);
-    setRange(defaultRange(next));
+    if (v3) {
+      setPresetValue(defaultPreset[next]);
+      setRange(presetRange(next, defaultPreset[next]));
+    } else setRange(defaultRange(next));
+  };
+  const setPreset = (value: string) => {
+    setPresetValue(value);
+    setRange(presetRange(g, value));
   };
   // Keep the range inside the longest allowed for the granularity. The end that was not edited moves.
   const setFrom = (from: Date) => {
@@ -73,6 +132,8 @@ export function useTrendControls() {
     compare,
     comparing,
     canCompare,
+    preset,
+    setPreset,
     pickG,
     setFrom,
     setTo,

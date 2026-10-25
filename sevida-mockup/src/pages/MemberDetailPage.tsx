@@ -31,10 +31,15 @@ import {
 import { tips } from "../copy";
 import type { Column } from "sevida-ui";
 import { CareGapsTab } from "../components/CareGapsTab";
+import { CareGapsTabV3 } from "../components/CareGapsTabV3";
+import { ageLabel } from "../v3Data";
+import { MemberIdsV3 } from "../components/MemberIdsV3";
+import { tricareIdOf, genderV3 } from "../v3Data";
 import { groupOfRecord } from "../components/ClinicalTab";
 import { diagnosesOfYear } from "../components/memberColumns";
 import { useVersion } from "../version";
 import { RecordsTab, isRecordTab, recordTabOrder } from "../components/RecordsTab";
+import { RecordTabV3, recordsOf } from "../components/RecordTabV3";
 import { ProviderModal } from "../components/ProviderModal";
 import { memberExtras, benefitsOf } from "../recordFields";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
@@ -70,6 +75,7 @@ import {
   measures,
   memberById,
   memberForYear,
+  v3TabOf,
   militaryOf,
   payerNames,
   productLineOf,
@@ -425,7 +431,7 @@ const newestReceived = () =>
   lastReceived(freshness.flatMap(([, files]) => files));
 
 /** One short line in the member header (checklist row 54). The date for each kind of data is in the opened details. */
-function DataFreshness() {
+export function DataFreshness() {
   const newest = newestReceived();
   return (
     <Typography variant="body2" sx={{ color: "text.secondary" }}>
@@ -1079,8 +1085,11 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
  * Short header: name, date of birth, and the few facts and counts you need at a glance.
  * The arrow opens everything else about the member.
  */
-function MemberHeader({ m, year }: { m: Member; year: number }) {
+export function MemberHeader({ m, year }: { m: Member; year: number }) {
   const { version } = useVersion();
+  // Version 3: the sheet gives no header fields, so it keeps who the member is (name, date of birth, enrollment status, Tricare ID,
+  // age and gender, the same as the Members list), the data update dates, and print / export. The tiles and the details panel go.
+  const v3 = version.id === 3;
   const [open, setOpen] = useState(false);
   const { gapsOf } = useGaps();
   const results = resultsFor(m, year);
@@ -1110,10 +1119,19 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
             head: ["Field", "Value"],
             body: [
               ["Name", m.name],
-              ["Member ID", m.id],
-              ["Date of birth", fmtDate(m.dob)],
-              ["Age", ageAtYearEnd(m.dob, year)],
-              [version.id === 2 ? "Gender" : "Sex", m.gender === "female" ? "Female" : "Male"],
+              ...(v3
+                ? [
+                    ["Tricare ID", tricareIdOf(m)],
+                    ["Date of birth", fmtDate(m.dob)],
+                    ["Age", ageLabel(m.dob)],
+                    ["Gender", genderV3(m)],
+                  ]
+                : [
+                    ["Member ID", m.id],
+                    ["Date of birth", fmtDate(m.dob)],
+                    ["Age", ageAtYearEnd(m.dob, year)],
+                    [version.id === 2 ? "Gender" : "Sex", m.gender === "female" ? "Female" : "Male"],
+                  ]),
               ["Enrollment status", `${enroll.label} ${enroll.detail}`],
               ["Plan", productLineOfMember(m)],
             ],
@@ -1169,7 +1187,7 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
       : null,
   ].filter(Boolean);
 
-  return (
+  const card = (
     <Card>
       <Stack spacing={1.5}>
         <Stack
@@ -1188,13 +1206,13 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
             DOB {fmtDate(m.dob)}
           </Typography>
-          <StatusChip tone="primary" label={productLineOfMember(m)} />
+          {!v3 && <StatusChip tone="primary" label={productLineOfMember(m)} />}
           <StatusChip
             tone={enroll.label === "Enrolled" ? "success" : "neutral"}
             label={`${enroll.label} ${enroll.detail}`}
           />
           {m.dod && <StatusChip tone="neutral" label="Deceased" />}
-          <Box sx={{ ml: "auto" }}>
+          <Box sx={{ ml: v3 ? "auto !important" : "auto" }}>
             <Tooltip title="Print or export summary">
               <IconButton
                 aria-label="Print or export summary"
@@ -1232,18 +1250,46 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
 
         <Stack direction="row" alignItems="flex-start" spacing={2}>
           <Box
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: {
-                xs: "repeat(2, minmax(0, 1fr))",
-                md: "repeat(3, minmax(0, 1fr))",
-                lg: "repeat(6, minmax(0, 1fr))",
-              },
-            }}
+            sx={
+              v3
+                ? {
+                    // Version 3: label and value pairs in a row, a thin divider after each one.
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "flex-end",
+                    rowGap: 2,
+                    columnGap: { xs: 3, sm: 0 },
+                    "& > *": { minWidth: 0 },
+                    "& > *:not(:last-child)": {
+                      pr: { sm: 3 },
+                      mr: { sm: 3 },
+                      borderRight: { sm: 1 },
+                      borderColor: "divider",
+                    },
+                  }
+                : {
+                    flex: 1,
+                    minWidth: 0,
+                    display: "grid",
+                    gap: 2,
+                    gridTemplateColumns: {
+                      xs: "repeat(2, minmax(0, 1fr))",
+                      md: "repeat(3, minmax(0, 1fr))",
+                      lg: "repeat(6, minmax(0, 1fr))",
+                    },
+                  }
+            }
           >
+            {v3 ? (
+              <>
+                <MemberIdsV3 m={m} />
+                <Field label="Age">{ageLabel(m.dob)}</Field>
+                <Field label="Gender">{genderV3(m)}</Field>
+              </>
+            ) : (
+              <>
             <Field label="Member ID">{m.id}</Field>
             <Field label={version.id === 2 ? "Age · gender" : "Age · sex"}>
               {ageAtYearEnd(m.dob, year)} ·{" "}
@@ -1271,7 +1317,10 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
               {sum.scored === 0 ? "–" : `${sum.met} of ${sum.scored}`}
             </Field>
             <Field label="Needs review">{sum.review}</Field>
+              </>
+            )}
           </Box>
+          {!v3 && (
           <Box
             sx={{
               alignSelf: "stretch",
@@ -1299,12 +1348,13 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
               />
             </IconButton>
           </Box>
+          )}
         </Stack>
 
-        <DataFreshness />
+        {!v3 && <DataFreshness />}
         <PrintSummary m={m} year={year} />
 
-        <Collapse in={open} unmountOnExit id={detailsId}>
+        <Collapse in={open && !v3} unmountOnExit id={detailsId}>
           <Stack spacing={2} sx={{ pt: 0.5 }}>
             <Divider />
             <DataFreshnessDetails />
@@ -1364,6 +1414,8 @@ function MemberHeader({ m, year }: { m: Member; year: number }) {
       </Stack>
     </Card>
   );
+  // Version 3: "Data last updated" is on the breadcrumb line (the page passes it to PageContainer), not inside the card.
+  return card;
 }
 
 export function MemberDetailPage() {
@@ -1411,12 +1463,17 @@ export function MemberDetailPage() {
       </PageContainer>
     );
   }
-  const year = yearFromParam(search.get("year"));
+  const v3 = version.id === 3;
+  const year = v3 ? MY : yearFromParam(search.get("year"));
   const yearEvents = memberForYear(m, year).events;
   // Older links say tab=clinical, or name a kind of record (tab=labs, tab=all). Both now open the Records tab on that kind.
-  const rawTab = search.get("tab") ?? "measures";
-  const legacyKind =
-    rawTab === "clinical"
+  // Version 3 opens on the Care Gaps tab (the sheet's default). An old link to a tab that no longer exists lands there too.
+  const V3_TABS = ["gaps", "claims", "diagnoses", "labs", "observations", "procedures", "providers", "visits"];
+  const rawTab0 = search.get("tab") ?? (v3 ? "gaps" : "measures");
+  const rawTab = v3 && !V3_TABS.includes(rawTab0) ? "gaps" : rawTab0;
+  const legacyKind = v3
+    ? null
+    : rawTab === "clinical"
       ? (() => {
           const rec = search.get("record");
           const hit = yearEvents.find((e) => recordKey(e) === rec);
@@ -1430,11 +1487,40 @@ export function MemberDetailPage() {
   const recordSub = legacyKind ?? (isRecordTab(recordsParam) ? recordsParam : "all");
   const yq: Record<string, string> = year === MY ? {} : { year: String(year) };
   const sum = summaryOf(m, year === MY ? gapsOf(m) : [], year);
+  // Version 3 tab bar (sheet: "Sub-Tab Order"). The sheet allows empty pages; the demo fills them with each member's records.
+  const v3Items = [
+    {
+      key: "gaps",
+      label: "Care Gaps",
+      count: sum.open,
+      content: <CareGapsTabV3 m={m} />,
+    },
+    ...(
+      [
+        ["claims", "Claims"],
+        ["diagnoses", "Diagnoses"],
+        ["labs", "Labs"],
+        ["observations", "Observations"],
+        ["procedures", "Procedures"],
+        ["providers", "Providers"],
+        ["visits", "Visits"],
+      ] as const
+    ).map(([key, label]) => ({
+      key,
+      label,
+      count:
+        key === "providers"
+          ? new Set(recordsOf(m).filter((e) => e.provider).map((e) => e.provider)).size
+          : recordsOf(m).filter((e) => v3TabOf(e) === key).length,
+      content: <RecordTabV3 m={m} tab={key} />,
+    })),
+  ].filter((t) => !role.hiddenTabs.includes(t.key));
 
   return (
     <PageContainer
+      breadcrumbsEnd={<DataFreshness />}
       breadcrumbs={[
-        { label: "Home", href: "/members" },
+        { label: "Home", href: "/" },
         { label: "Members", href: "/members" },
         { label: m.name },
       ]}
@@ -1464,7 +1550,7 @@ export function MemberDetailPage() {
           ariaLabel="Member sections"
           value={tab}
           onChange={(k) => setSearch({ tab: k, ...yq }, { replace: true })}
-          items={[
+          items={v3 ? v3Items : [
             { key: "profile", label: "Profile", content: <ProfileTab m={m} /> },
             {
               key: "measures",

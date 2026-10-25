@@ -85,8 +85,8 @@ const reasonOfFile: Record<string, string> = {
   "member-RES": "Unknown value",
   "claim-line": "Missing required field",
   proc: "Planned, not done",
-  "pharm-c": "Code not recognised",
-  "member-en": "Code not recognised",
+  "pharm-c": "Code not recognized",
+  "member-en": "Code not recognized",
 };
 
 interface Plan {

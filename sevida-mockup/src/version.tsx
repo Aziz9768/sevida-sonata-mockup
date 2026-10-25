@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2;
+export type VersionId = 1 | 2 | 3;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -53,8 +53,29 @@ export const VERSIONS: VersionInfo[] = [
       "Sidebar: Access Log and Analytics Option 2 are hidden, and Quality Measure Analytics is now called Analytics.",
     ],
   },
+  {
+    id: 3,
+    name: "Version 3",
+    date: "2026-10-25",
+    summary:
+      "Built strictly from the final requirements sheet: Care Gaps first, a slim Members list, new Member page tabs, Analytics split by measure.",
+    changes: [
+      "Follows the final Google Sheet row by row. Anything the sheet does not mention is removed. The details are in Sevida-V3-gap-analysis.xlsx.",
+      "Sidebar: Analytics (Overview, BCS, CCS, COL, GSD, WCV), then Care Gaps, then Members. Care Gaps opens first.",
+      "Members list: Member Name, Tricare ID, Age, Gender, Gap Name(s) (the sheet says Open Gap(s), renamed because it read the same as # Open Gaps), # Open Gaps, Gap Identified Date. Other fields are in the Columns panel or only in filters. Age shows days, months or years. Age Min / Age Max filters, a fixed Age Range filter, and four demo young children.",
+      "Member page: a short header and Care Gaps first, then Claims, Diagnoses, Labs, Observations, Procedures, Providers and Visits. Every member has records in every tab (the files' records plus routine demo records). The Care Gaps tab lists each gap with its identified and closed dates and explanations.",
+      "Care Gaps list: one row per gap with a Gap Status filter (Open by default), # Open Gaps, Missing Evidence, Due Date, and the member list filters. Genesis EHR ID is a hidden column on Members and Care Gaps (sample data).",
+      "Care Gap page: Overview (why the gap is open, who is considered, what is left, due date) and Evidence (records found in the files). No actions, follow-up, history or closing.",
+      "Measure rules: breast screening starts at 52 and also excludes a one-sided mastectomy, gender-affirming chest surgery, and age 66+ in an I-SNP or long-term institution. Cervical screening counts a high-risk HPV test and excludes palliative care. Colorectal screening excludes age 66+ in an I-SNP or long-term institution. Diabetes blood sugar uses the lowest final HbA1c. These change the Version 3 numbers only.",
+      "Dashboards: Overview has a Gap in more than one measure filter. The period shows year to date. Trend range is picked per granularity. GSD shows total, over 8% and over 9%. Gender and # Open Gaps replace Sex and Open care gaps. Requirement tags are hidden.",
+      "Admin: Rejected Rows by Reason, the Succeeded on retry and Failed on retry file load statuses, and a Nightly Run History Trend.",
+      "Filters: Members, Care Gaps and the dashboards share the same facets and values (Gender, Age Range, Age Min / Max, Military Status with nine values, Race and Ethnicity with None, # Open Gaps with an operator). Every member has a military status.",
+      "Consistency pass: the dashboards use the same names as the lists (BCS - Breast Cancer Screening, Date of Birth, Military Status, Age Range, Gender, # Open Gaps, Tricare ID search). Dashboard member counts, # Open Gaps and the Care Gaps list agree. The Care Gaps tab on a member lists earlier years with the status of the same gap this year.",
+      "Not built: the 31 sheet rows marked Later (including the long Claims field list), and rows that are open questions or platform checks (listed in the gap analysis).",
+    ],
+  },
 ];
-export const LATEST_VERSION: VersionId = 2;
+export const LATEST_VERSION: VersionId = 3;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

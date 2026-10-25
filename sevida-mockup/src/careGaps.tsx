@@ -8,6 +8,7 @@
 // Nothing about the work is in the ingestion spec. Care managers, outreach, tasks, due dates and the starting status
 // below are MADE UP (the same every time) so the screens can be shown. Changes made in the demo are kept in the browser
 // for the visit. A gap can only be closed after the evidence has been validated by a reviewer AND the measure has been re-evaluated with it (see `checkClosure`).
+import { getVersion } from "./version";
 import {
   createContext,
   useCallback,
@@ -497,7 +498,7 @@ function seedWork(m: Member, code: MeasureCode): Work {
   /** How far the work has got. Closed ones need an old enough gap, so every date stays on or before the demo's today. */
   const age = h % 80;
   const stage: "open" | "outreach" | "records" | "closed" =
-    !planned && age >= 20 && (h >> 6) % 14 === 0
+    !planned && age >= 20 && (h >> 6) % (getVersion() === 3 ? 4 : 14) === 0
       ? "closed"
       : planned
         ? "outreach"
@@ -1411,7 +1412,7 @@ const Ctx = createContext<GapsValue | null>(null);
 
 const seeds = new Map<string, Work>();
 const seedOf = (m: Member, code: MeasureCode) => {
-  const k = gapKey(m.id, code);
+  const k = `${gapKey(m.id, code)}:${getVersion()}`;
   let w = seeds.get(k);
   if (!w) {
     w = seedWork(m, code);
@@ -1419,6 +1420,10 @@ const seedOf = (m: Member, code: MeasureCode) => {
   }
   return w;
 };
+
+/** Version 3 dashboards: is the starting care-gap work for this member and measure still open? (Staff changes made later in the session are not in the run's numbers.) */
+export const seededGapOpen = (m: Member, code: MeasureCode) =>
+  seedOf(m, code).status !== "Closed";
 
 export function GapsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();

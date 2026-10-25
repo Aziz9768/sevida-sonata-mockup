@@ -190,14 +190,14 @@ export function SavedViewsMenu({
           <ListItemIcon>
             <SettingsOutlinedIcon sx={{ fontSize: 17 }} />
           </ListItemIcon>
-          <ListItemText>Manage views…</ListItemText>
+          <ListItemText>Manage Views…</ListItemText>
         </MenuItem>
       </Menu>
 
       <Modal
         open={saveOpen}
         onClose={() => setSaveOpen(false)}
-        title="Save view"
+        title="Save View"
         size="sm"
         actions={
           <>
@@ -243,7 +243,7 @@ export function SavedViewsMenu({
               if (e.key === "Enter") saveAsNew();
             }}
             placeholder="e.g. Gaps in more than one measure"
-            helperText="The view you save opens the next time you visit this table. Change that in Manage views."
+            helperText="The view you save opens the next time you visit this table. Change that in Manage Views."
           />
         </Stack>
       </Modal>
@@ -251,7 +251,7 @@ export function SavedViewsMenu({
       <Modal
         open={manageOpen}
         onClose={() => setManageOpen(false)}
-        title="Manage views"
+        title="Manage Views"
         actions={<Button onClick={() => setManageOpen(false)}>Done</Button>}
       >
         <Typography variant="body2" sx={{ color: "text.secondary", mb: 1.5 }}>
@@ -320,8 +320,8 @@ export function SavedViewsMenu({
               variant="body2"
               sx={{ color: "ink.300", fontStyle: "italic", py: 1 }}
             >
-              No saved views yet. Change a filter, then use “Save current
-              view…”.
+              No saved views yet. Change a filter, then use “Save Current
+              View…”.
             </Typography>
           )}
         </Stack>

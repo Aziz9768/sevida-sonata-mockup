@@ -8,7 +8,7 @@ import {
   useMemberTableColumns,
   yearOf,
 } from "../components/memberColumns";
-import { CURRENT_YEAR } from "../data";
+import { CURRENT_YEAR, v3Extra } from "../data";
 import { useVersion } from "../version";
 import { useRole } from "../roles";
 
@@ -23,19 +23,36 @@ export function MembersListPage() {
 
   const { version } = useVersion();
   const v2 = version.id === 2;
+  const v3 = version.id === 3;
   const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
-  const { visible: members } = useRole();
-  const [shown, setShown] = useState(members.length);
+  const { visible: members, canSee } = useRole();
+  const total = v3 ? members.length + v3Extra.filter(canSee).length : members.length;
+  const [shown, setShown] = useState(total);
   // One row per member per measurement year. The Measurement year filter always has a value and starts at the current year.
-  const rows = useMemo(() => memberYearRows(members), [members]);
+  // Version 3 has no Measurement year filter: the page is for the current year only (see the line under the title).
+  const rows = useMemo(
+    () =>
+      v3
+        ? memberYearRows(
+            [...members, ...v3Extra.filter(canSee)],
+            [CURRENT_YEAR],
+          )
+        : memberYearRows(members),
+    [members, v3, canSee],
+  );
 
   return (
     <PageContainer
       title={
-        shown === members.length
-          ? `Members List (${members.length})`
-          : `Members List (${shown} of ${members.length})`
+        shown === total
+          ? `Members List (${total})`
+          : `Members List (${shown} of ${total})`
+      }
+      subtitle={
+        v3
+          ? `All measures are for Measurement Year ${CURRENT_YEAR}`
+          : undefined
       }
     >
       <DataTable
@@ -43,18 +60,28 @@ export function MembersListPage() {
         columns={columns}
         rows={rows}
         getRowId={getMemberRowId}
-        defaultSort={{ key: "id", direction: "asc" }}
+        defaultSort={{ key: v3 ? "name" : "id", direction: "asc" }}
         searchPlaceholder={
-          v2
+          v3
+            ? "Search by Member Name or Tricare ID…"
+            : v2
             ? "Search by member name, member ID or subscriber ID…"
             : "Search by member name, member ID or insurance number…"
         }
         searchPlaceholderCompact={
-          v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
+          v3
+            ? "Member name, Tricare ID"
+            : v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
         }
         onResultCountChange={setShown}
-        storageKey={v2 ? "demo-members-v30-ver2-d" : "demo-members-v30"}
-        savedViews={v2 ? "members-v2" : "members"}
+        storageKey={
+          v3
+            ? "demo-members-v30-ver3-a"
+            : v2
+              ? "demo-members-v30-ver2-d"
+              : "demo-members-v30"
+        }
+        savedViews={v3 ? "members-v3" : v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
         stickyHeader

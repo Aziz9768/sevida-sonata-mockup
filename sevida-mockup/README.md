@@ -360,14 +360,15 @@ The Export icon on the main dashboard has Excel, PDF and CSV (tables and filters
 
 The "Quality measures" item is hidden from the sidebar for now. The page (`/measures`), the measure detail pages, their access rules and the links to them from the dashboards are all still in the code and still work. To show the menu item again, remove `"measures"` from `HIDDEN_IN_SIDEBAR` in `src/App.tsx`.
 
-## Versions (Version 1 and Version 2)
+## Versions (Version 1, 2 and 3)
 
-A **Version** dropdown in the header (next to View As) switches the whole mockup between versions. Each version has a date. The latest version (Version 2) opens first. The choice is remembered for the browser tab until it is closed.
+A **Version** dropdown in the header (next to View As) switches the whole mockup between versions. Each version has a date. The latest version (Version 3) opens first. The choice is remembered for the browser tab until it is closed.
 
 | Version | Date | What it is |
 | --- | --- | --- |
 | Version 1 | 23 Oct 2026 | The mockup exactly as it was before the member table change list. Frozen: do not change it. |
 | Version 2 | 23 Oct 2026 | Member search column updates from the 10/22 call (Jira LPP-16069), following its Proof Point column, plus the earlier member table change list. |
+| Version 3 | 25 Oct 2026 | Built strictly from the final requirements Google Sheet: Care Gaps first, a slim Members list, new Member page tabs, Analytics split by measure, and the sheet's measure rules. Row-by-row notes are in `Sevida-V3-gap-analysis.xlsx`. |
 
 **Version 2 changes**
 
@@ -381,4 +382,4 @@ A **Version** dropdown in the header (next to View As) switches the whole mockup
 - *Where the Jira table's POC column differs:* the POC column keeps Closed Gaps, Evidence, Evidence Date, Next Appointment, Last Contact, Contact Result, State and County, and wants a shorter Missing Evidence per measure. Version 2 follows the Proof Point column; the POC build would be a Version 3.
 - *Not changed in Version 2:* the Care Gaps list, Measures pages and dashboards look the same in both versions.
 
-**For the tech team:** the versions are listed in `src/version.tsx` (id, date, one-line summary, list of changes). Screens read `useVersion()`; the Members list columns for Version 2 are built by `versionTwo()` in `src/components/memberColumns.tsx`. Version 1 code paths are untouched. To add Version 3, add a row to `VERSIONS` and branch where the screens differ.
+**For the tech team:** the versions are listed in `src/version.tsx` (id, date, one-line summary, list of changes). Screens read `useVersion()`; the Members list columns for Version 2 are built by `versionTwo()` in `src/components/memberColumns.tsx`. Version 1 code paths are untouched. Version 3 branches on `version.id === 3` (or `getVersion() === 3` outside React). Its data helpers are in `src/v3Data.ts`; its screens are `CareGapsPageV3`, `CareGapDetailPageV3` and `CareGapsTabV3`; its measure rule changes are in `src/data.ts` (`rulesOfYear`, `v3Def`, `V3_PATCH`); the new DataTable filter types (`numberUnit`, `numberCompare`) and the `filterOnly` / `filterOrder` column options are in sevida-ui. Versions 1 and 2 are unchanged.

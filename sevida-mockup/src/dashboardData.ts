@@ -1,4 +1,18 @@
 // Numbers for the dashboards (checklist FR-701 to FR-710). Everything is worked out from the demo members, their results and the demo file statuses.
+import { getVersion } from "./version";
+import {
+  AGE_RANGES,
+  GENDER_V3,
+  MILITARY_V3,
+  ageParts,
+  tricareIdOf,
+  ageRangeOf,
+  ethnicityV3,
+  genderV3,
+  militaryV3,
+  NONE,
+  raceV3,
+} from "./v3Data";
 import {
   CURRENT_YEAR,
   DEMO_NOW,
@@ -10,7 +24,9 @@ import {
   dataFiles,
   fmtDate,
   groupings,
+  MY,
   measures,
+  allMembers,
   members,
   memberCounties,
   memberStates,
@@ -28,6 +44,7 @@ import type {
   Tally,
 } from "./data";
 import { fileTitle } from "./copy";
+import { seededGapOpen } from "./careGaps";
 import {
   A1C_VALUES,
   AGE_GROUPS,
@@ -71,6 +88,9 @@ export interface DashFilters {
   state: string;
   county: string;
   military: string;
+  /** Version 3: "5|year" (number and unit, month or year). Empty = no limit. */
+  ageMin: string;
+  ageMax: string;
 }
 
 export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
@@ -94,23 +114,36 @@ export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
   state: "",
   county: "",
   military: "",
+  ageMin: "",
+  ageMax: "",
 });
 
-export const sexOf = (m: Member) => (m.gender === "female" ? "Female" : "Male");
+/** Version 3 reads the same values as the member lists: Gender with Other and Unknown, fixed Age Ranges, Race and Ethnicity with None, nine Military Status values. */
+const v3 = () => getVersion() === 3;
+/** Version 3 writes BCS, CCS and COL (the sheet's names), not BCS-E, CCS-E and COL-E. */
+export const v3Code = (s: string) => (v3() ? s.replace(/\b(BCS|CCS|COL)-E\b/g, "$1") : s);
+export const sexOf = (m: Member) =>
+  v3() ? genderV3(m) : m.gender === "female" ? "Female" : "Male";
 
 /** Age groups (the same list as on the Members list). Age is taken on Dec 31 of the measurement year, like the measures do. */
 export const ageBands = AGE_GROUPS;
 export const ageGroupOf = (m: Member, year: number) =>
-  ageGroupFor(ageAtYearEnd(m.dob, year));
+  v3() ? ageRangeOf(m.dob) : ageGroupFor(ageAtYearEnd(m.dob, year));
 
 const groupOf = (key: string) => groupings.find((g) => g.key === key)!.of;
-export const raceOf = groupOf("race");
-export const ethnicityOf = groupOf("ethnicity");
+export const raceOf = (m: Member) => (v3() ? raceV3(m) : groupOf("race")(m));
+export const ethnicityOf = (m: Member) =>
+  v3() ? ethnicityV3(m) : groupOf("ethnicity")(m);
 export const providerOf = groupOf("provider");
 
 /** The measure states of one member for all five measures. */
+/** Not-met measures. In Version 3 this is the "# Open Gaps" of the Members list: a gap that staff already closed no longer counts (the current year only, a past year has no care work). */
 export const openGapCount = (m: Member, year: number) =>
-  measures.filter((x) => resultsFor(m, year)[x.code].state === "Gap").length;
+  measures.filter(
+    (x) =>
+      resultsFor(m, year)[x.code].state === "Gap" &&
+      (!v3() || year !== MY || seededGapOpen(m, x.code)),
+  ).length;
 
 const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -132,10 +165,14 @@ const evidenceOf = (m: Member, year: number, code?: MeasureCode) =>
 /** Members that pass every filter. Several values inside one filter mean "any of them"; different filters all have to match. */
 export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
   const id = f.memberId.trim().toLowerCase();
-  return members.filter((m) => {
+  return allMembers().filter((m) => {
     if (
       id &&
-      !(m.id.toLowerCase().includes(id) || m.name.toLowerCase().includes(id))
+      !(
+        m.id.toLowerCase().includes(id) ||
+        m.name.toLowerCase().includes(id) ||
+        (v3() && tricareIdOf(m).includes(id))
+      )
     )
       return false;
     if (f.sex && sexOf(m) !== f.sex) return false;
@@ -145,8 +182,30 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
       if (f.ageTo !== "" && age > Number(f.ageTo)) return false;
     }
     if (!inDays(m.dob, f.dobFrom, f.dobTo)) return false;
-    if (f.openGaps && openGapsLabel(openGapCount(m, f.year)) !== f.openGaps)
-      return false;
+    if (f.openGaps) {
+      const n = openGapCount(m, f.year);
+      if (v3()) {
+        const [op, num] = f.openGaps.split("|");
+        const t = Number(num);
+        if (num !== "" && !isNaN(t)) {
+          const ok =
+            op === "<" ? n < t : op === "<=" ? n <= t : op === ">" ? n > t : op === ">=" ? n >= t : n === t;
+          if (!ok) return false;
+        }
+      } else if (openGapsLabel(n) !== f.openGaps) return false;
+    }
+    if (f.ageMin || f.ageMax) {
+      const { months } = ageParts(m.dob);
+      const per = (u: string) => (u === "year" ? 12 : 1);
+      if (f.ageMin) {
+        const [num, u] = f.ageMin.split("|");
+        if (num !== "" && months < Number(num) * per(u)) return false;
+      }
+      if (f.ageMax) {
+        const [num, u] = f.ageMax.split("|");
+        if (num !== "" && months >= (Number(num) + 1) * per(u)) return false;
+      }
+    }
     if (
       f.excluded.length &&
       !measures.some(
@@ -165,7 +224,8 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
     if (f.a1c && a1cBandOf(m, f.year) !== f.a1c) return false;
     if (f.state && stateName(m.state) !== f.state) return false;
     if (f.county && countyOf(m) !== f.county) return false;
-    if (f.military && militaryOf(m) !== f.military) return false;
+    if (f.military && (v3() ? militaryV3(m) : militaryOf(m)) !== f.military)
+      return false;
     if (f.ageGroup.length && !f.ageGroup.includes(ageGroupOf(m, f.year)))
       return false;
     if (f.race.length && !f.race.includes(raceOf(m))) return false;
@@ -188,6 +248,8 @@ export const activeFilterCount = (f: DashFilters) =>
     f.a1c,
     f.sex,
     f.ageFrom || f.ageTo,
+    f.ageMin,
+    f.ageMax,
     f.state,
     f.county,
     f.military,
@@ -215,14 +277,14 @@ const sortedSet = (xs: string[]) =>
 /** Choices for the filters. Age group, Sex and Military status are fixed lists shared with the Members list; the rest come from the members. */
 export function facetOptions(): FacetOptions {
   return {
-    sex: SEX_VALUES,
-    ageGroup: AGE_GROUPS.map((b) => b.label),
-    provider: sortedSet(members.map(providerOf)),
-    race: sortedSet(members.map(raceOf)),
-    ethnicity: sortedSet(members.map(ethnicityOf)),
+    sex: v3() ? GENDER_V3 : SEX_VALUES,
+    ageGroup: v3() ? AGE_RANGES.map((r) => r.label) : AGE_GROUPS.map((b) => b.label),
+    provider: sortedSet(allMembers().map(providerOf)),
+    race: sortedSet([...allMembers().map(raceOf), ...(v3() ? [NONE] : [])]),
+    ethnicity: sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
     state: memberStates,
     county: memberCounties,
-    military: MILITARY_VALUES,
+    military: v3() ? MILITARY_V3 : MILITARY_VALUES,
     openGaps: OPEN_GAP_VALUES,
     a1c: A1C_VALUES,
   };
@@ -255,8 +317,28 @@ export function secondRate(list: Member[], year: number) {
   return { den, met, notMet: den - met, rate: den ? (met / den) * 100 : 0 };
 }
 
+/** The measurement period is the whole calendar year. Version 3 shows the current year as year to date: January 1 to the last run date. */
 export const periodText = (year: number) =>
-  `${fmtDate(new Date(year, 0, 1))} to ${fmtDate(new Date(year, 11, 31))}`;
+  getVersion() === 3 && year === CURRENT_YEAR
+    ? `${fmtDate(new Date(year, 0, 1))} to ${fmtDate(startOfDay(DEMO_NOW))} (year to date)`
+    : `${fmtDate(new Date(year, 0, 1))} to ${fmtDate(new Date(year, 11, 31))}`;
+
+/** Version 3, GSD: the lowest final HbA1c of the year is the result. Total = members counted in the rate. Over 8% and over 9% are counted among them. */
+export function a1cCounts(list: Member[], year: number) {
+  let total = 0;
+  let over8 = 0;
+  let over9 = 0;
+  for (const m of list) {
+    const r = resultsFor(m, year).GSD;
+    if (r.state !== "Met" && r.state !== "Gap") continue;
+    total++;
+    const v = r.evidence?.tag === "hba1c" ? r.evidence.value : undefined;
+    if (v === undefined) continue;
+    if (v >= 8) over8++;
+    if (v > 9) over9++;
+  }
+  return { total, over8, over9 };
+}
 
 /* ---------------------------------------------------------------- groups (disparity charts, FR-703) */
 
@@ -264,8 +346,12 @@ export type Dimension = "race" | "ethnicity" | "ageGroup" | "sex" | "provider";
 export const dimensionLabel: Record<Dimension, string> = {
   race: "race",
   ethnicity: "ethnicity",
-  ageGroup: "age group",
-  sex: "sex",
+  get ageGroup() {
+    return v3() ? "age range" : "age group";
+  },
+  get sex() {
+    return v3() ? "gender" : "sex";
+  },
   provider: "primary care provider",
 };
 const keyOf = (dim: Dimension, year: number): ((m: Member) => string) =>
@@ -693,7 +779,7 @@ export const reasonFix: Record<string, string> = {
     "Nothing to fix. The procedure counts once it is done and sent with a completed status.",
   "Missing required field":
     "Fill in the empty field on these lines and send the file again.",
-  "Code not recognised":
+  "Code not recognized":
     "Correct the codes and send the whole file again. One bad row rejects the file.",
   "File not received": "Ask Madigan to send the file.",
 };
@@ -771,7 +857,7 @@ export function rejectedRows(): RejectedRow[] {
       id: `${fileId}-${out.length}`,
       source: fileSource,
       fileType: fileTitle(fileId),
-      measures: file(fileId).usedBy.join(", ") || "None",
+      measures: v3Code(file(fileId).usedBy.join(", ")) || "None",
       impact:
         r.result !== "Warning" && file(fileId).usedBy.length
           ? "Critical"
@@ -846,7 +932,7 @@ export function rejectedRows(): RejectedRow[] {
         value: "(blank)",
         rule: "Needed to recognise a visit",
         problem:
-          "Place of service is empty. The line is kept, but a visit that needs a place of service may not be recognised.",
+          "Place of service is empty. The line is kept, but a visit that needs a place of service may not be recognized.",
       },
       "claim-line",
     );
@@ -866,7 +952,7 @@ export function rejectedRows(): RejectedRow[] {
         memberId: m.id,
         loadedOn: loaded("pharm-c"),
         result: "Rejected",
-        reason: "Code not recognised",
+        reason: "Code not recognized",
         field: "vaccine_code",
         value: "XX-99",
         rule: "Must be a CVX code",

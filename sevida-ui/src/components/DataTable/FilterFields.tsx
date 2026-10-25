@@ -12,6 +12,7 @@ import {
 import CloseIcon from "@mui/icons-material/Close";
 import { TextField, SelectField, DateField } from "../Form/fields";
 import type { Option } from "../Form/fields";
+import { COMPARE_OPERATORS } from "./types";
 import type {
   Column,
   DatePreset,
@@ -162,6 +163,7 @@ export function FilterFields<T>({
       (x, y) =>
         Number(isRequired(y)) - Number(isRequired(x)) ||
         Number(y.filterPinned === true) - Number(x.filterPinned === true) ||
+        (x.filterOrder ?? 1e9) - (y.filterOrder ?? 1e9) ||
         labelOf(x).localeCompare(labelOf(y), undefined, {
           numeric: true,
           sensitivity: "base",
@@ -297,6 +299,103 @@ export function FilterFields<T>({
                     value={range.to ?? ""}
                     onChange={(e) =>
                       onChange(c.key, { from: range.from, to: e.target.value })
+                    }
+                  />
+                </Stack>
+              </Box>
+            );
+          }
+          case "numberUnit": {
+            const [num = "", unit0] = String(
+              (value as string | undefined) ?? "",
+            ).split("|");
+            const unit = unit0 || f.units[0].value;
+            const set = (n: string, u: string) =>
+              onChange(c.key, n === "" ? undefined : `${n}|${u}`);
+            return (
+              <Box key={c.key}>
+                <Typography
+                  sx={{
+                    fontSize: ".8125rem",
+                    fontWeight: 600,
+                    color: "text.secondary",
+                    mb: 0.625,
+                  }}
+                >
+                  {label}
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    type="number"
+                    size="small"
+                    placeholder="Number"
+                    slotProps={{
+                      htmlInput: { "aria-label": label, min: 0, step: 1 },
+                    }}
+                    value={num}
+                    onChange={(e) =>
+                      set(e.target.value.replace(/^-+/, ""), unit)
+                    }
+                  />
+                  <SelectField
+                    size="small"
+                    value={unit}
+                    onChange={(u) => set(num, u)}
+                    options={f.units.map((x) => ({
+                      value: x.value,
+                      label: x.label,
+                    }))}
+                    slotProps={{ htmlInput: { "aria-label": `${label} unit` } }}
+                  />
+                </Stack>
+              </Box>
+            );
+          }
+          case "numberCompare": {
+            const [op0, num = ""] = String(
+              (value as string | undefined) ?? "",
+            ).split("|");
+            const op = op0 || "=";
+            const set = (o: string, n: string) =>
+              onChange(c.key, n === "" ? undefined : `${o}|${n}`);
+            return (
+              <Box key={c.key}>
+                <Typography
+                  sx={{
+                    fontSize: ".8125rem",
+                    fontWeight: 600,
+                    color: "text.secondary",
+                    mb: 0.625,
+                  }}
+                >
+                  {label}
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <SelectField
+                    size="small"
+                    value={op}
+                    onChange={(o) => set(o, num)}
+                    options={COMPARE_OPERATORS.map((o) => ({
+                      value: o,
+                      label: o,
+                    }))}
+                    slotProps={{ htmlInput: { "aria-label": `${label} operator` } }}
+                  />
+                  <TextField
+                    type="number"
+                    size="small"
+                    placeholder="0 or more"
+                    slotProps={{
+                      htmlInput: { "aria-label": label, min: 0, step: 1 },
+                    }}
+                    value={num}
+                    onChange={(e) =>
+                      set(
+                        op,
+                        e.target.value === ""
+                          ? ""
+                          : String(Math.max(0, Math.floor(Number(e.target.value)))),
+                      )
                     }
                   />
                 </Stack>

@@ -12,6 +12,8 @@ import {
 } from "sevida-ui";
 import type { Column, FilterState } from "sevida-ui";
 import { RowActions } from "../components/RowActions";
+import { CareGapsPageV3 } from "./CareGapsPageV3";
+import { useVersion } from "../version";
 import { ClosedSinceButton } from "../components/ClosedSince";
 import { useRole } from "../roles";
 import { TableLink } from "../components/TableLink";
@@ -57,7 +59,7 @@ const lastOutreach = (r: GapRow) =>
  * The care gap worklist: every open gap in the population, one row per gap (a member with two open gaps has two rows).
  * Same filters, saved views and export as Members. A row opens that gap's own page.
  */
-export function CareGapsPage() {
+function CareGapsPageOld() {
   const navigate = useNavigate();
   const { openOf } = useGaps();
   const { visible } = useRole();
@@ -332,4 +334,10 @@ export function CareGapsPage() {
       </Stack>
     </PageContainer>
   );
+}
+
+/** Version 3 has its own page (see CareGapsPageV3.tsx); versions 1 and 2 keep the page above exactly as it was. */
+export function CareGapsPage() {
+  const { version } = useVersion();
+  return version.id === 3 ? <CareGapsPageV3 /> : <CareGapsPageOld />;
 }

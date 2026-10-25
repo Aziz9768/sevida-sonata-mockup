@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { Stack, Typography } from "@mui/material";
 import { StatusChip, Term } from "sevida-ui";
 import type { Column, DatePreset } from "sevida-ui";
@@ -46,9 +47,27 @@ import {
   primaryCareOf,
   NO_PCP,
   memberForYear,
+  v3Extra,
 } from "../data";
 import type { Member, MeasureCode } from "../data";
 import type { VersionId } from "../version";
+import {
+  AGE_RANGES,
+  GENDER_V3,
+  MILITARY_V3,
+  ageLabel,
+  ageParts,
+  ageRangeOf,
+  ethnicityV3,
+  gapShort,
+  genderV3,
+  memberIdsOf,
+  militaryV3,
+  raceV3,
+  tricareIdOf,
+  v3GapOptions,
+  V3_GAP_LABEL,
+} from "../v3Data";
 import {
   AGE_GROUPS,
   LABEL,
@@ -1083,14 +1102,350 @@ export function useMemberTableColumns(
       filterLabel: "HEDIS measures eligibility",
       filter: only ? undefined : { type: "multiselect", options: measureOptions },
     };
+
+    // ---------------------------------------------------------------- Version 3 (final requirements sheet, Members Page tab)
+    // Default columns: Member Name (pinned), Tricare ID, Age, Gender, Gap Name(s), # Open Gaps, Gap Identified Date.
+    // Everything else the sheet lists is a hidden column the user can switch on. Filters follow the sheet's filter list.
+    const versionThreeColumns = (): Column<MemberRow>[] => {
+      const nameCol = all.find((c) => c.key === "name")!;
+      const idCol = all.find((c) => c.key === "id")!;
+      const subCol = all.find((c) => c.key === "insurance")!;
+      const noWrapTwo = (items: ReactNode[], every: ReactNode) =>
+        items.length <= 2 ? (
+          <Stack spacing={0.5} alignItems="flex-start">
+            {items}
+          </Stack>
+        ) : (
+          <Stack spacing={0.5} alignItems="flex-start">
+            {items[0]}
+            <Term tip={every}>
+              <span>+{items.length - 1} more</span>
+            </Term>
+          </Stack>
+        );
+      const openGapsOf = (m: MemberRow) => openOf(m);
+      const closedGaps = (m: MemberRow) =>
+        gapsOf(m).filter((g) => g.status === "Closed");
+      const lastClosed = (m: MemberRow) =>
+        closedGaps(m)
+          .map((g) => new Date(g.work.closed!.on))
+          .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      const sourceCol = (
+        label: string,
+        key: string,
+        what: string,
+      ): Column<MemberRow> => ({
+        key,
+        header: label,
+        help: `Where the member's ${what} came from, for example Health Plan Collected or the enrollment files. The member file records one source for race and ethnicity together, so the two columns match for now.`,
+        accessor: (m) => m.raceSource,
+        sortable: true,
+        defaultHidden: true,
+        group: "Demographics",
+        hideBelow: "lg",
+      });
+      const valuesOf = (f: (m: Member) => string) =>
+        sortedSet([...members, ...v3Extra].map(f));
+      return [
+        { ...nameCol, group: undefined },
+        {
+          key: "tricare",
+          header: "Tricare ID",
+          help: "The member's Tricare ID. Type it in the search box to find one member. Sample data: the demo members have no such number, so it is made up.",
+          accessor: (m) => tricareIdOf(m),
+          sortable: true,
+          nowrap: true,
+          group: "IDs",
+        },
+        {
+          key: "age",
+          header: "Age",
+          help: "Age today: days under 1 month, months under 1 year, then years and months (for example 3 days, 8 months, 7 years 2 months).",
+          accessor: (m) => ageParts(m.dob).days,
+          render: (m) => ageLabel(m.dob),
+          sortable: true,
+          nowrap: true,
+          group: "Demographics",
+        },
+        {
+          key: "sex",
+          filterOrder: 10,
+          header: "Gender",
+          accessor: (m) => genderV3(m),
+          sortable: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: { type: "select", ordered: true, options: opt(GENDER_V3) },
+        },
+        {
+          key: "gaps",
+          filterOrder: 1,
+          header: "Gap Name(s)",
+          filterLabel: "Gap Name",
+          filterPinned: true,
+          help: "The care gaps this member still has open, by short form of the measure. Hover a short form to read the full name. At most two lines: when there are more, hover +N more to see them all. A gap that was closed is not listed here.",
+          group: "Care Gaps",
+          accessor: (m) => openGapsOf(m).map((g) => gapShort(g.def.code)),
+          render: (m) => {
+            const gs = openGapsOf(m);
+            return gs.length === 0 ? (
+              "None"
+            ) : (
+              noWrapTwo(
+                gs.map((g) => (
+                  <StatusChip
+                    key={g.id}
+                    tone="primary"
+                    label={gapShort(g.def.code)}
+                    tip={V3_GAP_LABEL[g.def.code]}
+                  />
+                )),
+                gs.map((g) => V3_GAP_LABEL[g.def.code]).join(", "),
+              )
+            );
+          },
+          // Gap Name and Gap Status work as a pair: the member needs a gap with that name that is in that status.
+          filterAccessor: (m, f) => {
+            const st = (f.gapStatus as string[] | undefined) ?? [];
+            return gapsOf(m)
+              .filter((g) => st.length === 0 || st.includes(g.status))
+              .map((g) => g.def.code);
+          },
+          filter: { type: "multiselect", options: v3GapOptions },
+        },
+        {
+          key: "openCount",
+          filterOrder: 11,
+          header: "# Open Gaps",
+          filterLabel: "# Open Gaps",
+          help: "How many care gaps this member still has open. A plain count.",
+          group: "Care Gaps",
+          accessor: (m) => openGapsOf(m).length,
+          sortable: true,
+          align: "right",
+          nowrap: true,
+          filter: { type: "numberCompare" },
+        },
+        {
+          key: "found",
+          filterOrder: 9,
+          header: "Gap Identified Date",
+          help: "The date each open care gap was found, one line per gap, with the measure it belongs to. At most two lines. Sorting and the date filter use the earliest one. Demo dates: the spec has no such field.",
+          group: "Care Gaps",
+          accessor: earliest,
+          render: (m) => {
+            const gs = openGapsOf(m);
+            return gs.length === 0
+              ? dateCell(null)
+              : noWrapTwo(
+                  gs.map((g) => (
+                    <span key={g.id}>
+                      <Term tip={V3_GAP_LABEL[g.def.code]}>
+                        <b>{gapShort(g.def.code)}</b>
+                      </Term>
+                      : {fmtDate(g.identified)}
+                    </span>
+                  )),
+                  gs
+                    .map(
+                      (g) => `${gapShort(g.def.code)}: ${fmtDate(g.identified)}`,
+                    )
+                    .join(", "),
+                );
+          },
+          sortable: true,
+          nowrap: true,
+          filter: { type: "dateRange" },
+        },
+        // ---- hidden columns the user can switch on
+        {
+          key: "closedDate",
+          filterOrder: 8,
+          header: "Gap Closed Date",
+          help: "The day each closed care gap was closed, one line per gap, with the measure it belongs to. At most two lines. Sorting and the date filter use the latest one.",
+          group: "Care Gaps",
+          defaultHidden: true,
+          accessor: lastClosed,
+          render: (m) => {
+            const gs = closedGaps(m);
+            return gs.length === 0
+              ? "–"
+              : noWrapTwo(
+                  gs.map((g) => (
+                    <span key={g.id}>
+                      <Term tip={V3_GAP_LABEL[g.def.code]}>
+                        <b>{gapShort(g.def.code)}</b>
+                      </Term>
+                      : {fmtDay(g.work.closed!.on)}
+                    </span>
+                  )),
+                  gs
+                    .map(
+                      (g) =>
+                        `${gapShort(g.def.code)}: ${fmtDay(g.work.closed!.on)}`,
+                    )
+                    .join(", "),
+                );
+          },
+          sortable: true,
+          nowrap: true,
+          filter: { type: "dateRange" },
+        },
+        { ...idCol, defaultHidden: true, group: "IDs", nowrap: true },
+        {
+          ...subCol,
+          header: "Subscriber ID",
+          defaultHidden: true,
+          group: "IDs",
+          filter: undefined,
+        },
+        {
+          key: "genesisEhr",
+          header: "Genesis EHR ID",
+          help: "The member's ID in the Genesis EHR.",
+          accessor: (m) => memberIdsOf(m)[3].value,
+          sortable: true,
+          nowrap: true,
+          defaultHidden: true,
+          group: "IDs",
+        },
+        {
+          key: "dob",
+          filterOrder: 6,
+          header: "Date of Birth",
+          help: "The member's date of birth.",
+          accessor: (m) => m.dob,
+          render: (m) => fmtDate(m.dob),
+          sortable: true,
+          nowrap: true,
+          defaultHidden: true,
+          group: "Demographics",
+          filter: { type: "dateRange" },
+        },
+        {
+          key: "ethnicity",
+          filterOrder: 7,
+          header: "Ethnicity",
+          help: "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file. None means the file has no ethnicity for the member.",
+          accessor: (m) => ethnicityV3(m),
+          sortable: true,
+          defaultHidden: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: {
+            type: "multiselect",
+            options: opt(valuesOf(ethnicityV3)),
+          },
+        },
+        sourceCol("Ethnicity Source", "ethnicitySource", "ethnicity"),
+        {
+          key: "military",
+          filterOrder: 12,
+          header: "Military Status",
+          help: "Proposed new column of the member file. We likely do not have this data yet. The values here are sample data. A dash means the file says nothing.",
+          accessor: (m) => militaryV3(m),
+          render: (m) => militaryV3(m) ?? "–",
+          sortable: true,
+          nowrap: true,
+          defaultHidden: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: { type: "select", ordered: true, options: opt(MILITARY_V3) },
+        },
+        {
+          key: "race",
+          filterOrder: 13,
+          header: "Race",
+          help: "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races. None means the file has no race for the member.",
+          accessor: (m) => raceV3(m),
+          sortable: true,
+          defaultHidden: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: { type: "multiselect", options: opt(valuesOf(raceV3)) },
+        },
+        sourceCol("Race Source", "raceSource", "race"),
+        // ---- filters with no column of their own
+        {
+          key: "gapStatus",
+          filterOrder: 2,
+          header: "Gap Status",
+          filterOnly: true,
+          searchable: false,
+          filterPinned: true,
+          accessor: (m) => gapsOf(m).map((g) => g.status),
+          filterAccessor: (m, f) => {
+            const names = (f.gaps as string[] | undefined) ?? [];
+            return gapsOf(m)
+              .filter((g) => names.length === 0 || names.includes(g.def.code))
+              .map((g) => g.status);
+          },
+          filter: {
+            type: "multiselect",
+            ordered: true,
+            options: opt(["Open", "Closed"]),
+          },
+        },
+        {
+          key: "ageRange",
+          filterOrder: 3,
+          header: "Age Range",
+          filterOnly: true,
+          searchable: false,
+          accessor: (m) => ageRangeOf(m.dob),
+          filter: {
+            type: "multiselect",
+            ordered: true,
+            options: opt(AGE_RANGES.map((r) => r.label)),
+          },
+        },
+        {
+          key: "ageMin",
+          filterOrder: 4,
+          header: "Age Min",
+          filterOnly: true,
+          searchable: false,
+          accessor: (m) => ageParts(m.dob).months,
+          filter: {
+            type: "numberUnit",
+            bound: "min",
+            units: [
+              { value: "year", label: "year", perUnit: 12 },
+              { value: "month", label: "month", perUnit: 1 },
+            ],
+          },
+        },
+        {
+          key: "ageMax",
+          filterOrder: 5,
+          header: "Age Max",
+          filterOnly: true,
+          searchable: false,
+          accessor: (m) => ageParts(m.dob).months,
+          filter: {
+            type: "numberUnit",
+            bound: "max",
+            units: [
+              { value: "year", label: "year", perUnit: 12 },
+              { value: "month", label: "month", perUnit: 1 },
+            ],
+          },
+        },
+      ];
+    };
     const final =
-      version === 2
+      version === 3 && !only
+        ? versionThreeColumns()
+        : version === 2
         ? versionTwo(all, { eligible: eligibleCol, found: foundMulti })
         : all;
     // The search box looks at the member's name, Member ID and insurance number only. Without this a name such as "Paul" also found members whose care manager is Paul.
     return final.map((c) => ({
       ...c,
-      searchable: c.key === "name" || c.key === "id" || c.key === "insurance",
+      searchable:
+        version === 3
+          ? c.key === "name" || c.key === "tricare"
+          : c.key === "name" || c.key === "id" || c.key === "insurance",
     }));
   }, [openOfNow, gapsOfNow, only, withYear, version]);
 }

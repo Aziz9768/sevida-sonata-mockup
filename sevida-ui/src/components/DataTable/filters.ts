@@ -63,6 +63,30 @@ function matches(
       if (!iso) return false;
       return (!from || iso >= from) && (!to || iso <= to);
     }
+    case "numberUnit": {
+      const [num, unit] = String(value).split("|");
+      const n = Number(raw);
+      const u = filter.units.find((x) => x.value === unit);
+      if (raw == null || raw === "" || isNaN(n) || !u || num === "") return false;
+      return filter.bound === "min"
+        ? n >= Number(num) * u.perUnit
+        : n < (Number(num) + 1) * u.perUnit;
+    }
+    case "numberCompare": {
+      const [op, num] = String(value).split("|");
+      const n = Number(raw);
+      if (raw == null || raw === "" || isNaN(n) || num === "") return false;
+      const t = Number(num);
+      return op === "<"
+        ? n < t
+        : op === "<="
+          ? n <= t
+          : op === ">"
+            ? n > t
+            : op === ">="
+              ? n >= t
+              : n === t;
+    }
     case "numberRange": {
       const n = Number(raw);
       if (raw == null || raw === "" || isNaN(n)) return false;
@@ -176,6 +200,15 @@ export function describeFilter<T>(
       if (preset) return `${name}: ${preset.label}`;
       if (blank) return `${name}: none`;
       return `${name}: ${from ? usDate(from) : "…"} → ${to ? usDate(to) : "…"}`;
+    }
+    case "numberUnit": {
+      const [num, unit] = String(value).split("|");
+      const u = f.units.find((x) => x.value === unit)?.label ?? unit;
+      return `${name}: ${f.bound === "min" ? "from" : "up to"} ${num} ${u}${Number(num) === 1 ? "" : "s"}`;
+    }
+    case "numberCompare": {
+      const [op, num] = String(value).split("|");
+      return `${name} ${op} ${num}`;
     }
     case "numberRange": {
       const { from, to } = value as DateRangeValue;

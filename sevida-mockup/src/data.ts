@@ -1,6 +1,7 @@
 // Made-up demo data for the quality-measure demo. Nothing here is real.
 // M1001–M1010 copy the sample tabs of "Leap Sonata Quality Measure Data Ingestion Spec.xlsx".
 // M1011 onward are generated (same code every time) so the dashboard has believable numbers.
+import { getVersion } from './version';
 import type { StatusTone } from 'sevida-ui';
 
 /* ------------------------------------------------------------------ dates */
@@ -192,6 +193,7 @@ export type Tag =
   | 'well-care'
   | 'mammogram'
   | 'mastectomy'
+  | 'chest-surgery'
   | 'cytology'
   | 'hpv'
   | 'hysterectomy'
@@ -1249,7 +1251,37 @@ const stateNames: Record<string, string> = {
 export const stateName = (code: string) => stateNames[code.toUpperCase()] ?? code;
 export const memberStates = Array.from(new Set(members.map((m) => stateName(m.state)))).sort();
 export const memberCounties = Array.from(new Set(members.map(countyOf))).sort();
-export const memberById = (id: string | undefined) => members.find((m) => m.id === id);
+/**
+ * Version 3 demo members: four young children (a few days, some months, just over a year and four years old), so the Age column and the Age Range
+ * filter can be seen. They are NOT part of `members`, so versions 1 and 2 are unchanged. Only the four-year-old is in a measure (WCV, no well-care visit yet, so one care gap);
+ * the file has no race or ethnicity for them.
+ */
+const young = (id: string, first: string, last: string, gender: Gender, dob: Date): Member => ({
+  ...members[0],
+  id,
+  first,
+  last,
+  name: `${first} ${last}`,
+  gender,
+  dob,
+  dod: undefined,
+  raceCodes: [],
+  ethnicityCode: '',
+  raceSource: 'No Data',
+  military: undefined,
+  events: [],
+  segments: [{ ...members[0].segments[0], start: dob, end: new Date(2026, 11, 31) }],
+  medicare: [],
+});
+export const v3Extra: Member[] = [
+  young('M1301', 'Noah', 'Bennett', 'male', new Date(2026, 9, 10)),
+  young('M1302', 'Amara', 'Okafor', 'female', new Date(2026, 1, 16)),
+  young('M1303', 'Lucas', 'Rivera', 'female', new Date(2025, 6, 16)),
+  young('M1304', 'Mia', 'Alvarez', 'female', new Date(2022, 2, 14)),
+];
+/** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3. */
+export const allMembers = (): Member[] => (getVersion() === 3 ? [...members, ...v3Extra] : members);
+export const memberById = (id: string | undefined) => members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id);
 
 /* ------------------------------------------------------------------ enrollment checks */
 
@@ -1616,7 +1648,50 @@ export const measures: MeasureDef[] = [
 export const measureByCode = (c: string | undefined) => measures.find((m) => m.code === c);
 
 /** A measure as it reads for a measurement year. 2026 is the measure as written. 2025 changes the age range and the items NCQA confirmed; every other rule is carried over from 2026 and labelled that way. */
-export function measureFor(def: MeasureDef, year: number): MeasureDef {
+const v3Defs = new Map<string, MeasureDef>();
+/** Version 3 wording of the current-year measure, from the final requirements sheet (HED-001 to HED-005). */
+function v3Def(def: MeasureDef): MeasureDef {
+  let r = v3Defs.get(def.code);
+  if (r) return r;
+  const swap = (rules: Rule[], prefix: string, text: string): Rule[] => rules.map((x) => (x.text.startsWith(prefix) ? { ...x, text } : x));
+  const add = (rules: Rule[], prefix: string, extra: Rule): Rule[] => {
+    const i = rules.findIndex((x) => x.text.startsWith(prefix));
+    const out = [...rules];
+    out.splice(i >= 0 ? i + 1 : out.length, 0, extra);
+    return out;
+  };
+  const sheet = 'final requirements sheet';
+  const institution: Rule = { text: 'Excluded: age 66+ and enrolled in an institutional special needs plan (I-SNP), or living in a long-term institution (LTI flag) during the year.', from: 'spec', where: 'member-en, medicare-status' };
+  r = { ...def };
+  if (def.code === 'BCS-E') {
+    r.population = 'Women age 52–74';
+    r.ageRule = 'Female, age 52–74 on Dec 31';
+    let rules = swap(def.rules, 'Member is female', 'Member is female, 52–74 on Dec 31.');
+    rules = swap(rules, 'Excluded: mastectomy', 'Excluded: mastectomy on one or both breasts, or gender-affirming chest surgery, before or during the year.');
+    rules = add(rules, 'Excluded: mastectomy', institution);
+    r.rules = rules;
+  } else if (def.code === 'CCS-E') {
+    r.needs = 'Cervical cytology in the last three years, or a high-risk HPV test in the last five years (age 30–64 and 30 or older on the test date).';
+    let rules = swap(def.rules, 'The look-back window is three years', 'Cytology counts in the year and the two years before (age 24–64). A high-risk HPV (hrHPV) test also counts when done in the year or the four years before, at age 30–64 and 30 or older on the test date.');
+    rules = swap(rules, 'Excluded: hysterectomy', 'Excluded: hysterectomy with no cervix, cervical agenesis or acquired absence of the cervix, recorded as a procedure or diagnosis.');
+    rules = [...rules, { text: 'Excluded: palliative care during the measurement year (diagnosis or encounter).', from: 'spec', where: sheet }];
+    r.rules = rules;
+  } else if (def.code === 'COL-E') {
+    r.rules = add(def.rules, 'Excluded: frailty', institution);
+  } else if (def.code === 'GSD') {
+    r.needs = 'The lowest final HbA1c of the year is below 8%.';
+    r.evidenceLabel = 'Lowest HbA1c';
+    let rules = swap(def.rules, 'Uses the most recent HbA1c', 'Uses the lowest final HbA1c (or GMI) in the measurement year. Only final, amended and corrected results count.');
+    rules = swap(rules, 'The spec names two thresholds', 'The dashboard shows the total, the members above 8% and the members above 9%. The result column is the lowest HbA1c.');
+    rules = swap(rules, 'Gap when there is no final HbA1c', 'Gap when there is no final HbA1c this year, or the lowest one is 8% or higher.');
+    r.rules = rules;
+  }
+  v3Defs.set(def.code, r);
+  return r;
+}
+
+export function measureFor(base: MeasureDef, year: number): MeasureDef {
+  const def = getVersion() === 3 && year === MY ? v3Def(base) : base;
   if (year === MY) return def;
   const R = rulesOfYear(year);
   const [lo, hi] = R.ages[def.code];
@@ -1724,16 +1799,26 @@ export const yearRules: Record<number, YearRules> = {
     note: 'Final results for a past year. The records are a demo copy of the 2026 records with every date moved back one year. The rules follow NCQA MY 2025 documents for ages, the HPV test, telehealth visits and lab-claim mastectomy; the colorectal test windows are carried over from 2026 and not confirmed.',
   },
 };
-export const rulesOfYear = (year: number): YearRules => yearRules[year] ?? yearRules[MY];
+/** Version 3 follows the final requirements sheet: breast screening starts at 52, and the high-risk HPV test also counts for cervical screening. */
+const v3Rules = (r: YearRules): YearRules => ({ ...r, ages: { ...r.ages, 'BCS-E': [52, 74], 'CCS-E': [24, 64], 'COL-E': [46, 75] }, hpvPath: true });
+const v3Cache = new Map<number, YearRules>();
+export const rulesOfYear = (year: number): YearRules => {
+  const base = yearRules[year] ?? yearRules[MY];
+  if (getVersion() !== 3) return base;
+  let r = v3Cache.get(base.year);
+  if (!r) v3Cache.set(base.year, (r = v3Rules(base)));
+  return r;
+};
 /** Age range of each measure on Dec 31 of the current year (from the measure rules). */
 export const ageBandsOf = (year: number) => rulesOfYear(year).ages;
 
 const shiftBack = (x: Date, years: number) => (x.getFullYear() >= 2099 ? x : new Date(x.getFullYear() - years, x.getMonth(), x.getDate()));
 const shifted = new Map<string, Member>();
 /** The same member one or more years earlier: every service, enrollment and status date moves back, the birth date stays. Used for the demo copy of past years. */
-export function memberForYear(m: Member, year: number): Member {
+export function memberForYear(base: Member, year: number): Member {
+  const m = withV3Events(base);
   if (year === MY) return m;
-  const key = `${m.id}:${year}`;
+  const key = `${m.id}:${year}:${getVersion()}`;
   let r = shifted.get(key);
   if (!r) {
     const n = MY - year;
@@ -1877,6 +1962,25 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
     add(3, 'excluded', 'Age 66+ with frailty and advanced illness');
     return finish('Excluded', 'Age 66+ with frailty and advanced illness');
   }
+  if (getVersion() === 3 && (code === 'BCS-E' || code === 'COL-E') && age >= 66) {
+    const isnp = m.segments.find((x) => x.payer === 'SN2' && x.start <= Y_END && x.end >= Y_START);
+    if (isnp) {
+      const r = 'Age 66+ and enrolled in an institutional special needs plan (I-SNP)';
+      add(3, 'excluded', `${r} during ${Y}`, 'member-en.csv: Payer SN2');
+      return finish('Excluded', r);
+    }
+    const lti = m.medicare.find((x) => x.lti && x.start <= Y_END && x.end >= Y_START);
+    if (lti) {
+      const r = 'Age 66+ and living in a long-term institution (LTI flag)';
+      add(3, 'excluded', `${r} during ${Y}`, 'medicare-status.csv: LTI');
+      return finish('Excluded', r);
+    }
+  }
+  if (getVersion() === 3 && code === 'CCS-E' && palliative) {
+    const r = `Palliative care during ${Y} (${palliative.text}, ${fmtDate(palliative.date)})`;
+    add(3, 'excluded', r, `${palliative.file}.csv`);
+    return finish('Excluded', r, palliative);
+  }
   if (code === 'COL-E') {
     const cancer = m.events.find((e) => e.tag === 'colorectal-cancer' && e.date <= Y_END);
     if (cancer) {
@@ -1893,7 +1997,21 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
   }
   if (code === 'BCS-E') {
     const mast = m.events.filter((e) => e.tag === 'mastectomy' && (R.labMastectomyCounts || !e.labClaim));
-    if (mast.some((e) => e.side === 'LT') && mast.some((e) => e.side === 'RT')) {
+    if (getVersion() === 3) {
+      const one = mast.find((e) => e.date <= Y_END);
+      if (one) {
+        const both = mast.some((e) => e.side === 'LT') && mast.some((e) => e.side === 'RT');
+        const r = both ? 'Mastectomy on both breasts' : `Mastectomy on one breast (${one.text}, ${fmtDate(one.date)})`;
+        add(3, 'excluded', both ? 'Mastectomy on both breasts (left and right procedures found)' : r, `${one.file}.csv`);
+        return finish('Excluded', r, both ? undefined : one);
+      }
+      const chest = m.events.find((e) => e.tag === 'chest-surgery' && e.date <= Y_END);
+      if (chest) {
+        const r = `Gender-affirming chest surgery (${chest.text}, ${fmtDate(chest.date)})`;
+        add(3, 'excluded', r, `${chest.file}.csv`);
+        return finish('Excluded', r, chest);
+      }
+    } else if (mast.some((e) => e.side === 'LT') && mast.some((e) => e.side === 'RT')) {
       add(3, 'excluded', 'Mastectomy on both breasts (left and right procedures found)');
       return finish('Excluded', 'Mastectomy on both breasts');
     }
@@ -1984,20 +2102,23 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         add(4, 'unmet', 'No final HbA1c this year (preliminary results are ignored)');
         return finish('Gap', 'No final HbA1c this year');
       }
-      const t = tests[0];
+      const withValue = tests.filter((e) => e.value !== undefined);
+      const lowest = getVersion() === 3 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
+      const t = lowest ?? tests[0];
       if (t.value === undefined) {
         const r = `Final HbA1c lab on ${fmtDate(t.date)} has no result value`;
         add(4, 'unmet', `${r}. This measure needs the actual HbA1c (or GMI) value; a lab that only says a test was done cannot be scored.`, src(t));
         return finish('Gap', r, t);
       }
       const v = t.value;
+      const low = lowest ? ` Lowest of ${withValue.length} final result${withValue.length > 1 ? 's' : ''} this year.` : '';
       if (v < 8) {
-        const r = `HbA1c ${t.value}% on ${fmtDate(t.date)}`;
-        add(4, 'pass', `${r}: below 8%${v > 9 ? '' : ', not above 9%'}`, src(t));
+        const r = `${lowest ? 'Lowest ' : ''}HbA1c ${t.value}% on ${fmtDate(t.date)}`;
+        add(4, 'pass', `${r}: below 8%${v > 9 ? '' : ', not above 9%'}.${low}`, src(t));
         return finish('Met', r, t);
       }
-      const r = `Latest HbA1c ${t.value}% (8% or higher)`;
-      add(4, 'unmet', `${r} on ${fmtDate(t.date)}${v > 9 ? '. Also above 9%' : ''}`, src(t));
+      const r = lowest ? `Lowest HbA1c ${t.value}% (8% or higher)` : `Latest HbA1c ${t.value}% (8% or higher)`;
+      add(4, 'unmet', `${r} on ${fmtDate(t.date)}${v > 9 ? '. Also above 9%' : ''}.${low}`, src(t));
       return finish('Gap', r, t);
     }
   }
@@ -2015,6 +2136,172 @@ function reviewReason(m: Member, def: MeasureDef, year: number): string | null {
     if (last && last.value === undefined) return `A final HbA1c lab is on file (${fmtDate(last.date)}) but it has no result value. GSD needs the actual HbA1c (or GMI) value, so it cannot be decided until the lab sends it.`;
   }
   return null;
+}
+
+/**
+ * Version 3 only: a few demo records added so the new rules have members to show (one-sided mastectomy, gender-affirming chest surgery,
+ * I-SNP and long-term-institution flags for age 66+, palliative care for cervical screening, several HbA1c results in one year).
+ * Versions 1 and 2 never see them.
+ */
+interface V3Patch {
+  events?: Evt[];
+  isnp?: boolean;
+  lti?: boolean;
+}
+const wholeYear = { start: d(2026, 1, 1), end: d(2026, 12, 31) };
+export const V3_PATCH: Record<string, V3Patch> = {
+  M1019: { events: [diag(d(2024, 5, 6), 'Z87.890', 'ICD-10', 'Personal history of sex reassignment', 'chest-surgery')] },
+  M1045: { events: [diag(d(2023, 9, 14), 'Z87.890', 'ICD-10', 'Personal history of sex reassignment', 'chest-surgery')] },
+  M1121: { events: [proc(d(2021, 3, 12), '19303', 'CPT', 'Mastectomy, right breast', 'mastectomy', { side: 'RT' })] },
+  M1139: { events: [diag(d(2019, 6, 5), 'Z90.12', 'ICD-10', 'Acquired absence of left breast', 'mastectomy', { side: 'LT' })] },
+  M1137: { isnp: true },
+  M1197: { lti: true },
+  M1077: { isnp: true },
+  M1107: { lti: true },
+  M1073: { events: [diag(d(2026, 4, 22), 'Z51.5', 'ICD-10', 'Encounter for palliative care', 'palliative')] },
+  M1062: { events: [lab(d(2026, 1, 20), '4548-4', 'Hemoglobin A1c, 7.6%', 'hba1c', 7.6)] },
+  M1128: { events: [lab(d(2026, 1, 15), '4548-4', 'Hemoglobin A1c, 8.2%', 'hba1c', 8.2)] },
+  M1036: { events: [lab(d(2026, 2, 10), '4548-4', 'Hemoglobin A1c, 9.4%', 'hba1c', 9.4)] },
+  M1122: { events: [lab(d(2026, 1, 25), '4548-4', 'Hemoglobin A1c, 8.4%', 'hba1c', 8.4)] },
+  M1002: { events: [lab(d(2026, 8, 20), '4548-4', 'Hemoglobin A1c, 8.9%', 'hba1c', 8.9)] },
+  // The four-year-old has an ordinary sick visit this year but no well-care visit, so WCV shows a care gap.
+  M1304: { events: [visit(d(2026, 4, 21), '99213', 'Office visit, established patient (sick visit)', 'other', { provider: '1000000111' })] },
+};
+
+/* ------------------------------------------------------------------ Version 3 member records (every member has some data in every tab) */
+
+export type V3Tab = 'claims' | 'diagnoses' | 'labs' | 'observations' | 'procedures' | 'visits';
+/** Which Member page tab (Version 3) a record belongs to. Pharmacy and professional, institutional and dental claims are all Claims. */
+export const v3TabOf = (e: Evt): V3Tab =>
+  e.kind === 'EHR diagnosis' || (e.kind === 'Claim' && e.system === 'ICD-10')
+    ? 'diagnoses'
+    : e.kind === 'Lab'
+      ? 'labs'
+      : e.kind === 'Observation'
+        ? 'observations'
+        : e.kind === 'EHR visit'
+          ? 'visits'
+          : e.kind === 'Claim' || e.kind === 'Pharmacy'
+            ? 'claims'
+            : 'procedures';
+/** Least number of records each tab shows for one member. */
+const V3_MIN: Record<V3Tab, number> = { claims: 3, diagnoses: 2, labs: 3, observations: 3, procedures: 2, visits: 3 };
+const v3Filled = new Map<string, Evt[]>();
+/**
+ * Version 3 demo records. The files hold a few records for some members and none for others, so the Member page tabs would look empty.
+ * Every member gets enough routine records (tagged "other", so no measure reads them) to fill each tab up to a minimum.
+ * They never change a measure result, and Versions 1 and 2 never see them.
+ */
+export function v3Filler(member: Member): Evt[] {
+  const hit = v3Filled.get(member.id);
+  if (hit) return hit;
+  const have = new Map<V3Tab, number>();
+  for (const e of member.events) have.set(v3TabOf(e), (have.get(v3TabOf(e)) ?? 0) + 1);
+  const need = (t: V3Tab) => Math.max(0, V3_MIN[t] - (have.get(t) ?? 0));
+  const h = (k: string) => unitHash(`${member.id}:v3:${k}`);
+  const pick = <T,>(xs: T[], k: string, i = 0): T => xs[Math.floor(h(`${k}${i}`) * xs.length) % xs.length];
+  const last = d(2026, 10, 14);
+  /** A date in 2025 or 2026, never before the birth date and never after the newest file. */
+  /** A member with no real record in 2026 (measures say "no records at all dated 2026") gets made-up records in 2025 only, so the tabs never contradict the measure reason. */
+  const quiet2026 = !member.events.some((e) => e.date.getFullYear() === 2026) && member.dob.getFullYear() < 2026;
+  const day = (k: string, i: number) => {
+    const t = d(quiet2026 || h(`${k}${i}`) < 0.2 ? 2025 : 2026, 1 + Math.floor(h(`m${k}${i}`) * (i % 2 ? 8 : 9)), 3 + Math.floor(h(`d${k}${i}`) * 24));
+    if (t < member.dob) {
+      const span = Math.max(1, Math.round((last.getTime() - member.dob.getTime()) / 86_400_000));
+      return new Date(member.dob.getFullYear(), member.dob.getMonth(), member.dob.getDate() + Math.min(span, 1 + Math.floor(h(`b${k}${i}`) * span)));
+    }
+    return t > last ? last : t;
+  };
+  const age = ageAtYearEnd(member.dob, MY);
+  const band = age < 1 ? 'infant' : age < 18 ? 'child' : 'adult';
+  const pcp = pick(['1000000111', '1000000137'], 'pcp');
+  const out: Evt[] = [];
+
+  const dxList = {
+    infant: [['Z23', 'Encounter for immunization'], ['P59.9', 'Neonatal jaundice, unspecified'], ['K21.9', 'Gastro-esophageal reflux disease without esophagitis'], ['L22', 'Diaper dermatitis']],
+    child: [['J06.9', 'Acute upper respiratory infection, unspecified'], ['J30.9', 'Allergic rhinitis, unspecified'], ['H66.90', 'Otitis media, unspecified'], ['L20.9', 'Atopic dermatitis, unspecified'], ['J45.909', 'Unspecified asthma, uncomplicated']],
+    adult: [['I10', 'Essential (primary) hypertension'], ['E78.5', 'Hyperlipidemia, unspecified'], ['M54.50', 'Low back pain, unspecified'], ['K21.9', 'Gastro-esophageal reflux disease without esophagitis'], ['J45.909', 'Unspecified asthma, uncomplicated'], ['G47.00', 'Insomnia, unspecified'], ['M25.561', 'Pain in right knee']],
+  }[band];
+  for (let i = 0; i < need('diagnoses'); i++) {
+    const [code, text] = dxList[(Math.floor(h('dx') * dxList.length) + i * 2 + i) % dxList.length];
+    out.push(diag(day('dx', i), code, 'ICD-10', text, 'other'));
+  }
+
+  const labList = {
+    infant: [['718-7', 'Hemoglobin [Mass/volume] in Blood', 15.2, 'g/dL', '13.5–19.5'], ['1975-2', 'Bilirubin.total [Mass/volume] in Serum or Plasma', 6.1, 'mg/dL', '0.3–12.0'], ['2345-7', 'Glucose [Mass/volume] in Serum or Plasma', 72, 'mg/dL', '60–100']],
+    child: [['718-7', 'Hemoglobin [Mass/volume] in Blood', 13.1, 'g/dL', '11.5–15.5'], ['5671-3', 'Lead [Mass/volume] in Blood', 1.4, 'ug/dL', '0–3.5'], ['2345-7', 'Glucose [Mass/volume] in Serum or Plasma', 88, 'mg/dL', '70–99'], ['3016-3', 'Thyrotropin [Units/volume] in Serum or Plasma', 2.4, 'mIU/L', '0.4–4.5']],
+    adult: [['2089-1', 'LDL Cholesterol [Mass/volume] in Serum or Plasma', 112, 'mg/dL', '0–100'], ['2160-0', 'Creatinine [Mass/volume] in Serum or Plasma', 0.9, 'mg/dL', '0.6–1.3'], ['2345-7', 'Glucose [Mass/volume] in Serum or Plasma', 94, 'mg/dL', '70–99'], ['3016-3', 'Thyrotropin [Units/volume] in Serum or Plasma', 2.1, 'mIU/L', '0.4–4.5'], ['718-7', 'Hemoglobin [Mass/volume] in Blood', 13.8, 'g/dL', '12.0–17.5'], ['2085-9', 'HDL Cholesterol [Mass/volume] in Serum or Plasma', 54, 'mg/dL', '40–100']],
+  }[band];
+  for (let i = 0; i < need('labs'); i++) {
+    const [code, text, v, unit, range] = labList[(Math.floor(h('lab') * labList.length) + i) % labList.length];
+    const value = Math.round((v as number) * (0.9 + h(`lv${i}`) * 0.25) * 10) / 10;
+    const [lo, hi] = (range as string).split('–').map(Number);
+    const flag = value > hi ? 'High' : value < lo ? 'Low' : 'Normal';
+    out.push(lab(day('lab', i), code as string, text as string, 'other', value, { unit: unit as string, refRange: `${range} ${unit}`, flag }));
+  }
+
+  const obsList = {
+    infant: [['29463-7', 'Body weight', 5.4, 'kg'], ['8302-2', 'Body height', 58, 'cm'], ['9843-4', 'Head circumference', 39.5, 'cm'], ['8867-4', 'Heart rate', 128, '/min']],
+    child: [['29463-7', 'Body weight', 28, 'kg'], ['8302-2', 'Body height', 128, 'cm'], ['39156-5', 'Body mass index', 17.1, 'kg/m2'], ['8867-4', 'Heart rate', 88, '/min']],
+    adult: [['8480-6', 'Systolic blood pressure', 124, 'mm[Hg]'], ['8462-4', 'Diastolic blood pressure', 78, 'mm[Hg]'], ['29463-7', 'Body weight', 78, 'kg'], ['39156-5', 'Body mass index', 26.4, 'kg/m2'], ['8867-4', 'Heart rate', 72, '/min']],
+  }[band];
+  for (let i = 0; i < need('observations'); i++) {
+    const [code, text, v, unit] = obsList[(Math.floor(h('obs') * obsList.length) + i) % obsList.length];
+    const value = Math.round((v as number) * (0.92 + h(`ov${i}`) * 0.16) * 10) / 10;
+    out.push(obs(day('obs', i), code as string, text as string, 'other', { value, unit: unit as string }));
+  }
+
+  const procList = {
+    infant: [['90460', 'Immunization administration, first component'], ['36416', 'Collection of capillary blood specimen'], ['92551', 'Screening test, pure tone, air only']],
+    child: [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']],
+    adult: [['36415', 'Collection of venous blood by venipuncture'], ['93000', 'Electrocardiogram, routine, with interpretation and report'], ['71046', 'Radiologic examination, chest, 2 views'], ['97110', 'Therapeutic exercises, each 15 minutes'], ['96372', 'Therapeutic injection, subcutaneous or intramuscular']],
+  }[band];
+  for (let i = 0; i < need('procedures'); i++) {
+    const [code, text] = procList[(Math.floor(h('proc') * procList.length) + i) % procList.length];
+    out.push(proc(day('proc', i), code, 'CPT', text, 'other', { provider: pcp }));
+  }
+
+  const visitList = [['99213', 'Office or other outpatient visit, established patient, low complexity'], ['99214', 'Office or other outpatient visit, established patient, moderate complexity'], ['99212', 'Office or other outpatient visit, established patient, straightforward'], ['99203', 'Office or other outpatient visit, new patient, low complexity']];
+  for (let i = 0; i < need('visits'); i++) {
+    const [code, text] = visitList[(Math.floor(h('vis') * visitList.length) + i) % visitList.length];
+    out.push(visit(day('vis', i), code, text, 'other', { provider: pick(['1000000111', '1000000137'], 'vp', i) }));
+  }
+
+  const claimList = [['99213', 'Office or other outpatient visit, established patient, low complexity'], ['80061', 'Lipid panel'], ['85025', 'Complete blood count (CBC) with automated differential'], ['99214', 'Office or other outpatient visit, established patient, moderate complexity']];
+  const rxList = {
+    infant: [['65862-0004-75', 'Amoxicillin 400 mg/5 mL oral suspension']],
+    child: [['65862-0004-75', 'Amoxicillin 400 mg/5 mL oral suspension'], ['00173-0682-20', 'Albuterol HFA 90 mcg inhaler']],
+    adult: [['68180-0513-01', 'Lisinopril 10 mg tablet'], ['00071-0155-23', 'Atorvastatin 20 mg tablet'], ['62175-0118-37', 'Omeprazole 20 mg capsule']],
+  }[band];
+  const nClaims = need('claims');
+  for (let i = 0; i < nClaims; i++) {
+    if (i === nClaims - 1 && nClaims > 1 && !member.events.some((e) => e.kind === 'Pharmacy')) {
+      const [ndc, text] = rxList[Math.floor(h('rx') * rxList.length) % rxList.length];
+      out.push(rx(day('rx', i), ndc, text, 'other'));
+    } else {
+      const [code, text] = claimList[(Math.floor(h('clm') * claimList.length) + i) % claimList.length];
+      out.push(claim(day('clm', i), code, 'CPT', text, 'other', { provider: pcp }));
+    }
+  }
+  v3Filled.set(member.id, out);
+  return out;
+}
+
+const v3Member = new Map<string, Member>();
+function withV3Events(member: Member): Member {
+  const p = V3_PATCH[member.id];
+  if (!p || getVersion() !== 3) return member;
+  let r = v3Member.get(member.id);
+  if (!r) {
+    r = {
+      ...member,
+      events: [...member.events, ...(p.events ?? [])],
+      segments: p.isnp ? [...member.segments, { ...wholeYear, payer: 'SN2', medical: true, drug: true }] : member.segments,
+      medicare: p.lti ? [...member.medicare, { ...wholeYear, hospice: false, lti: true, orec: '0', lis: false }] : member.medicare,
+    };
+    v3Member.set(member.id, r);
+  }
+  return r;
 }
 
 export function evaluate(member: Member, code: MeasureCode, year: number = MY): MeasureResult {
@@ -2066,7 +2353,7 @@ export function closedStepOf(m: Member, code: MeasureCode, year: number = MY): n
   return t >= RUN_STEPS ? null : Math.floor(t);
 }
 export function resultsFor(m: Member, year: number = MY): Results {
-  const key = `${m.id}:${year}:${asOfStep}`;
+  const key = `${m.id}:${year}:${asOfStep}:${getVersion()}`;
   let r = cache.get(key);
   if (!r) {
     r = Object.fromEntries(measures.map((x) => [x.code, asOfRun(m, x.code, year, evaluate(m, x.code, year), asOfStep)])) as Results;
@@ -2155,11 +2442,14 @@ export function ageStatusOf(m: Member, code: MeasureCode, year: number = MY): Ag
   return age === hi ? 'Ages out next year' : age === lo ? 'Just aged in' : null;
 }
 
-/** The latest final HbA1c result of the year, for members the GSD measure counts. */
+/** The latest final HbA1c result of the year (the lowest in Version 3), for members the GSD measure counts. */
 export function latestA1c(member: Member, year: number = MY): { value?: number; date: Date } | null {
   if (resultsFor(member, year).GSD.state === 'Not eligible') return null;
   const m = memberForYear(member, year);
-  const t = m.events.filter((e) => e.tag === 'hba1c' && e.status === 'final' && e.date.getFullYear() === year).sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+  const all = m.events.filter((e) => e.tag === 'hba1c' && e.status === 'final' && e.date.getFullYear() === year).sort((a, b) => b.date.getTime() - a.date.getTime());
+  /** Version 3: the measure uses the lowest result of the period. */
+  const withValue = all.filter((e) => e.value !== undefined);
+  const t = getVersion() === 3 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
   return t ? { value: t.value, date: t.date } : null;
 }
 export type A1cBand = 'Above 9%' | '8% to 9%' | 'Below 8%' | 'No result';

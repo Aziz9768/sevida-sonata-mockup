@@ -13,7 +13,18 @@ export type ColumnFilter =
   | { type: "select"; options: Option[]; required?: boolean; ordered?: boolean } // pick one value (or All). With `required` there is no All: the filter always has a value and starts as the first option (for example a Measurement year). Options are listed A to Z by label, except for a `required` filter or when `ordered` is set, which keep your order
   | { type: "multiselect"; options: Option[]; ordered?: boolean } // pick several values. Options are listed A to Z by label; set `ordered` to keep your own order when the values have a natural one (age groups, stages, size bands)
   | { type: "dateRange"; presets?: DatePreset[] } //    From / To dates (needs accessor returning a Date or "YYYY-MM-DD"). `presets` adds quick-pick buttons above the dates
+  | { type: "numberUnit"; units: NumberUnit[]; bound: "min" | "max" } // A number plus a unit picked from a list (for example Age Min: 18 + year). The accessor returns the row's value in the SMALLEST unit (for age, completed months). "min" keeps rows at or above number x unit; "max" keeps rows below (number + 1) x unit, so "up to 5 years" includes someone who is 5 years 3 months.
+  | { type: "numberCompare" } //                         An operator (=, <, <=, >, >=) plus a whole number of 0 or more (for example # Open Gaps >= 2). The accessor returns a number.
   | { type: "numberRange"; min?: number; max?: number }; // From / To numbers, such as age (needs accessor returning a number). Give `min` and `max` to add a two-handle slider above the From / To boxes; both stay in step. A slider left at both ends means no filter
+
+/** One unit of a `numberUnit` filter. `perUnit` is how many of the smallest unit it holds (year = 12 when the accessor counts months). */
+export interface NumberUnit {
+  value: string;
+  label: string;
+  perUnit: number;
+}
+/** The operators of a `numberCompare` filter. */
+export const COMPARE_OPERATORS = ["=", "<", "<=", ">", ">="] as const;
 
 /** A quick-pick button on a dateRange filter. It fills From and To (give the dates as "YYYY-MM-DD"), or, with `blank`, keeps only rows that have no date. */
 export interface DatePreset {
@@ -77,6 +88,10 @@ export interface Column<T> {
   filterPinned?: boolean;
   /** Name shown in the Filters panel and on the filter chip when it should differ from `header` (for example "Date of birth" for the Age column). */
   filterLabel?: string;
+  /** Where this filter sits in the Filters panel, when the order matters (1 = first). Filters with an order come before the A to Z ones, after the required and pinned ones, and keep that order among themselves. */
+  filterOrder?: number;
+  /** Only a filter: no column in the table, the Columns panel or the export. Give it an `accessor` (or `filterAccessor`) for the value it filters on. */
+  filterOnly?: boolean;
   /** Include this column in the search box. Default true for any column with an `accessor`; set false to leave it out. */
   searchable?: boolean;
   /** Heading this column sits under in the Columns panel (for example "Demographics", "Care Gaps"). When any column has one, the panel lists the columns without a group first, then each group with its columns A to Z. The table itself keeps the order of the `columns` array. */

@@ -249,8 +249,13 @@ export function DataTable<T>({
     [columnsProp],
   );
 
+  // A `filterOnly` column is a filter with no column: it stays out of the table, the Columns panel and the export.
+  const tableDefs = useMemo(
+    () => allColumnDefs.filter((c) => !c.filterOnly),
+    [allColumnDefs],
+  );
   // ---- which columns are shown, and in what order
-  const config = useColumnConfig(allColumnDefs, storageKey, maxPinned);
+  const config = useColumnConfig(tableDefs, storageKey, maxPinned);
   const columns = config.visible;
 
   // ---- sort state (own, unless the caller controls it)
@@ -313,7 +318,7 @@ export function DataTable<T>({
     sort,
   };
   const builtInColumns = {
-    order: allColumnDefs.map((c) => c.key),
+    order: tableDefs.map((c) => c.key),
     hidden: config.defaultHidden,
     pinned: config.defaultPinned,
   };
@@ -519,8 +524,8 @@ export function DataTable<T>({
     !!tb &&
     tb.filters !== false &&
     allColumnDefs.some((c) => c.filter && (c.filterAccessor ?? c.accessor));
-  const showColumns = !!tb && tb.columns !== false && allColumnDefs.length > 1;
-  const sortableColumns = allColumnDefs.filter((c) => c.sortable && c.accessor);
+  const showColumns = !!tb && tb.columns !== false && tableDefs.length > 1;
+  const sortableColumns = tableDefs.filter((c) => c.sortable && c.accessor);
   const activeKeys = activeFilterKeys(filters).filter(
     (k) => !requiredKeys.includes(k),
   );

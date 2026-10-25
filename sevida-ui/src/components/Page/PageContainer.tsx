@@ -8,6 +8,8 @@ export interface PageContainerProps {
   /** Trail above the title. Leave out on a top-level page (it would only repeat the title). */
   breadcrumbs?: BreadcrumbsProps['crumbs'];
   renderLink?: BreadcrumbsProps['renderLink'];
+  /** Small content at the far right of the breadcrumb line (for example "Data last updated"). */
+  breadcrumbsEnd?: ReactNode;
   /** Page title. Leave out when the page's own content already shows the heading (e.g. a record header card). */
   title?: string;
   /** 'list' (default) is the normal page title. 'overview' is the bigger, bolder title for a dashboard only. */
@@ -23,12 +25,13 @@ export interface PageContainerProps {
  * The frame every page uses: breadcrumb, title, action buttons, then the page's content.
  * It scrolls on its own so a sticky bottom bar and a fixed sidebar keep working.
  */
-export function PageContainer({ breadcrumbs, renderLink, title, titleVariant = 'list', actions, subtitle, children }: PageContainerProps) {
+export function PageContainer({ breadcrumbs, renderLink, breadcrumbsEnd, title, titleVariant = 'list', actions, subtitle, children }: PageContainerProps) {
   return (
     <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'auto', bgcolor: 'background.default', px: { xs: 1.5, sm: 2.75 }, py: { xs: 1.5, sm: 2 } }}>
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <Box sx={{ mb: 1 }}>
+        <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', columnGap: 2, rowGap: 0.5, flexWrap: 'wrap' }}>
           <Breadcrumbs crumbs={breadcrumbs} renderLink={renderLink} />
+          {breadcrumbsEnd}
         </Box>
       )}
       {(title || actions) && (

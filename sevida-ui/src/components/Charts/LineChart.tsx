@@ -293,7 +293,7 @@ export function LineChart({
       )}
       <VisuallyHiddenTable
         caption={label}
-        columns={["Period", ...series.map((s) => `${s.name} (${unit})`)]}
+        columns={["Period", ...series.map((s) => (s.name.trim().endsWith(unit) ? s.name : `${s.name} (${unit})`))]}
         rows={labels.map((l, i) => [
           l,
           ...series.map((s) =>

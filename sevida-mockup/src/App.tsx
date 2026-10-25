@@ -94,9 +94,57 @@ const HIDDEN_IN_SIDEBAR: string[] = ["measures"];
 /** Also hidden in version 2: the Access Log (no data to show yet) and Analytics Option 2 (only one Analytics entry is kept, and it is relabelled "Analytics"). */
 const HIDDEN_IN_SIDEBAR_V2: string[] = ["access-log", "dashboards"];
 
+/** Version 3 sidebar (final sheet, Navigation Menu tab): Analytics (Overview, BCS, CCS, COL, GSD, WCV), Care Gaps, Members. Nothing else. */
+const V3_MEASURES: [string, string][] = [
+  ["BCS", "BCS - Breast Cancer Screening"],
+  ["CCS", "CCS - Cervical Cancer Screening"],
+  ["COL", "COL - Colorectal Cancer Screening"],
+  ["GSD", "GSD · Glycemic Status Assessment for Patients With Diabetes"],
+  ["WCV", "WCV · Child and Adolescent Well-Care Visits"],
+];
+function v3Nav(menus: NavKey[]): NavItem[] {
+  const out: NavItem[] = [];
+  if (menus.includes("quicksight") || menus.includes("dashboards"))
+    out.push({
+      key: "analytics",
+      label: "Analytics",
+      icon: <InsightsOutlinedIcon />,
+      children: [
+        { key: "analytics-overview", label: "Overview", href: "/dashboards" },
+        ...V3_MEASURES.map(([code, label]) => ({
+          key: `analytics-${code}`,
+          label,
+          href: `/quicksight?m=${code}`,
+        })),
+      ],
+    });
+  if (menus.includes("care-gaps"))
+    out.push({
+      key: "care-gaps",
+      label: "Care Gaps",
+      icon: <AssignmentLateOutlinedIcon />,
+      href: "/care-gaps",
+    });
+  if (menus.includes("members"))
+    out.push({
+      key: "members",
+      label: "Members",
+      icon: <PeopleAltOutlinedIcon />,
+      href: "/members",
+    });
+  return out;
+}
+
 /** Which sidebar item is highlighted for the current address. */
-function activeKeyFor(pathname: string) {
+function activeKeyFor(pathname: string, search = "", versionId = 2) {
   const [first] = pathname.split("/").filter(Boolean);
+  if (versionId === 3) {
+    if (first === "dashboards") return "analytics-overview";
+    if (first === "quicksight")
+      return `analytics-${new URLSearchParams(search).get("m") ?? "BCS"}`;
+    if (first === "dashboard") return `analytics-${pathname.split("/")[2] ?? "BCS"}`;
+    return first === "care-gaps" ? "care-gaps" : "members";
+  }
   return first === "measures" ||
     first === "care-gaps" ||
     first === "dashboard" ||
@@ -264,7 +312,7 @@ function SessionExpiredRoute() {
 }
 
 function Protected() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { personById } = useAccess();
@@ -302,7 +350,7 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={baseNav
+      items={version.id === 3 ? v3Nav(role.menus) : baseNav
         .filter(
           (i) =>
             role.menus.includes(i.key as NavKey) &&
@@ -314,7 +362,7 @@ function Protected() {
             ? { ...i, label: "Analytics" }
             : i,
         )}
-      activeKey={activeKeyFor(pathname)}
+      activeKey={activeKeyFor(pathname, search, version.id)}
       headerContent={
         <>
           <RunLine />
@@ -371,7 +419,19 @@ function Protected() {
       <RunKeyed>
       <Fragment key={`version-${version.id}`}>
       <Routes>
-        <Route path="/" element={<Navigate to={home} replace />} />
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to={
+                version.id === 3 && role.menus.includes("care-gaps")
+                  ? "/care-gaps"
+                  : home
+              }
+              replace
+            />
+          }
+        />
         <Route
           path="/dashboard"
           element={
