@@ -300,14 +300,14 @@ export function QuickSightDashboardPage() {
   // Version 3: the sidebar picks the measure (Analytics > BCS, CCS, ...), so the page follows the address.
   const mParam = params.get("m");
   useEffect(() => {
-    if (version.id === 3 && mParam && measureByCode(mParam)) {
+    if (version.id >= 3 && mParam && measureByCode(mParam)) {
       setCode(measureByCode(mParam)!.code);
       setView("");
     }
   }, [version.id, mParam]);
   const [f, setF] = useState<DashFilters>(emptyFilters());
   const [view, setView] = useState<"" | "Met" | "Gap">("");
-  const [notes, setNotes] = useState({ fr: version.id !== 3, ask: false });
+  const [notes, setNotes] = useState({ fr: version.id < 3, ask: false });
   const [withWarnings, setWithWarnings] = useState(false);
   const options = useMemo(() => facetOptions(), []);
   const set = <K extends keyof DashFilters>(key: K, value: DashFilters[K]) =>
@@ -322,7 +322,7 @@ export function QuickSightDashboardPage() {
   const def = measureFor(measureByCode(code)!, year);
 
   /* ---- controls (each one is a QuickSight control) ---- */
-  const cMeasure = version.id === 3 ? null : (
+  const cMeasure = version.id >= 3 ? null : (
     <QsControl key="measure" info="Pick the measure. Every sheet follows it.">
       <SelectField
         label={FL.measure}
@@ -516,14 +516,14 @@ export function QuickSightDashboardPage() {
             <TextField
               label={FL.member}
               placeholder={
-                version.id === 3 ? "Member Name or Tricare ID" : "ID or name"
+                version.id >= 3 ? "Member Name or Tricare ID" : "ID or name"
               }
               value={f.memberId}
               onChange={(e) => set("memberId", e.target.value)}
             />
           </QsControl>,
         ],
-        ...(version.id === 3
+        ...(version.id >= 3
           ? ([
               ["Age Min", ageField("ageMin", "Age Min")],
               ["Age Max", ageField("ageMax", "Age Max")],
@@ -531,7 +531,7 @@ export function QuickSightDashboardPage() {
           : []),
         [
           FL.age,
-          version.id === 3 ? null : <QsControl key="age">
+          version.id >= 3 ? null : <QsControl key="age">
             <QsRangeSlider
               label={FL.age}
               min={0}
@@ -562,7 +562,7 @@ export function QuickSightDashboardPage() {
         ],
         [
           FL.openGaps,
-          version.id === 3
+          version.id >= 3
             ? openGapsField()
             : dd(
                 "openGaps",
@@ -628,7 +628,7 @@ export function QuickSightDashboardPage() {
       title={version.id >= 2 ? "Analytics" : "Quality measure analytics"}
       titleVariant="overview"
       subtitle={
-        version.id === 3
+        version.id >= 3
           ? V3_GAP_LABEL[code]
           : "The dashboard drawn only with what QuickSight can build."
       }
@@ -641,12 +641,12 @@ export function QuickSightDashboardPage() {
             alignItems: "center",
           }}
         >
-          {fromCards && version.id !== 3 && (
+          {fromCards && version.id < 3 && (
             <Link to="/dashboards" style={{ color: "inherit" }}>
               ← All dashboards
             </Link>
           )}
-          {version.id !== 3 && (
+          {version.id < 3 && (
             <SwitchField
               label="Requirement tags"
               checked={notes.fr}
@@ -699,7 +699,7 @@ function Overview({
   onBar: (v: "Met" | "Gap") => void;
 }) {
   const { version } = useVersion();
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   const { initial, t } = kpisFor(code, list, year);
   const whole = kpisFor(code, allMembers(), year);
   const run = runInfo();
@@ -1242,7 +1242,7 @@ function Details({
   view: "" | "Met" | "Gap";
 }) {
   const { memberLists } = useRole();
-  const v3 = useVersion().version.id === 3;
+  const v3 = useVersion().version.id >= 3;
   const shown = useMemo(
     () =>
       view
@@ -1553,7 +1553,7 @@ function AdminSheet({
   onChange: (v: boolean) => void;
 }) {
   const { version } = useVersion();
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   const all = useMemo(() => rejectedRows(), []);
   const { runs } = useRun();
   const [runOpen, setRunOpen] = useState<Run | null>(null);
@@ -2179,7 +2179,7 @@ function AdminSheet({
 /* ================================================================== Help */
 
 function HelpSheet() {
-  const v3 = useVersion().version.id === 3;
+  const v3 = useVersion().version.id >= 3;
   return (
     <QsSheet>
       <QsTile cols={36} title="How to use this dashboard" fr="701">

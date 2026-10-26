@@ -339,5 +339,5 @@ function CareGapsPageOld() {
 /** Version 3 has its own page (see CareGapsPageV3.tsx); versions 1 and 2 keep the page above exactly as it was. */
 export function CareGapsPage() {
   const { version } = useVersion();
-  return version.id === 3 ? <CareGapsPageV3 /> : <CareGapsPageOld />;
+  return version.id >= 3 ? <CareGapsPageV3 /> : <CareGapsPageOld />;
 }

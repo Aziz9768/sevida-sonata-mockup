@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
 import {
@@ -70,6 +71,9 @@ const daysToDue = () =>
  */
 export function CareGapsPageV3() {
   const navigate = useNavigate();
+  // Version 4 calls the Missing Evidence column Recommended Actions.
+  const versionNo = useVersion().version.id;
+  const actionsName = versionNo >= 4 ? "Recommended Actions" : "Missing Evidence";
   const { gapsOf } = useGaps();
   const { visible } = useRole();
   const rows = useMemo<GapRow[]>(
@@ -100,7 +104,7 @@ export function CareGapsPageV3() {
       group: "Demographics",
       searchable: false,
     });
-    return [
+    const cols: Column<GapRow>[] = [
       {
         key: "name",
         header: "Member Name",
@@ -131,13 +135,19 @@ export function CareGapsPageV3() {
         group: "Care Gaps",
         accessor: (r) => V3_GAP_LABEL[r.g.def.code],
         sortable: true,
-        render: (r) => (
-          <StatusChip
-            tone="primary"
-            label={V3_GAP_LABEL[r.g.def.code]}
-            tip={r.g.def.name}
-          />
-        ),
+        render: (r) =>
+          // Version 4: the gap name opens that care gap's own page (before, only the Member Name link and the row menu did).
+          versionNo >= 4 ? (
+            <TableLink to={`/members/${r.m.id}/gaps/${r.g.def.code}`}>
+              {V3_GAP_LABEL[r.g.def.code]}
+            </TableLink>
+          ) : (
+            <StatusChip
+              tone="primary"
+              label={V3_GAP_LABEL[r.g.def.code]}
+              tip={r.g.def.name}
+            />
+          ),
         filterAccessor: (r) => r.g.def.code,
         filter: { type: "multiselect", options: v3GapOptions },
         searchable: false,
@@ -172,7 +182,7 @@ export function CareGapsPageV3() {
       },
       {
         key: "missing",
-        header: "Missing Evidence",
+        header: actionsName,
         help: "What is still needed to close this gap, in two or three words. Hover to see every record that counts and its date window.",
         group: "Care Gaps",
         accessor: (r) =>
@@ -233,7 +243,7 @@ export function CareGapsPageV3() {
       },
       {
         key: "closedDate",
-        header: "Gap Closed Date",
+        header: versionNo >= 4 ? "Gap Closed On" : "Gap Closed Date",
         help: "The day this gap was closed. Empty for an open gap.",
         group: "Care Gaps",
         accessor: (r) =>
@@ -325,7 +335,22 @@ export function CareGapsPageV3() {
       {
         key: "gapStatus",
         header: "Gap Status",
-        filterOnly: true,
+        // Version 4 also shows Gap Status as a column (Open / Closed), so a closed gap is clear on its row. Before, it was a filter only.
+        filterOnly: versionNo < 4,
+        ...(versionNo >= 4
+          ? {
+              group: "Care Gaps",
+              sortable: true,
+              nowrap: true,
+              help: "Whether this care gap is Open or Closed. The Gap Status filter chooses which ones the list shows.",
+              render: (r: GapRow) => (
+                <StatusChip
+                  tone={r.g.status === "Closed" ? "success" : "warning"}
+                  label={r.g.status === "Closed" ? "Closed" : "Open"}
+                />
+              ),
+            }
+          : {}),
         searchable: false,
         filterPinned: true,
         filterOrder: 2,
@@ -368,7 +393,14 @@ export function CareGapsPageV3() {
         }),
       ),
     ];
-  }, [visible]);
+    // Version 4: Gap Status sits right after Open Gap in the table (it was last because it started as a filter-only column).
+    if (versionNo >= 4) {
+      const i = cols.findIndex((c) => c.key === "gapStatus");
+      const [c] = cols.splice(i, 1);
+      cols.splice(cols.findIndex((x) => x.key === "measure") + 1, 0, c);
+    }
+    return cols;
+  }, [visible, actionsName, versionNo]);
 
   // The page opens on the open gaps (the Open Gap column); Gap Status adds the closed ones.
   const [filters, setFilters] = useState<FilterState>({ gapStatus: ["Open"] });

@@ -46,7 +46,7 @@ export function DashboardCardsPage() {
   const { version } = useVersion();
   const nav = useNavigate();
   const [year, setYear] = useState(MY);
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   /** Version 3: keep only members who have a gap in more than one measure (Overview only). */
   const [multi, setMulti] = useState("");
   const pop = useMemo(
@@ -137,7 +137,7 @@ export function DashboardCardsPage() {
 
   return (
     <PageContainer
-      title={version.id === 3 ? "Overview" : "Analytics option 2"}
+      title={version.id >= 3 ? "Overview" : "Analytics option 2"}
       titleVariant="overview"
       subtitle="All measures on one sheet. Click a bar or a row to open that measure's dashboard."
     >

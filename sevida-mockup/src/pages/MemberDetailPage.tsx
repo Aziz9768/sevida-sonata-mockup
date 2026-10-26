@@ -34,7 +34,7 @@ import { CareGapsTab } from "../components/CareGapsTab";
 import { CareGapsTabV3 } from "../components/CareGapsTabV3";
 import { ageLabel } from "../v3Data";
 import { MemberHeaderV3 } from "../components/MemberHeaderV3";
-import { tricareIdOf, genderV3 } from "../v3Data";
+import { tricareIdOf, genderV3, militaryV3 } from "../v3Data";
 import { groupOfRecord } from "../components/ClinicalTab";
 import { diagnosesOfYear } from "../components/memberColumns";
 import { useVersion } from "../version";
@@ -591,6 +591,7 @@ function ClinicalSummaryCard({ m }: { m: Member }) {
 }
 
 function ProfileTab({ m }: { m: Member }) {
+  const { version } = useVersion();
   const pcp = primaryCareOf(m);
   const [provOpen, setProvOpen] = useState(false);
   return (
@@ -632,7 +633,8 @@ function ProfileTab({ m }: { m: Member }) {
             },
             {
               label: "Military status (proposed field)",
-              value: militaryOf(m),
+              // Version 4 shows the same value as the member header.
+              value: version.id >= 4 ? militaryV3(m) : militaryOf(m),
             },
           ]}
         />
@@ -1089,7 +1091,7 @@ export function MemberHeader({ m, year }: { m: Member; year: number }) {
   const { version } = useVersion();
   // Version 3: the sheet gives no header fields, so it keeps who the member is (name, date of birth, enrollment status, Tricare ID,
   // age and gender, the same as the Members list), the data update dates, and print / export. The tiles and the details panel go.
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   const [open, setOpen] = useState(false);
   const { gapsOf } = useGaps();
   const results = resultsFor(m, year);
@@ -1466,12 +1468,18 @@ export function MemberDetailPage() {
       </PageContainer>
     );
   }
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   const year = v3 ? MY : yearFromParam(search.get("year"));
   const yearEvents = memberForYear(m, year).events;
   // Older links say tab=clinical, or name a kind of record (tab=labs, tab=all). Both now open the Records tab on that kind.
   // Version 3 opens on the Care Gaps tab (the sheet's default). An old link to a tab that no longer exists lands there too.
-  const V3_TABS = ["gaps", "claims", "diagnoses", "labs", "observations", "procedures", "providers", "visits"];
+  // Version 4 adds Profile back, right after Care Gaps. Care Gaps is still the tab that opens first.
+  const v4 = version.id >= 4;
+  const V3_TABS = [
+    "gaps",
+    ...(v4 ? ["profile"] : []),
+    "claims", "diagnoses", "labs", "observations", "procedures", "providers", "visits",
+  ];
   const rawTab0 = search.get("tab") ?? (v3 ? "gaps" : "measures");
   const rawTab = v3 && !V3_TABS.includes(rawTab0) ? "gaps" : rawTab0;
   const legacyKind = v3
@@ -1498,6 +1506,9 @@ export function MemberDetailPage() {
       count: sum.open,
       content: <CareGapsTabV3 m={m} />,
     },
+    ...(v4
+      ? [{ key: "profile", label: "Profile", count: undefined as number | undefined, content: <ProfileTab m={m} /> }]
+      : []),
     ...(
       [
         ["claims", "Claims"],

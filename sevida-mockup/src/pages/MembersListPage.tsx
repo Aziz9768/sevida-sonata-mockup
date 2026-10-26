@@ -23,7 +23,7 @@ export function MembersListPage() {
 
   const { version } = useVersion();
   const v2 = version.id === 2;
-  const v3 = version.id === 3;
+  const v3 = version.id >= 3;
   const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
   const { visible: members, canSee } = useRole();

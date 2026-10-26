@@ -1,3 +1,4 @@
+import { useVersion } from "../version";
 import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Box, Stack, Typography } from "@mui/material";
@@ -255,6 +256,7 @@ export function CareGapDetailPageV3() {
   const m = memberById(memberId);
   const def = measureByCode(code);
   const { get } = useGaps();
+  const { version } = useVersion();
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "evidence" ? "evidence" : "overview";
   const g = m && def ? get(m, def.code as MeasureCode) : null;
@@ -311,7 +313,7 @@ export function CareGapDetailPageV3() {
             <Field label="Measure">{label}</Field>
             <Field label="For">{m.name}</Field>
             <Field label="Identified Date">{fmtDate(g.identified)}</Field>
-            <Field label="Missing Evidence">{missingText}</Field>
+            <Field label={version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>{missingText}</Field>
             <Field label="Last Updated">
               {fmtWhen(g.lastUpdated.toISOString())}
             </Field>
