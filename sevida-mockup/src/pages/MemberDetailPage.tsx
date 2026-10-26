@@ -34,6 +34,7 @@ import { CareGapsTab } from "../components/CareGapsTab";
 import { CareGapsTabV3 } from "../components/CareGapsTabV3";
 import { ageLabel } from "../v3Data";
 import { MemberHeaderV3 } from "../components/MemberHeaderV3";
+import { MemberHeaderV4 } from "../components/MemberHeaderV4";
 import { tricareIdOf, genderV3, militaryV3 } from "../v3Data";
 import { groupOfRecord } from "../components/ClinicalTab";
 import { diagnosesOfYear } from "../components/memberColumns";
@@ -1189,6 +1190,11 @@ export function MemberHeader({ m, year }: { m: Member; year: number }) {
       : null,
   ].filter(Boolean);
 
+  // Version 4: the original header look with the sheet's fields.
+  if (version.id >= 4)
+    return (
+      <MemberHeaderV4 m={m} openGaps={sum.open} updated={newestReceived()} />
+    );
   // Version 3 draws the header exactly as the sheet's wireframe does (its own component).
   if (v3)
     return (

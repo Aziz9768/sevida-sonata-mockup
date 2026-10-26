@@ -85,6 +85,7 @@ export const VERSIONS: VersionInfo[] = [
       "Care Gaps list and Care Gap page: the Missing Evidence column / field is now called Recommended Actions (in the table, the Columns panel and the Care Gap Summary). The values are unchanged.",
       "Member page: the Profile tab is back as a sub tab (contact information, primary care provider, language, disability, race and ethnicity detail). It sits right after Care Gaps. Care Gaps is still the tab that opens first.",
       "Care Gaps list: Gap Status (Open / Closed) is now a column, shown by default right after Open Gap, as well as a filter. In Version 3 it was a filter only.",
+      "Member header (Member page and Care Gap page): the original look is back (name, date of birth and enrollment chip on top, small-capital labels over values, a boxed expand button), with the sheet's fields: Tricare ID, Age, Genesis EHR ID with See all IDs, Military Status, Open Care Gaps, Gap Data Last Updated, and the address block when expanded.",
       "Care Gaps list: the gap name is a link that opens that care gap's page.",
       "Members list: new Closed Gaps column (the measures already closed, as chips). Gap Closed Date is now called Gap Closed On, on the Members list (column and date filter) and the Care Gaps list. Both are in the Columns panel, hidden by default.",
     ],
