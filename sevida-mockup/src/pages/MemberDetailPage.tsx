@@ -33,7 +33,7 @@ import type { Column } from "sevida-ui";
 import { CareGapsTab } from "../components/CareGapsTab";
 import { CareGapsTabV3 } from "../components/CareGapsTabV3";
 import { ageLabel } from "../v3Data";
-import { MemberIdsV3 } from "../components/MemberIdsV3";
+import { MemberHeaderV3 } from "../components/MemberHeaderV3";
 import { tricareIdOf, genderV3 } from "../v3Data";
 import { groupOfRecord } from "../components/ClinicalTab";
 import { diagnosesOfYear } from "../components/memberColumns";
@@ -1187,6 +1187,15 @@ export function MemberHeader({ m, year }: { m: Member; year: number }) {
       : null,
   ].filter(Boolean);
 
+  // Version 3 draws the header exactly as the sheet's wireframe does (its own component).
+  if (v3)
+    return (
+      <MemberHeaderV3
+        m={m}
+        openGaps={sum.open}
+        updated={newestReceived()}
+      />
+    );
   const card = (
     <Card>
       <Stack spacing={1.5}>
@@ -1282,13 +1291,7 @@ export function MemberHeader({ m, year }: { m: Member; year: number }) {
                   }
             }
           >
-            {v3 ? (
-              <>
-                <MemberIdsV3 m={m} />
-                <Field label="Age">{ageLabel(m.dob)}</Field>
-                <Field label="Gender">{genderV3(m)}</Field>
-              </>
-            ) : (
+            {(
               <>
             <Field label="Member ID">{m.id}</Field>
             <Field label={version.id === 2 ? "Age · gender" : "Age · sex"}>
@@ -1518,7 +1521,8 @@ export function MemberDetailPage() {
 
   return (
     <PageContainer
-      breadcrumbsEnd={<DataFreshness />}
+      // Version 3 has "Gap Data Last Updated" inside the header (sheet wireframe), so it is not repeated here.
+      breadcrumbsEnd={v3 ? undefined : <DataFreshness />}
       breadcrumbs={[
         { label: "Home", href: "/" },
         { label: "Members", href: "/members" },

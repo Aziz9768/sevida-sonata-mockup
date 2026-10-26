@@ -12,7 +12,7 @@ import {
 import type { Column } from "sevida-ui";
 import { Field } from "../components/Field";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
-import { DataFreshness, MemberHeader } from "./MemberDetailPage";
+import { MemberHeader } from "./MemberDetailPage";
 import {
   fmtWhen,
   impactsOf,
@@ -291,7 +291,6 @@ export function CareGapDetailPageV3() {
     g.status === "Closed" ? "None" : MISSING_SHORT[def.code as MeasureCode];
   return (
     <PageContainer
-      breadcrumbsEnd={<DataFreshness />}
       title={`${m.name}: ${label}`}
       breadcrumbs={crumbs}
       renderLink={renderCrumbLink}

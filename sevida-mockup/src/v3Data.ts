@@ -91,6 +91,43 @@ export const raceV3 = (m: Member) =>
 export const ethnicityV3 = (m: Member) =>
   m.ethnicityCode === "" ? NONE : ethnicityGroupOf(m);
 
+
+/* ------------------------------------------------------------------ member header (sheet wireframe, Member Details Page tab) */
+
+const POSTINGS = [
+  "Joint Base Lewis-McChord, WA",
+  "Fort Liberty, NC",
+  "Naval Station Norfolk, VA",
+  "Travis Air Force Base, CA",
+  "Fort Cavazos, TX",
+];
+const MARITAL = ["Married", "Single", "Divorced", "Widowed"];
+const fmtPhone = (p: string) =>
+  /^\d{10}$/.test(p) ? `(${p.slice(0, 3)}) ${p.slice(3, 6)}-${p.slice(6)}` : p;
+/**
+ * Values the header's expanded block shows that the demo data does not have (mailing address, current posting location, email,
+ * marital status). Made up per member, the same every time. Residential address and phone are the demo's own.
+ */
+export const sampleProfileOf = (m: Member) => {
+  const h = hashOf(`${m.id}-profile`);
+  const residential = `${m.street}, ${m.city}, ${m.state} ${m.zip}`;
+  const adult = DEMO_NOW.getFullYear() - m.dob.getFullYear() >= 18;
+  const military = militaryV3(m);
+  return {
+    residential,
+    mailing:
+      h % 4 === 0
+        ? `PO Box ${1000 + (h % 8000)}, ${m.city}, ${m.state} ${m.zip}`
+        : residential,
+    posting: /Active Duty|Guard\/Reserve - Active/.test(military)
+      ? POSTINGS[h % POSTINGS.length]
+      : "–",
+    phone: fmtPhone(m.phone),
+    email: `${m.first}.${m.last}@example.com`.toLowerCase().replace(/[^a-z0-9.@]/g, ""),
+    marital: adult ? MARITAL[(h >>> 3) % MARITAL.length] : "Single",
+  };
+};
+
 /* ------------------------------------------------------------------ age */
 
 /** Whole months and days between a date of birth and the demo's today. */
