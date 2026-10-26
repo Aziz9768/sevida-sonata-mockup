@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Box, Collapse, Divider, Link, Stack, Typography } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { Card, DetailGrid, IconButton, StatusChip } from "sevida-ui";
 import { DEMO_NOW, enrollmentStatusOf, fmtDate } from "../data";
@@ -26,10 +27,13 @@ export function MemberHeaderV4({
   m,
   openGaps,
   updated,
+  nameTo,
 }: {
   m: Member;
   openGaps: number;
   updated?: Date;
+  /** When set, the member name is a link to this path (used on the Care Gap page to go back to the Member page). */
+  nameTo?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [idsOpen, setIdsOpen] = useState(false);
@@ -50,7 +54,13 @@ export function MemberHeaderV4({
           sx={{ flexWrap: "wrap", rowGap: 0.5, minWidth: 0 }}
         >
           <Typography variant="h6" component="h1" sx={{ overflowWrap: "anywhere" }}>
-            {m.name}
+            {nameTo ? (
+              <Link component={RouterLink} to={nameTo} variant="inherit" underline="hover" color="secondary">
+                {m.name}
+              </Link>
+            ) : (
+              m.name
+            )}
           </Typography>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
             DOB {fmtDate(m.dob)}

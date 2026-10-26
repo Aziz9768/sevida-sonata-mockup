@@ -1088,7 +1088,15 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
  * Short header: name, date of birth, and the few facts and counts you need at a glance.
  * The arrow opens everything else about the member.
  */
-export function MemberHeader({ m, year }: { m: Member; year: number }) {
+export function MemberHeader({
+  m,
+  year,
+  nameTo,
+}: {
+  m: Member;
+  year: number;
+  nameTo?: string;
+}) {
   const { version } = useVersion();
   // Version 3: the sheet gives no header fields, so it keeps who the member is (name, date of birth, enrollment status, Tricare ID,
   // age and gender, the same as the Members list), the data update dates, and print / export. The tiles and the details panel go.
@@ -1193,7 +1201,7 @@ export function MemberHeader({ m, year }: { m: Member; year: number }) {
   // Version 4: the original header look with the sheet's fields.
   if (version.id >= 4)
     return (
-      <MemberHeaderV4 m={m} openGaps={sum.open} updated={newestReceived()} />
+      <MemberHeaderV4 m={m} openGaps={sum.open} updated={newestReceived()} nameTo={nameTo} />
     );
   // Version 3 draws the header exactly as the sheet's wireframe does (its own component).
   if (v3)

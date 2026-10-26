@@ -298,7 +298,7 @@ export function CareGapDetailPageV3() {
       renderLink={renderCrumbLink}
     >
       <Stack spacing={2}>
-        <MemberHeader m={m} year={MY} />
+        <MemberHeader m={m} year={MY} nameTo={`/members/${m.id}`} />
         <Card title="Care Gap Summary">
           <Box
             sx={{
