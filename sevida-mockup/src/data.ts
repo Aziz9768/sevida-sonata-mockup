@@ -1280,7 +1280,7 @@ export const v3Extra: Member[] = [
   young('M1304', 'Mia', 'Alvarez', 'female', new Date(2022, 2, 14)),
 ];
 /** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3. */
-export const allMembers = (): Member[] => (getVersion() === 3 ? [...members, ...v3Extra] : members);
+export const allMembers = (): Member[] => (getVersion() >= 3 ? [...members, ...v3Extra] : members);
 export const memberById = (id: string | undefined) => members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id);
 
 /* ------------------------------------------------------------------ enrollment checks */
@@ -1691,7 +1691,7 @@ function v3Def(def: MeasureDef): MeasureDef {
 }
 
 export function measureFor(base: MeasureDef, year: number): MeasureDef {
-  const def = getVersion() === 3 && year === MY ? v3Def(base) : base;
+  const def = getVersion() >= 3 && year === MY ? v3Def(base) : base;
   if (year === MY) return def;
   const R = rulesOfYear(year);
   const [lo, hi] = R.ages[def.code];
@@ -1804,7 +1804,7 @@ const v3Rules = (r: YearRules): YearRules => ({ ...r, ages: { ...r.ages, 'BCS-E'
 const v3Cache = new Map<number, YearRules>();
 export const rulesOfYear = (year: number): YearRules => {
   const base = yearRules[year] ?? yearRules[MY];
-  if (getVersion() !== 3) return base;
+  if (getVersion() < 3) return base;
   let r = v3Cache.get(base.year);
   if (!r) v3Cache.set(base.year, (r = v3Rules(base)));
   return r;
@@ -1962,7 +1962,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
     add(3, 'excluded', 'Age 66+ with frailty and advanced illness');
     return finish('Excluded', 'Age 66+ with frailty and advanced illness');
   }
-  if (getVersion() === 3 && (code === 'BCS-E' || code === 'COL-E') && age >= 66) {
+  if (getVersion() >= 3 && (code === 'BCS-E' || code === 'COL-E') && age >= 66) {
     const isnp = m.segments.find((x) => x.payer === 'SN2' && x.start <= Y_END && x.end >= Y_START);
     if (isnp) {
       const r = 'Age 66+ and enrolled in an institutional special needs plan (I-SNP)';
@@ -1976,7 +1976,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
       return finish('Excluded', r);
     }
   }
-  if (getVersion() === 3 && code === 'CCS-E' && palliative) {
+  if (getVersion() >= 3 && code === 'CCS-E' && palliative) {
     const r = `Palliative care during ${Y} (${palliative.text}, ${fmtDate(palliative.date)})`;
     add(3, 'excluded', r, `${palliative.file}.csv`);
     return finish('Excluded', r, palliative);
@@ -1997,7 +1997,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
   }
   if (code === 'BCS-E') {
     const mast = m.events.filter((e) => e.tag === 'mastectomy' && (R.labMastectomyCounts || !e.labClaim));
-    if (getVersion() === 3) {
+    if (getVersion() >= 3) {
       const one = mast.find((e) => e.date <= Y_END);
       if (one) {
         const both = mast.some((e) => e.side === 'LT') && mast.some((e) => e.side === 'RT');
@@ -2103,7 +2103,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         return finish('Gap', 'No final HbA1c this year');
       }
       const withValue = tests.filter((e) => e.value !== undefined);
-      const lowest = getVersion() === 3 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
+      const lowest = getVersion() >= 3 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
       const t = lowest ?? tests[0];
       if (t.value === undefined) {
         const r = `Final HbA1c lab on ${fmtDate(t.date)} has no result value`;
@@ -2290,7 +2290,7 @@ export function v3Filler(member: Member): Evt[] {
 const v3Member = new Map<string, Member>();
 function withV3Events(member: Member): Member {
   const p = V3_PATCH[member.id];
-  if (!p || getVersion() !== 3) return member;
+  if (!p || getVersion() < 3) return member;
   let r = v3Member.get(member.id);
   if (!r) {
     r = {
@@ -2449,7 +2449,7 @@ export function latestA1c(member: Member, year: number = MY): { value?: number; 
   const all = m.events.filter((e) => e.tag === 'hba1c' && e.status === 'final' && e.date.getFullYear() === year).sort((a, b) => b.date.getTime() - a.date.getTime());
   /** Version 3: the measure uses the lowest result of the period. */
   const withValue = all.filter((e) => e.value !== undefined);
-  const t = getVersion() === 3 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
+  const t = getVersion() >= 3 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
   return t ? { value: t.value, date: t.date } : null;
 }
 export type A1cBand = 'Above 9%' | '8% to 9%' | 'Below 8%' | 'No result';

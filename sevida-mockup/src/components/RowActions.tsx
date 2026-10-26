@@ -21,7 +21,8 @@ export function RowActions({
   gapCode?: MeasureCode;
 }) {
   const navigate = useNavigate();
-  const v3 = useVersion().version.id === 3;
+  const v3 = useVersion().version.id >= 3;
+  const v4 = useVersion().version.id >= 4;
   const [el, setEl] = useState<HTMLElement | null>(null);
   const go = (tab?: string, print?: boolean) => {
     setEl(null);
@@ -64,6 +65,7 @@ export function RowActions({
         {v3 ? (
           [
             ["gaps", "Care Gaps"],
+            ...(v4 ? [["profile", "Profile"]] : []),
             ["claims", "Claims"],
             ["diagnoses", "Diagnoses"],
             ["labs", "Labs"],

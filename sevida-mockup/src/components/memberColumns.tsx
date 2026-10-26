@@ -1262,10 +1262,45 @@ export function useMemberTableColumns(
           filter: { type: "dateRange" },
         },
         // ---- hidden columns the user can switch on
+        // Version 4: the measures this member has already closed, in the same chip style as Gap Name(s).
+        ...(version >= 4
+          ? [
+              {
+                key: "closedGaps",
+                header: "Closed Gaps",
+                help: "The care gaps this member has already closed, by short form of the measure. Hover a short form to read the full name. At most two lines: when there are more, hover +N more to see them all. The day each was closed is in Gap Closed On.",
+                group: "Care Gaps",
+                defaultHidden: true,
+                accessor: (m: MemberRow) => {
+                  const a = closedGaps(m).map((g) => gapShort(g.def.code));
+                  return a.length ? a : null;
+                },
+                sortable: true,
+                render: (m: MemberRow) => {
+                  const gs = closedGaps(m);
+                  return gs.length === 0 ? (
+                    "None"
+                  ) : (
+                    noWrapTwo(
+                      gs.map((g) => (
+                        <StatusChip
+                          key={g.id}
+                          tone="primary"
+                          label={gapShort(g.def.code)}
+                          tip={V3_GAP_LABEL[g.def.code]}
+                        />
+                      )),
+                      gs.map((g) => V3_GAP_LABEL[g.def.code]).join(", "),
+                    )
+                  );
+                },
+              } as Column<MemberRow>,
+            ]
+          : []),
         {
           key: "closedDate",
           filterOrder: 8,
-          header: "Gap Closed Date",
+          header: version >= 4 ? "Gap Closed On" : "Gap Closed Date",
           help: "The day each closed care gap was closed, one line per gap, with the measure it belongs to. At most two lines. Sorting and the date filter use the latest one.",
           group: "Care Gaps",
           defaultHidden: true,
@@ -1438,7 +1473,7 @@ export function useMemberTableColumns(
       ];
     };
     const final =
-      version === 3 && !only
+      version >= 3 && !only
         ? versionThreeColumns()
         : version === 2
         ? versionTwo(all, { eligible: eligibleCol, found: foundMulti })
@@ -1447,7 +1482,7 @@ export function useMemberTableColumns(
     return final.map((c) => ({
       ...c,
       searchable:
-        version === 3
+        version >= 3
           ? c.key === "name" || c.key === "tricare"
           : c.key === "name" || c.key === "id" || c.key === "insurance",
     }));

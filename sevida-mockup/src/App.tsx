@@ -138,7 +138,7 @@ function v3Nav(menus: NavKey[]): NavItem[] {
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string, search = "", versionId = 2) {
   const [first] = pathname.split("/").filter(Boolean);
-  if (versionId === 3) {
+  if (versionId >= 3) {
     if (first === "dashboards") return "analytics-overview";
     if (first === "quicksight")
       return `analytics-${new URLSearchParams(search).get("m") ?? "BCS"}`;
@@ -350,7 +350,7 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={version.id === 3 ? v3Nav(role.menus) : baseNav
+      items={version.id >= 3 ? v3Nav(role.menus) : baseNav
         .filter(
           (i) =>
             role.menus.includes(i.key as NavKey) &&
@@ -424,7 +424,7 @@ function Protected() {
           element={
             <Navigate
               to={
-                version.id === 3 && role.menus.includes("care-gaps")
+                version.id >= 3 && role.menus.includes("care-gaps")
                   ? "/care-gaps"
                   : home
               }

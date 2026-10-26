@@ -1023,5 +1023,5 @@ function CareGapDetailPageOld() {
 /** Version 3 has its own page (see CareGapDetailPageV3.tsx); versions 1 and 2 keep the page above exactly as it was. */
 export function CareGapDetailPage() {
   const { version } = useVersion();
-  return version.id === 3 ? <CareGapDetailPageV3 /> : <CareGapDetailPageOld />;
+  return version.id >= 3 ? <CareGapDetailPageV3 /> : <CareGapDetailPageOld />;
 }

@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3;
+export type VersionId = 1 | 2 | 3 | 4;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -74,8 +74,23 @@ export const VERSIONS: VersionInfo[] = [
       "Not built: the 31 sheet rows marked Later (including the long Claims field list), and rows that are open questions or platform checks (listed in the gap analysis).",
     ],
   },
+  {
+    id: 4,
+    name: "Version 4",
+    date: "2026-10-26",
+    summary:
+      "Version 3 with Missing Evidence renamed to Recommended Actions, the Profile tab back on the Member page, and Closed Gaps / Gap Closed On columns.",
+    changes: [
+      "Everything else is the same as Version 3.",
+      "Care Gaps list and Care Gap page: the Missing Evidence column / field is now called Recommended Actions (in the table, the Columns panel and the Care Gap Summary). The values are unchanged.",
+      "Member page: the Profile tab is back as a sub tab (contact information, primary care provider, language, disability, race and ethnicity detail). It sits right after Care Gaps. Care Gaps is still the tab that opens first.",
+      "Care Gaps list: Gap Status (Open / Closed) is now a column, shown by default right after Open Gap, as well as a filter. In Version 3 it was a filter only.",
+      "Care Gaps list: the gap name is a link that opens that care gap's page.",
+      "Members list: new Closed Gaps column (the measures already closed, as chips). Gap Closed Date is now called Gap Closed On, on the Members list (column and date filter) and the Care Gaps list. Both are in the Columns panel, hidden by default.",
+    ],
+  },
 ];
-export const LATEST_VERSION: VersionId = 3;
+export const LATEST_VERSION: VersionId = 4;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

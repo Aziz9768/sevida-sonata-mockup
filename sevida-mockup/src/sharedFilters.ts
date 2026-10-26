@@ -21,7 +21,7 @@ export const ageGroupFor = (age: number) =>
   AGE_GROUPS.find((b) => age >= b.lo && age <= b.hi)?.label ?? "Unknown";
 
 /** Filter names. */
-const v3L = (v3: string, old: string) => (getVersion() === 3 ? v3 : old);
+const v3L = (v3: string, old: string) => (getVersion() >= 3 ? v3 : old);
 export const LABEL = {
   get year() { return v3L("Measurement Year", "Measurement year"); },
   member: "Member",
@@ -85,7 +85,7 @@ export const measureOptions = [...measures]
 
 /** The same list, with the Version 3 gap names ("BCS - Breast Cancer Screening") so the dashboards read like the Care Gaps list. */
 export const measureOptionsFor = () =>
-  getVersion() === 3
+  getVersion() >= 3
     ? measureOptions
         .map((o) => ({ value: o.value, label: V3_GAP_LABEL[o.value as keyof typeof V3_GAP_LABEL] }))
         .sort((a, b) => a.label.localeCompare(b.label))

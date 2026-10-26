@@ -498,7 +498,7 @@ function seedWork(m: Member, code: MeasureCode): Work {
   /** How far the work has got. Closed ones need an old enough gap, so every date stays on or before the demo's today. */
   const age = h % 80;
   const stage: "open" | "outreach" | "records" | "closed" =
-    !planned && age >= 20 && (h >> 6) % (getVersion() === 3 ? 4 : 14) === 0
+    !planned && age >= 20 && (h >> 6) % (getVersion() >= 3 ? 4 : 14) === 0
       ? "closed"
       : planned
         ? "outreach"

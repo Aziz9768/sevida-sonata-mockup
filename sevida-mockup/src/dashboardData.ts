@@ -119,7 +119,7 @@ export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
 });
 
 /** Version 3 reads the same values as the member lists: Gender with Other and Unknown, fixed Age Ranges, Race and Ethnicity with None, nine Military Status values. */
-const v3 = () => getVersion() === 3;
+const v3 = () => getVersion() >= 3;
 /** Version 3 writes BCS, CCS and COL (the sheet's names), not BCS-E, CCS-E and COL-E. */
 export const v3Code = (s: string) => (v3() ? s.replace(/\b(BCS|CCS|COL)-E\b/g, "$1") : s);
 export const sexOf = (m: Member) =>
@@ -319,7 +319,7 @@ export function secondRate(list: Member[], year: number) {
 
 /** The measurement period is the whole calendar year. Version 3 shows the current year as year to date: January 1 to the last run date. */
 export const periodText = (year: number) =>
-  getVersion() === 3 && year === CURRENT_YEAR
+  getVersion() >= 3 && year === CURRENT_YEAR
     ? `${fmtDate(new Date(year, 0, 1))} to ${fmtDate(startOfDay(DEMO_NOW))} (year to date)`
     : `${fmtDate(new Date(year, 0, 1))} to ${fmtDate(new Date(year, 11, 31))}`;
 

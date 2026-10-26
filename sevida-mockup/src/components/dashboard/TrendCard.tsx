@@ -89,7 +89,7 @@ export function presetRange(g: Granularity, value: string): { from: Date; to: Da
 
 /** Granularity, range and compare choices shared by the single trend and the five small ones on the Overview. */
 export function useTrendControls() {
-  const v3 = getVersion() === 3;
+  const v3 = getVersion() >= 3;
   const [g, setG] = useState<Granularity>("monthly");
   const [preset, setPresetValue] = useState(defaultPreset.monthly);
   const [range, setRange] = useState(v3 ? presetRange("monthly", defaultPreset.monthly) : defaultRange("monthly"));
