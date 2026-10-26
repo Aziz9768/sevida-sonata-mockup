@@ -1185,7 +1185,11 @@ export function useMemberTableColumns(
           filterPinned: true,
           help: "The care gaps this member still has open, by short form of the measure. Hover a short form to read the full name. At most two lines: when there are more, hover +N more to see them all. A gap that was closed is not listed here.",
           group: "Care Gaps",
-          accessor: (m) => openGapsOf(m).map((g) => gapShort(g.def.code)),
+          accessor: (m) => {
+            const a = openGapsOf(m).map((g) => gapShort(g.def.code));
+            return a.length ? a : null;
+          },
+          sortable: true,
           render: (m) => {
             const gs = openGapsOf(m);
             return gs.length === 0 ? (

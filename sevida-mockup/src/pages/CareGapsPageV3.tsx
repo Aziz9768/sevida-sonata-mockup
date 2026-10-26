@@ -182,6 +182,7 @@ export function CareGapsPageV3() {
           const x = missingEvidenceFor(r.g.def.code, CURRENT_YEAR);
           return <Term tip={x.windows}>{MISSING_SHORT[r.g.def.code]}</Term>;
         },
+        sortable: true,
         searchable: false,
         width: 180,
       },
