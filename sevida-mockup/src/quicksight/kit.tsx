@@ -41,6 +41,10 @@ export const QUESTIONS: Record<string, string> = {
   Q30: "Showing or hiding a tile by a filter value works only in free-form layout. Is free-form acceptable for the notice boxes?",
   Q28: "Can a control follow the viewer across sheets (cross-sheet control)? If not, a choice made on one sheet still filters the others and a note says so.",
   Q27: "Will Madigan send a member-to-PCP file with from and to dates? Today the provider comes from the claims.",
+  Q31: "Can a KPI tile or a table cell show a symbol AND a word (for example ✔ Meets benchmark) from a calculated field, so status never depends on colour alone?",
+  Q32: "Can the embed hide its own Filter button and filter pane, so the only filters are the controls bar?",
+  Q33: "Can a controls bar choice be kept in the page address, so Copy link keeps the filters (parameters passed to the embed)?",
+  Q34: "Can a table show all its rows at full height (no scroll bar inside the tile), or must it page? Below how many rows?",
 };
 
 function Notes({ fr, ask }: { fr?: string; ask?: string[] }) {
@@ -628,6 +632,7 @@ export function QsColumnChart({
   label,
   onSelect,
   empty = "No data",
+  reference,
 }: {
   bars: QsBar[];
   max?: number;
@@ -637,6 +642,8 @@ export function QsColumnChart({
   label: string;
   onSelect?: (b: QsBar) => void;
   empty?: string;
+  /** A dashed reference line across the bars (for example the benchmark). */
+  reference?: { value: number; label: string };
 }) {
   const [ref, W] = useWidth();
   const padL = 36,
@@ -737,6 +744,7 @@ export function QsColumnChart({
                   fontSize={12}
                   fontWeight={700}
                   fill={qs.color.primaryForeground}
+                  {...(reference ? { stroke: "#fff", strokeWidth: 3, paintOrder: "stroke" } : {})}
                 >
                   {fmt(b.value)}
                 </text>
@@ -752,6 +760,32 @@ export function QsColumnChart({
               </g>
             );
           })}
+          {reference && (
+            <g>
+              <title>{`${reference.label}: ${fmt(reference.value)}`}</title>
+              <line
+                x1={padL}
+                x2={W - padR}
+                y1={y(reference.value)}
+                y2={y(reference.value)}
+                stroke={qs.color.primaryForeground}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+              />
+              {reference.label && (
+              <text
+                x={W - padR}
+                y={y(reference.value) - 4}
+                textAnchor="end"
+                fontSize={11}
+                fontWeight={700}
+                fill={qs.color.primaryForeground}
+              >
+                {reference.label} {fmt(reference.value)}
+              </text>
+              )}
+            </g>
+          )}
         </svg>
       )}
     </Box>
@@ -769,6 +803,8 @@ export function QsBarChart({
   benchmarkLabel = "Benchmark",
   label,
   empty = "No data",
+  labelWidth,
+  valueWidth,
 }: {
   bars: QsBar[];
   max?: number;
@@ -776,13 +812,17 @@ export function QsBarChart({
   benchmarkLabel?: string;
   label: string;
   empty?: string;
+  /** Room for the names on the left, in px, when they are long. */
+  labelWidth?: number;
+  /** Room for the value and its note on the right, in px. */
+  valueWidth?: number;
 }) {
   const [ref, W] = useWidth();
   const rowH = 30,
     padT = benchmark === undefined ? 6 : 26,
     padB = 22,
-    labelW = Math.min(170, Math.max(90, W * 0.32)),
-    valueW = 118,
+    labelW = labelWidth ?? Math.min(170, Math.max(90, W * 0.32)),
+    valueW = valueWidth ?? 118,
     gap = 8;
   const plotW = Math.max(60, W - labelW - valueW - gap * 2);
   const x0 = labelW + gap;

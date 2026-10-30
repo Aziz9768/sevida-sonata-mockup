@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -91,8 +91,46 @@ export const VERSIONS: VersionInfo[] = [
       "Members list: new Closed Gaps column (the measures already closed, as chips). Gap Closed Date is now called Gap Closed On, on the Members list (column and date filter) and the Care Gaps list. Both are in the Columns panel, hidden by default.",
     ],
   },
+  {
+    id: 5,
+    name: "Version 5",
+    date: "2026-10-30",
+    summary:
+      "Version 4 with Analytics redesigned from the UX report: a scorecard Overview, one frame for every dashboard, 12 demo dashboards in 3 groups.",
+    changes: [
+      "Everything outside Analytics is the same as Version 4. Versions 1 to 4 keep their own Analytics pages.",
+      "Sidebar: Analytics has Overview plus one entry per group (Preventive Screening, Chronic Condition Care, Child and Adolescent Health). The dashboards of a group are tabs inside it. The groups and tabs are drawn from one list in the code (analyticsRegistry.ts), so a new dashboard or a new group is one new row.",
+      "Overview is a scorecard: one row per dashboard with the result, members counted (n), whether higher or lower is better, the change since last year (in words and an arrow), the benchmark, the status (a word and an icon, never colour alone) and the last updated date. Sortable, searchable and filterable, with a group level on top and the furthest-from-benchmark measure named in the first card.",
+      "Every dashboard has the same frame in the same order: title once, one sentence with the age range, last updated, group tabs, one filter row (Age Range, Gap Status, Gender, Measurement Year, A to Z, same names as the app, working at once), a line that says which filters are on with one Reset, summary tiles, charts, member list.",
+      "Every percentage shows its group size (n). Groups under 30 members are flagged Small group with a word and an icon. Every measure says Higher is better or Lower is better (GSD is lower).",
+      "One page scroll, no scroll bars inside, no cut-off text, and the layout stacks to one column in a half-width window.",
+      "Help is in one place (How to read this): plain words first, the HEDIS term second, the same words as the (i) icons. A loading skeleton shows while a dashboard draws. Copy link keeps the filters. Export and print are in one menu. Each page has its own browser tab title. A wrong address shows a Not Found page with links.",
+      "Build notes: each part of the page is tagged Works with the embed (QuickSight can draw it) or Needs custom build (Sonata builds it). Use Hide build notes in the page header to turn the tags off.",
+      "Demo: 12 dashboards in 3 groups. The five real measures (BCS, CCS, COL, GSD, WCV) read the demo members. The other seven (CHL, CBP, KED, SPC, CIS, IMA, LSC) use made-up repeatable numbers and have no member list. The benchmarks are demo values.",
+      "Not built: role-based views, saved views, and care manager, team or provider filters (the data does not hold them yet).",
+    ],
+  },
+  {
+    id: 6,
+    name: "Version 6",
+    date: "2026-10-30",
+    summary:
+      "The same UX fixes as Version 5, but everything inside the dashboard uses only the QuickSight style guide. Nothing from the Sonata component set is drawn inside the dashboard box.",
+    changes: [
+      "Everything outside Analytics is the same as Version 5. Versions 1 to 5 keep their own Analytics pages.",
+      "Inside the dashboard box only the QuickSight kit is used: toolbar, sheet tabs, one controls bar, KPI tiles, column chart, horizontal bar chart with a benchmark line, table visual, text box. Normal and Bold weights only, no shadows, no new colours, no new buttons. No Sonata cards, chips, tables or modals inside the box.",
+      "Outside the box the app still owns: the sidebar, the page title and breadcrumb, the browser tab title, the loading skeleton, the Not Found page and the Copy link button.",
+      "Overview: one sheet with the controls bar (Group, Measurement Year, Status, A to Z), a text box that says which filters are on, four KPI tiles, a Points From Benchmark column chart and the Scorecard as a table visual. Click a bar or a row to open that dashboard. Help is its own sheet.",
+      "Every dashboard: the dashboards of a group are the sheet tabs (up to 7), plus a Help sheet. Same controls bar order on every dashboard (Age Range, Gap Status, Gender, Measurement Year). A text box says which filters are on. Reset is the toolbar Reset.",
+      "Status is a symbol and a word inside coloured text (✔ Meets, ! Near, ✖ Misses) because QuickSight cannot draw a chip. Change since last year is an arrow and words. Higher is better or Lower is better is a line of text on the main KPI.",
+      "Every percentage has its group size (n). Small groups (under 30) get a grey bar and the words small group, because a Sonata chip is not allowed. The benchmark is a dashed line on the charts.",
+      "One page scroll. Tables show the full height with the first 25 members and Export to CSV in the visual menu, so there is no scroll bar inside the box. Chart labels are given enough room so nothing is cut with an ellipsis.",
+      "Open questions for the QuickSight developers are tagged Ask Q31 to Q34 (symbol and word status from a calculated field, hiding the embed's own Filter button, keeping the controls in the page address so Copy link keeps them, full height tables). Use Hide questions for developers to turn the tags off.",
+      "Demo: the same 12 dashboards and numbers as Version 5.",
+    ],
+  },
 ];
-export const LATEST_VERSION: VersionId = 4;
+export const LATEST_VERSION: VersionId = 6;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

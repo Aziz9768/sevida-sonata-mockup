@@ -139,6 +139,7 @@ export function navKeyForPath(pathname: string): NavKey | "analytics" | null {
     case "dashboards":
       return "dashboards";
     case "dashboard":
+    case "analytics":
       return "analytics";
     default:
       return null;

@@ -29,6 +29,11 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
 import { DashboardCardsPage } from "./pages/DashboardCardsPage";
 import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
+import { AnalyticsOverviewPage } from "./pages/AnalyticsOverviewPage";
+import { AnalyticsMeasurePage } from "./pages/AnalyticsMeasurePage";
+import { AnalyticsOverviewQsPage } from "./pages/AnalyticsOverviewQsPage";
+import { AnalyticsMeasureQsPage } from "./pages/AnalyticsMeasureQsPage";
+import { GROUPS, dashByCode, dashesIn } from "./analyticsRegistry";
 import { MeasuresPage } from "./pages/MeasuresPage";
 import { MeasureDetailPage } from "./pages/MeasureDetailPage";
 import { MembersListPage } from "./pages/MembersListPage";
@@ -135,9 +140,38 @@ function v3Nav(menus: NavKey[]): NavItem[] {
   return out;
 }
 
+/** Version 5 sidebar: Analytics (Overview, then one entry per group; the dashboards of a group are tabs inside it), Care Gaps, Members. Drawn from the dashboard list, so a new group shows up here by itself. */
+function v5Nav(menus: NavKey[]): NavItem[] {
+  const out = v3Nav(menus).filter((i) => i.key !== "analytics");
+  if (menus.includes("quicksight") || menus.includes("dashboards"))
+    out.unshift({
+      key: "analytics",
+      label: "Analytics",
+      icon: <InsightsOutlinedIcon />,
+      children: [
+        { key: "analytics-overview", label: "Overview", href: "/analytics" },
+        ...GROUPS.map((g) => ({
+          key: `analytics-group-${g.id}`,
+          label: g.name,
+          href: `/analytics/${dashesIn(g.id)[0].code}`,
+        })),
+      ],
+    });
+  return out;
+}
+
+/** Version 5: the old Analytics addresses go to the new pages. */
+function V5Redirect({ to }: { to: string }) {
+  return <Navigate to={to} replace />;
+}
+
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string, search = "", versionId = 2) {
   const [first] = pathname.split("/").filter(Boolean);
+  if (versionId >= 5 && first === "analytics") {
+    const d = dashByCode(pathname.split("/")[2]);
+    return d ? `analytics-group-${d.group}` : "analytics-overview";
+  }
   if (versionId >= 3) {
     if (first === "dashboards") return "analytics-overview";
     if (first === "quicksight")
@@ -350,7 +384,7 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={version.id >= 3 ? v3Nav(role.menus) : baseNav
+      items={version.id >= 5 ? v5Nav(role.menus) : version.id >= 3 ? v3Nav(role.menus) : baseNav
         .filter(
           (i) =>
             role.menus.includes(i.key as NavKey) &&
@@ -433,6 +467,22 @@ function Protected() {
           }
         />
         <Route
+          path="/analytics"
+          element={
+            <MenuGate path="/analytics">
+              {version.id >= 6 ? <AnalyticsOverviewQsPage /> : <AnalyticsOverviewPage />}
+            </MenuGate>
+          }
+        />
+        <Route
+          path="/analytics/:code"
+          element={
+            <MenuGate path="/analytics">
+              {version.id >= 6 ? <AnalyticsMeasureQsPage /> : <AnalyticsMeasurePage />}
+            </MenuGate>
+          }
+        />
+        <Route
           path="/dashboard"
           element={
             <MenuGate path="/dashboard">
@@ -443,17 +493,30 @@ function Protected() {
         <Route
           path="/quicksight"
           element={
-            <MenuGate path="/quicksight">
-              <QuickSightDashboardPage />
-            </MenuGate>
+            version.id >= 5 ? (
+              <V5Redirect
+                to={(() => {
+                  const m = new URLSearchParams(search).get("m");
+                  return m ? `/analytics/${m.toLowerCase()}` : "/analytics";
+                })()}
+              />
+            ) : (
+              <MenuGate path="/quicksight">
+                <QuickSightDashboardPage />
+              </MenuGate>
+            )
           }
         />
         <Route
           path="/dashboards"
           element={
-            <MenuGate path="/dashboards">
-              <DashboardCardsPage />
-            </MenuGate>
+            version.id >= 5 ? (
+              <V5Redirect to="/analytics" />
+            ) : (
+              <MenuGate path="/dashboards">
+                <DashboardCardsPage />
+              </MenuGate>
+            )
           }
         />
         <Route
