@@ -37,6 +37,7 @@ import {
   fmtDate,
   measureByCode,
   measureFor,
+  MY,
   measures,
   allMembers,
   members,
@@ -1857,6 +1858,50 @@ function AdminSheet({
   const run = runInfo();
   const reasons = reasonRows(all);
   const rows = withWarnings ? all : all.filter((r) => r.result !== "Warning");
+  /** Version 7, FR-710.13: what was missing, by data type. One line per data type and field. */
+  const missingFields = useMemo(() => {
+    const by = new Map<string, { type: string; field: string; rule: string; count: number; total: number }>();
+    for (const r of all) {
+      if (r.reason !== "Missing required field") continue;
+      const k = `${r.fileName}|${r.field}`;
+      const cur = by.get(k);
+      if (cur) cur.count++;
+      else
+        by.set(k, {
+          type: r.fileType,
+          field: r.field,
+          rule: r.rule,
+          count: 1,
+          total: dataFiles.find((f) => `${f.id}.csv` === r.fileName)?.rows ?? 0,
+        });
+    }
+    return [...by.values()].map((x, i) => ({ ...x, id: String(i) }));
+  }, [all]);
+  /** Version 7, FR-710.18: for each measure, how many eligible members have a problem row in a file the measure reads. */
+  const measureImpact = useMemo(
+    () =>
+      measures.map((m) => {
+        const code = v3Code(m.code);
+        const mine = all.filter((r) => r.measures.split(", ").includes(code));
+        const ids = new Set(mine.filter((r) => r.memberId !== "–").map((r) => r.memberId));
+        const eligible = kpisFor(m.code, allMembers(), MY).t.denominator;
+        const why = new Map<string, number>();
+        for (const r of mine) why.set(r.reason, (why.get(r.reason) ?? 0) + 1);
+        const files = [...new Set(mine.filter((r) => r.result === "Not received" || r.result === "Rejected").map((r) => r.fileName))];
+        return {
+          code: m.code,
+          label: V3_GAP_LABEL[m.code],
+          members: ids.size,
+          eligible,
+          pct: eligible ? (ids.size / eligible) * 100 : 0,
+          reasons: mine.length
+            ? [...why.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`).join(", ") +
+              (files.length ? `. Files to fix: ${files.join(", ")}` : "")
+            : "No problems found",
+        };
+      }),
+    [all],
+  );
   const critical = useMemo(() => {
     const seen = new Map<string, RejectedRow>();
     for (const r of all)
@@ -1864,6 +1909,12 @@ function AdminSheet({
         seen.set(r.fileName, r);
     return [...seen.values()];
   }, [all]);
+  /** Version 7 (FR-710.17): the columns follow the three-step trace: artifact, then source table, then what is wrong. */
+  const rejectedCols = (cols: QsCol<RejectedRow>[]) => {
+    if (!v7) return cols;
+    const order = ["i", "f", "m", "l", "ty", "src", "fld", "v", "rule", "rs", "ms", "res"];
+    return [...cols].sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key));
+  };
   const impactColor = (i: string) =>
     i === "Critical" ? qs.tone.danger.border : qs.meaning.gapText;
   const share100 = (n: number) =>
@@ -1904,7 +1955,12 @@ function AdminSheet({
       status,
       attempt: f.status === "Failed" ? 3 : 1,
       reason:
-        f.status === "Failed" || f.status === "Not received" ? f.note : "–",
+        v7 && f.status === "Failed"
+          ? // FR-710.14: this column is for loading failures, not transformation failures. The failed rows are listed in Rejected Row Detail.
+            "The file failed to load three times. The rows that failed a check are listed in Rejected Row Detail."
+          : f.status === "Failed" || f.status === "Not received"
+            ? f.note
+            : "–",
       affected: f.status === "Failed" ? f.rows : 0,
       next: f.status === "Not received" ? nextDay(run.last) : null,
     };
@@ -1960,6 +2016,16 @@ function AdminSheet({
         </QsControl>
       </QsControlsBar>
       <QsSheet>
+        {v7 && (
+          <QsTile cols={36} bare fr="702.11">
+            <QsText>
+              <p>
+                <b>Measurement period:</b> {periodText(MY).replace(" to ", " – ")}.{" "}
+                <b>Last updated:</b> {fmtRun(run.last)} · <b>Next update:</b> {fmtRun(run.next)}
+              </p>
+            </QsText>
+          </QsTile>
+        )}
         {critical.length > 0 && (
           <QsTile cols={36} bare tone="danger" fr="710" ask={["Q18", "Q30"]}>
             <QsText>
@@ -2086,7 +2152,7 @@ function AdminSheet({
             exportFile="run-history"
             rows={runs}
             rowKey={(r) => r.id}
-            maxHeight={360}
+            maxHeight={v7 ? 100000 : 360}
             defaultSort={{ key: "at", dir: "desc" }}
             onRowSelect={(r) => setRunOpen(r)}
             cols={[
@@ -2148,7 +2214,7 @@ function AdminSheet({
             label="Files ingested"
             exportFile="files-ingested"
             rowKey={(r) => r.f.id}
-            maxHeight={360}
+            maxHeight={v7 ? 100000 : 360}
             cols={[
               {
                 key: "f",
@@ -2220,7 +2286,7 @@ function AdminSheet({
             label="Artifacts by file"
             exportFile="artifacts-by-file"
             rowKey={(r) => r.f.id}
-            maxHeight={300}
+            maxHeight={v7 ? 100000 : 300}
             cols={[
               {
                 key: "f",
@@ -2261,7 +2327,7 @@ function AdminSheet({
             label="File loads"
             exportFile="file-loads"
             rowKey={(r) => r.key}
-            maxHeight={360}
+            maxHeight={v7 ? 100000 : 360}
             cols={[
               {
                 key: "f",
@@ -2316,7 +2382,7 @@ function AdminSheet({
             label={v3 ? "Rejected rows by reason" : "Problems by reason"}
             exportFile={v3 ? "rejected-rows-by-reason" : "problems-by-reason"}
             rowKey={(r) => r.reason}
-            maxHeight={300}
+            maxHeight={v7 ? 100000 : 300}
             cols={[
               { key: "r", header: "Reason", value: (r) => r.reason },
               {
@@ -2350,17 +2416,22 @@ function AdminSheet({
                 ? "Rejected rows and warnings"
                 : "Rejected rows"
           }
-          subtitle="File and row, then the field, the value received and the rule it broke."
+          subtitle={
+            v7
+              ? "Read left to right in three steps. 1 Artifact: file, row and member. 2 Source table: file type, source and field. 3 What is wrong: value received, rule broken and reason."
+              : "File and row, then the field, the value received and the rule it broke."
+          }
           fr="710.17"
           ask={["Q7"]}
         >
           <QsTable
             label="Rejected rows"
             exportFile="rejected-rows"
+            wrapHeaders={v7}
             rowKey={(r) => r.id}
-            maxHeight={420}
+            maxHeight={v7 ? 100000 : 420}
             defaultSort={{ key: "i", dir: "asc" }}
-            cols={[
+            cols={rejectedCols([
               {
                 key: "i",
                 header: "Impact",
@@ -2375,7 +2446,7 @@ function AdminSheet({
                 value: (r) => r.fileName,
                 render: (r) =>
                   `${r.fileName}${r.rowNumber ? ` · row ${r.rowNumber}` : ""}`,
-                nowrap: true,
+                nowrap: !v7,
               },
               {
                 key: "ty",
@@ -2410,10 +2481,68 @@ function AdminSheet({
                 nowrap: true,
               },
               { key: "res", header: "Result", value: (r) => r.result },
-            ]}
+            ])}
             rows={rows}
           />
         </QsTile>
+        {v7 && (
+          <>
+            <QsTile
+              cols={36}
+              title="Missing Required Fields by Data Type"
+              subtitle="For each data type, what was missing from the artifacts that have a problem."
+              fr="710.13"
+            >
+              <QsTable
+                label="Missing required fields by data type"
+                exportFile="missing-required-fields"
+                rowKey={(r) => r.id}
+                maxHeight={100000}
+                cols={[
+                  { key: "t", header: "Data Type", value: (r) => r.type },
+                  { key: "f", header: "Field Missing", value: (r) => r.field },
+                  { key: "n", header: "Artifacts Affected", value: (r) => r.count, align: "right" },
+                  {
+                    key: "p",
+                    header: "% of This Data Type",
+                    value: (r) => (r.total ? r.count / r.total : 0),
+                    render: (r) => (r.total ? p1(share(r.count, r.total)) : "–"),
+                    align: "right",
+                  },
+                  { key: "r", header: "Why It Matters", value: (r) => r.rule },
+                ]}
+                rows={missingFields}
+              />
+            </QsTile>
+            <QsTile
+              cols={36}
+              title="Measure Impact of Incomplete Data"
+              subtitle="For each measure: how many eligible members have a problem row in a file the measure reads."
+              fr="710.18"
+            >
+              <QsTable
+                label="Measure impact of incomplete data"
+                exportFile="measure-impact"
+                rowKey={(r) => r.code}
+                maxHeight={100000}
+                cols={[
+                  { key: "m", header: "Measure", value: (r) => r.label },
+                  { key: "n", header: "Members Affected", value: (r) => r.members, align: "right" },
+                  { key: "e", header: "Eligible Members", value: (r) => r.eligible, align: "right" },
+                  {
+                    key: "p",
+                    header: "% of Eligible Impacted",
+                    value: (r) => r.pct,
+                    render: (r) => p1(r.pct),
+                    align: "right",
+                  },
+                  { key: "r", header: "Main Reasons", value: (r) => r.reasons },
+                ]}
+                rows={measureImpact}
+              />
+            </QsTile>
+          </>
+        )}
         <QsTile
           cols={36}
           title={v7 ? "Member Matching" : "Member matching"}
@@ -2424,7 +2553,7 @@ function AdminSheet({
             label="Rows not matched to a member"
             exportFile="member-matching"
             rowKey={(r) => r.id}
-            maxHeight={240}
+            maxHeight={v7 ? 100000 : 240}
             cols={[
               {
                 key: "f",
@@ -2475,6 +2604,7 @@ function AdminSheet({
             </ul>
           </QsText>
         </QsTile>
+        {v7 && <HowToTile inAdmin />}
       </QsSheet>
     </>
   );
@@ -2483,11 +2613,23 @@ function AdminSheet({
 /* ================================================================== Help */
 
 function HelpSheet() {
+  return (
+    <QsSheet>
+      <HowToTile />
+    </QsSheet>
+  );
+}
+
+/** The "how to use this dashboard" guide. Shown on the Help sheet and, in version 7, at the bottom of Admin (FR-702.10). */
+function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
   const v3 = useVersion().version.id >= 3;
   const v7 = useVersion().version.id >= 7;
   return (
-    <QsSheet>
-      <QsTile cols={36} title="How to use this dashboard" fr="701">
+      <QsTile
+        cols={36}
+        title={inAdmin ? "How To Use This Dashboard" : "How to use this dashboard"}
+        fr={inAdmin ? "702.10" : "701"}
+      >
         <QsText>
           <ul>
             <li>
@@ -2572,6 +2714,5 @@ function HelpSheet() {
           </ul>
         </QsText>
       </QsTile>
-    </QsSheet>
   );
 }

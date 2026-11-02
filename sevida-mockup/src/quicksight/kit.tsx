@@ -1060,6 +1060,7 @@ export function QsTable<T>({
   defaultSort,
   exportFile,
   onRowSelect,
+  wrapHeaders,
 }: {
   cols: QsCol<T>[];
   rows: T[];
@@ -1071,6 +1072,8 @@ export function QsTable<T>({
   exportFile?: string;
   /** A click on a row is a click action from a data point (the only kind of click action the guide allows). */
   onRowSelect?: (r: T) => void;
+  /** Let column headings wrap onto two lines so a wide table fits without a sideways scroll bar. */
+  wrapHeaders?: boolean;
 }) {
   const [sort, setSort] = useState(defaultSort);
   const sorted = (() => {
@@ -1160,7 +1163,7 @@ export function QsTable<T>({
                     bgcolor: qs.color.secondaryBackground,
                     fontWeight: 700,
                     cursor: "pointer",
-                    whiteSpace: "nowrap",
+                    whiteSpace: wrapHeaders ? "normal" : "nowrap",
                     textAlign: c.align ?? "left",
                     userSelect: "none",
                   }}
