@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -129,8 +129,31 @@ export const VERSIONS: VersionInfo[] = [
       "Demo: the same 12 dashboards and numbers as Version 5.",
     ],
   },
+  {
+    id: 7,
+    name: "Version 7",
+    date: "2026-11-02",
+    summary:
+      "Version 4 dashboard (the one built from the requirements sheet and the QuickSight style guide), updated for the Madigan Analytics stories in Jira (LPP-15925). No benchmarks.",
+    changes: [
+      "Everything is the same as Version 4 except the Analytics dashboard changes below. Versions 5 and 6 (the Analytics redesign experiments) stay as they are.",
+      "Benchmarks removed: no benchmark line on the charts, no benchmark words in the help. Madigan confirmed NCQA benchmarks are out of scope.",
+      "Key Metrics (LPP-16237) use the story names: Members Evaluated, Initial Population, Total Eligible Population, Excluded Population, Population Meeting Measure (count and %), Population Not Meeting Measure (count and %).",
+      "Measurement Period Summary (LPP-16236): the cards that follow the filters have that title. The fixed Eligible Population Baseline Summary stays on the left.",
+      "Measure Run History (LPP-16238): a table of the latest runs (up to 10) on each measure dashboard (Measure, Measurement Start, Measurement End, Run Date & Time, Total Numerator, Total Denominator, Total Period, Change vs Previous).",
+      "Trends (LPP-16239): the chart is titled Trends for (Measure Name). Daily, Weekly, Monthly, Quarterly and Annual, plus Custom (pick a From and a To date). Monthly opens at the prior 18 months and quarterly at 24 months. Counts met and % met. Through the most recent run date. Compare With Last Year stays. A seasonal view (one line per year) is not built.",
+      "Filters: Measurement Year, Gender, Age Range (pick from the age groups), Age Min and Age Max (type numbers), Race, Ethnicity, Gap Status (Closed, Excluded, Needs review, Open) and more, as in Version 4. The Provider filter and the provider chart are left out for now (they need a member-to-provider file from Madigan).",
+      "Help sheet updated for the new names. Admin sheet checked against the requirements sheet (FR-710): titles and column names now match (File Loads: Successes and Failures, Rejected Row Detail, Potential Measure(s) Affected, Member Matching, Calculation Settings in Use). The two stretch items (Missing required fields by data type, Measure Impact of Incomplete Data) are not built.",
+      "Explanation and Recommended Action (LPP-16073) beside each result: a table on the Overview, and two tiles on each measure dashboard, with the run date and data-as-of date. The words are placeholders and every box is tagged Example text, because it is not decided yet whether they come from AI insights or fixed text.",
+      "UX test fixes (from the Analytics UI issues sheet): chart names are never cut (they widen and wrap); the Trend Numbers table shows all rows with no scroll bar; the trend chart uses a 0 to 100% axis in even steps with the % sign, and the end value is no longer clipped; Age Min and Age Max have hint text; Age Range lists only the ranges that apply to the measure, with ranges that do not overlap, in age order; the multi-choice filters look like the others; all chart rows split at the same place (12 and 24 of 36 columns); a wrong measure address or unknown address shows a Page Not Found page; Explanation and Recommended Action are separate tiles (a table on the Overview), as QuickSight draws them.",
+      "Each page has its own browser tab title, and a loading skeleton shows while a dashboard draws.",
+      "Decided: Measurement Period Summary is the cards that follow the filters. Not built: KPI-card click to open the member list and PDF export (both depend on what QuickSight can do). The Race, Ethnicity, Age Group, Gender and Member Population Table stories have no description in Jira yet, so those charts and the member list stay as Version 4 has them.",
+    ],
+  },
 ];
-export const LATEST_VERSION: VersionId = 6;
+/** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
+export const isRedesign = (id: number) => id === 5 || id === 6;
+export const LATEST_VERSION: VersionId = 7;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

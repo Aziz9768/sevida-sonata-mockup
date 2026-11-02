@@ -5,8 +5,10 @@
  */
 import { DEMO_NOW, hashOf, ethnicityGroupOf, raceGroupOf } from "./data";
 import type { Member, MeasureCode } from "./data";
+import { getVersion } from "./version";
 
 /** The gap names as the sheet writes them (Navigation Menu and Members Page tabs). */
+
 export const V3_GAP_LABEL: Record<MeasureCode, string> = {
   "BCS-E": "BCS - Breast Cancer Screening",
   "CCS-E": "CCS - Cervical Cancer Screening",
@@ -162,10 +164,18 @@ export const AGE_RANGES: {
 }[] = [
   { label: "Neonate / Newborn (0-28 days)", test: (p) => p.days <= 28 },
   {
-    label: "Infant (1-12 months)",
+    // Version 7: the ranges do not overlap (Infant ends at 11 months, Toddler is 1 to 2 years, Preschool starts at 3).
+    get label() {
+      return getVersion() >= 7 ? "Infant (1-11 months)" : "Infant (1-12 months)";
+    },
     test: (p) => p.days > 28 && p.months < 12,
   },
-  { label: "Toddler (1-3 years)", test: (p) => p.years >= 1 && p.years < 3 },
+  {
+    get label() {
+      return getVersion() >= 7 ? "Toddler (1-2 years)" : "Toddler (1-3 years)";
+    },
+    test: (p) => p.years >= 1 && p.years < 3,
+  },
   { label: "Preschool (3-5 years)", test: (p) => p.years >= 3 && p.years < 6 },
   {
     label: "School-age child (6-12 years)",
@@ -179,6 +189,13 @@ export const AGE_RANGES: {
   },
   { label: "Older adult (65+ years)", test: (p) => p.years >= 65 },
 ];
+/** Version 7: the whole years each age range covers, so a measure can list only the ranges that apply to it. */
+const AGE_RANGE_YEARS: [number, number][] = [
+  [0, 0], [0, 0], [1, 2], [3, 5], [6, 12], [13, 17], [18, 39], [40, 64], [65, 200],
+];
+/** The labels of the age ranges that overlap ages lo to hi. */
+export const ageRangesBetween = (lo: number, hi: number) =>
+  AGE_RANGES.filter((_, i) => AGE_RANGE_YEARS[i][1] >= lo && AGE_RANGE_YEARS[i][0] <= hi).map((r) => r.label);
 export const ageRangeOf = (dob: Date) => {
   const p = ageParts(dob);
   return AGE_RANGES.find((r) => r.test(p))?.label ?? "";

@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageContainer, SelectField } from "sevida-ui";
 import { RunNotice, RunSelect } from "../components/RunBits";
-import { MY, allMembers, measures } from "../data";
+import { MY, allMembers, fmtDate, measures } from "../data";
 import { V3_GAP_LABEL, gapShort } from "../v3Data";
-import { kpisFor, openGapCount, periodText } from "../dashboardData";
+import { kpisFor, openGapCount, periodText, runInfo } from "../dashboardData";
+import { exampleInsight } from "../components/dashboard/ResultInsight";
+import { useRun } from "../runs";
 import {
   NotesContext,
   QsColumnChart,
@@ -57,6 +59,13 @@ export function DashboardCardsPage() {
             (m) => (openGapCount(m, year) > 1) === (multi === "Yes"),
           ),
     [v3, multi, year],
+  );
+  const v7 = version.id >= 7;
+  const run = runInfo();
+  const { run: selectedRun } = useRun();
+  const dataAsOf = run.sources.reduce(
+    (a, x) => (x.receivedOn > a ? x.receivedOn : a),
+    run.sources[0]?.receivedOn ?? selectedRun.at,
   );
   const open = (code: string) => nav(`/quicksight?m=${code}&from=cards`);
 
@@ -254,6 +263,56 @@ export function DashboardCardsPage() {
                 onSelect={(b) => open(b.label)}
               />
             </QsTile>
+            {v7 && (
+              <QsTile
+                cols={36}
+                title="What each result means"
+                subtitle="Example text. Click a row to open that measure"
+              >
+                <QsTable
+                  label="What each result means"
+                  rows={rows}
+                  rowKey={(r) => r.code}
+                  maxHeight={100000}
+                  onRowSelect={(r) => open(r.code)}
+                  cols={[
+                    { key: "label", header: "Measure", value: (r) => r.label },
+                    {
+                      key: "rate",
+                      header: "Met rate",
+                      value: (r) => r.rate,
+                      render: (r) => `${r.rate.toFixed(1)}%`,
+                      align: "right",
+                      nowrap: true,
+                    },
+                    {
+                      key: "run",
+                      header: "Run date",
+                      value: (r) => (r.code ? selectedRun.at.getTime() : 0),
+                      render: () => fmtDate(selectedRun.at),
+                      nowrap: true,
+                    },
+                    {
+                      key: "asof",
+                      header: "Data as of",
+                      value: (r) => (r.code ? dataAsOf.getTime() : 0),
+                      render: () => fmtDate(dataAsOf),
+                      nowrap: true,
+                    },
+                    {
+                      key: "exp",
+                      header: "Explanation (Example text)",
+                      value: (r) => exampleInsight({ name: r.label, rate: r.rate, gap: r.gap, eligible: r.eligible }).explanation,
+                    },
+                    {
+                      key: "act",
+                      header: "Recommended Action (Example text)",
+                      value: (r) => exampleInsight({ name: r.label, rate: r.rate, gap: r.gap, eligible: r.eligible }).action,
+                    },
+                  ]}
+                />
+              </QsTile>
+            )}
             <QsTile
               cols={36}
               title="All numbers by measure"

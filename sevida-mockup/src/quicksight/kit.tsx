@@ -805,6 +805,7 @@ export function QsBarChart({
   empty = "No data",
   labelWidth,
   valueWidth,
+  wrap,
 }: {
   bars: QsBar[];
   max?: number;
@@ -816,12 +817,31 @@ export function QsBarChart({
   labelWidth?: number;
   /** Room for the value and its note on the right, in px. */
   valueWidth?: number;
+  /** Show the whole name: widen the name column to fit the longest name (up to 42% of the width) and wrap what is still too long onto 2 or 3 lines. Nothing is cut with "…". */
+  wrap?: boolean;
 }) {
   const [ref, W] = useWidth();
-  const rowH = 30,
+  const CH = 6.4; // average width of one character at 12 px
+  const widest = Math.max(0, ...bars.map((b) => b.label.length)) * CH + 10;
+  const wrapLabelW = Math.round(Math.min(W * 0.42, Math.max(56, widest)));
+  const wrapAt = Math.max(6, Math.floor((wrapLabelW - 6) / CH));
+  const lines = (t: string): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    for (const w of t.split(" ")) {
+      if (cur && (cur + " " + w).length > wrapAt) {
+        out.push(cur);
+        cur = w;
+      } else cur = cur ? cur + " " + w : w;
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+  const maxLines = wrap ? Math.min(3, Math.max(1, ...bars.map((b) => lines(b.label).length))) : 1;
+  const rowH = maxLines > 1 ? 14 * maxLines + 14 : 30,
     padT = benchmark === undefined ? 6 : 26,
     padB = 22,
-    labelW = labelWidth ?? Math.min(170, Math.max(90, W * 0.32)),
+    labelW = wrap ? wrapLabelW : (labelWidth ?? Math.min(170, Math.max(90, W * 0.32))),
     valueW = valueWidth ?? 118,
     gap = 8;
   const plotW = Math.max(60, W - labelW - valueW - gap * 2);
@@ -885,7 +905,19 @@ export function QsBarChart({
                   fontSize={12}
                   fill={qs.color.secondaryForeground}
                 >
-                  {cut(b.label)}
+                  {wrap
+                    ? lines(b.label)
+                        .slice(0, 3)
+                        .map((ln, k, all) => (
+                          <tspan
+                            key={k}
+                            x={labelW}
+                            dy={k === 0 ? -((all.length - 1) * 6.5) : 13}
+                          >
+                            {ln}
+                          </tspan>
+                        ))
+                    : cut(b.label)}
                 </text>
                 <rect
                   x={x0}

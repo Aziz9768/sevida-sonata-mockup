@@ -26,7 +26,8 @@ export const LABEL = {
   get year() { return v3L("Measurement Year", "Measurement year"); },
   member: "Member",
   measure: "Measure",
-  get result() { return v3L("Measure Result", "Measure result"); },
+  /** Version 7 (Jira LPP-16235 and the sheet's Met / Not Met filter): called Gap Status, like on the Members and Care Gaps pages. */
+  get result() { return getVersion() >= 7 ? "Gap Status" : v3L("Measure Result", "Measure result"); },
   get dob() { return v3L("Date of Birth", "Date of birth"); },
   age: "Age",
   /** Version 3 uses the member list words (Gender, # Open Gaps) and Title Case, so the dashboards and the lists read as one product. */
@@ -57,6 +58,17 @@ export const RESULT_STATES: MeasureState[] = [
 export const resultOptions = RESULT_STATES.map((s) => ({
   value: s,
   label: stateLabel[s],
+}));
+
+/**
+ * Version 7: the dashboard result filter uses the Gap Status words of the Members and Care Gaps pages.
+ * Closed = Met and Open = Not met. Excluded and Needs review stay, because the dashboard counts them too.
+ */
+export const gapStatusText = (s: MeasureState): string =>
+  s === "Met" ? "Closed" : s === "Gap" ? "Open" : stateLabel[s];
+export const gapStatusOptions = RESULT_STATES.map((s) => ({
+  value: s,
+  label: gapStatusText(s),
 }));
 
 export const SEX_VALUES = ["Female", "Male"];

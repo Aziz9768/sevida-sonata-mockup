@@ -27,6 +27,8 @@ import { Box, Typography } from "@mui/material";
 import { RouterLinkAdapter } from "./components/RouterLinkAdapter";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
+import { NotFoundPageV7 } from "./pages/NotFoundPageV7";
+import { measureByCode } from "./data";
 import { DashboardCardsPage } from "./pages/DashboardCardsPage";
 import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
 import { AnalyticsOverviewPage } from "./pages/AnalyticsOverviewPage";
@@ -48,7 +50,7 @@ import { poweredByDark, poweredByLight } from "./brand";
 import { RoleProvider, useRole } from "./roles";
 import type { NavKey } from "./roles";
 import { RolePicker } from "./components/RolePicker";
-import { VersionPicker, VersionProvider, useVersion } from "./version";
+import { VersionPicker, VersionProvider, isRedesign, useVersion } from "./version";
 import { RunLine } from "./components/RunBits";
 import { RunKeyed, RunProvider } from "./runs";
 import { AuditProvider, useAudit, useWho } from "./auditLog";
@@ -168,7 +170,7 @@ function V5Redirect({ to }: { to: string }) {
 /** Which sidebar item is highlighted for the current address. */
 function activeKeyFor(pathname: string, search = "", versionId = 2) {
   const [first] = pathname.split("/").filter(Boolean);
-  if (versionId >= 5 && first === "analytics") {
+  if (isRedesign(versionId) && first === "analytics") {
     const d = dashByCode(pathname.split("/")[2]);
     return d ? `analytics-group-${d.group}` : "analytics-overview";
   }
@@ -384,7 +386,7 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
-      items={version.id >= 5 ? v5Nav(role.menus) : version.id >= 3 ? v3Nav(role.menus) : baseNav
+      items={isRedesign(version.id) ? v5Nav(role.menus) : version.id >= 3 ? v3Nav(role.menus) : baseNav
         .filter(
           (i) =>
             role.menus.includes(i.key as NavKey) &&
@@ -470,7 +472,7 @@ function Protected() {
           path="/analytics"
           element={
             <MenuGate path="/analytics">
-              {version.id >= 6 ? <AnalyticsOverviewQsPage /> : <AnalyticsOverviewPage />}
+              {version.id === 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsOverviewQsPage /> : <AnalyticsOverviewPage />}
             </MenuGate>
           }
         />
@@ -478,7 +480,7 @@ function Protected() {
           path="/analytics/:code"
           element={
             <MenuGate path="/analytics">
-              {version.id >= 6 ? <AnalyticsMeasureQsPage /> : <AnalyticsMeasurePage />}
+              {version.id === 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsMeasureQsPage /> : <AnalyticsMeasurePage />}
             </MenuGate>
           }
         />
@@ -493,7 +495,7 @@ function Protected() {
         <Route
           path="/quicksight"
           element={
-            version.id >= 5 ? (
+            isRedesign(version.id) ? (
               <V5Redirect
                 to={(() => {
                   const m = new URLSearchParams(search).get("m");
@@ -502,7 +504,15 @@ function Protected() {
               />
             ) : (
               <MenuGate path="/quicksight">
-                <QuickSightDashboardPage />
+                {version.id >= 7 &&
+                new URLSearchParams(search).get("m") !== null &&
+                !measureByCode(new URLSearchParams(search).get("m") ?? "") ? (
+                  <NotFoundPageV7
+                    what={`There is no dashboard called "${new URLSearchParams(search).get("m")}"`}
+                  />
+                ) : (
+                  <QuickSightDashboardPage />
+                )}
               </MenuGate>
             )
           }
@@ -510,7 +520,7 @@ function Protected() {
         <Route
           path="/dashboards"
           element={
-            version.id >= 5 ? (
+            isRedesign(version.id) ? (
               <V5Redirect to="/analytics" />
             ) : (
               <MenuGate path="/dashboards">
@@ -591,7 +601,7 @@ function Protected() {
             </MemberGate>
           }
         />
-        <Route path="*" element={<Navigate to={home} replace />} />
+        <Route path="*" element={version.id >= 7 ? <NotFoundPageV7 /> : <Navigate to={home} replace />} />
       </Routes>
       </Fragment>
       </RunKeyed>

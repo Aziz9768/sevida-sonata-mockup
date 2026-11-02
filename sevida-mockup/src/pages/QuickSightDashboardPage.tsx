@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useVersion } from "../version";
+import { getVersion, useVersion } from "../version";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Box, Typography } from "@mui/material";
+import { Box, Skeleton, Typography } from "@mui/material";
 import {
   AutocompleteField,
   DateField,
@@ -43,6 +43,9 @@ import {
   resultsFor,
   stateLabel,
   stateName,
+  tally,
+  getAsOfStep,
+  setAsOfStep,
 } from "../data";
 import type { Member, MeasureCode, MeasureState } from "../data";
 import {
@@ -92,6 +95,7 @@ import {
   gapShort,
   ageLabel,
   ageParts,
+  ageRangesBetween,
   militaryV3,
   tricareIdOf,
 } from "../v3Data";
@@ -103,6 +107,8 @@ import { SMALL_GROUP } from "../insights";
 import { useRole } from "../roles";
 import { RunDetails, RunNotice, RunSelect } from "../components/RunBits";
 import { fmtRunTime, useRun } from "../runs";
+import { exampleInsight } from "../components/dashboard/ResultInsight";
+import { useFakeLoad } from "../components/analytics/AnalyticsBits";
 import type { Run } from "../runs";
 import {
   ALL,
@@ -111,6 +117,8 @@ import {
   measureOptionsFor,
   optionsOf,
   resultOptions,
+  gapStatusOptions,
+  gapStatusText,
 } from "../sharedFilters";
 
 /** Example benchmark per measure, only so the dashed line can be drawn. The real value comes from Madigan (Q19). */
@@ -145,7 +153,7 @@ const SHEET_ONLY: {
 }[] = [
   { sheet: "Overview", get label() {
       return FL.result;
-    }, text: (f) => f.status },
+    }, text: (f) => (f.status && getVersion() >= 7 ? gapStatusText(f.status) : f.status) },
   { sheet: "Overview", get label() {
       return FL.member;
     }, text: (f) => f.memberId.trim() },
@@ -320,6 +328,17 @@ export function QuickSightDashboardPage() {
   const year = f.year;
   const list = useMemo(() => filterMembers(f, code), [f, code]);
   const def = measureFor(measureByCode(code)!, year);
+  // Version 7: each page has its own browser tab title, and a skeleton shows while the dashboard draws.
+  const isV7 = version.id >= 7;
+  useEffect(() => {
+    if (!isV7) return;
+    const before = document.title;
+    document.title = `${sheet}, ${v3Code(code)}, Analytics, Sevida`;
+    return () => {
+      document.title = before;
+    };
+  }, [isV7, sheet, code]);
+  const drawing = useFakeLoad(`${code}|${year}`, 600) && isV7;
 
   /* ---- controls (each one is a QuickSight control) ---- */
   const cMeasure = version.id >= 3 ? null : (
@@ -377,6 +396,17 @@ export function QuickSightDashboardPage() {
     values: { value: string; label: string }[],
   ) => (
     <QsControl key={key}>
+      <Box
+        sx={
+          version.id >= 7
+            ? {
+                // Version 7: "All" reads in normal text and the box is white, like the single-choice controls (it looked switched off).
+                "& input::placeholder": { color: qs.color.primaryForeground, opacity: 1 },
+                "& .MuiInputBase-root": { background: qs.color.primaryBackground },
+              }
+            : undefined
+        }
+      >
       <AutocompleteField
         multiple
         label={label}
@@ -385,6 +415,7 @@ export function QuickSightDashboardPage() {
         value={f[key] as string[]}
         onChange={(v) => set(key, v as never)}
       />
+      </Box>
     </QsControl>
   );
   const dateRange = (
@@ -438,6 +469,7 @@ export function QuickSightDashboardPage() {
         <Box sx={{ display: "flex", gap: 1 }}>
           <TextField
             slotProps={{ htmlInput: { "aria-label": `${label} number`, min: 0, type: "number" } }}
+            placeholder={version.id >= 7 ? "e.g. 45" : undefined}
             value={num}
             onChange={(e) =>
               put(e.target.value.replace(/[^0-9]/g, ""), unit)
@@ -506,7 +538,10 @@ export function QuickSightDashboardPage() {
               label={FL.result}
               value={f.status}
               onChange={(v) => set("status", v as DashFilters["status"])}
-              options={[{ value: "", label: ALL }, ...azOpt(resultOptions)]}
+              options={[
+                { value: "", label: ALL },
+                ...azOpt(version.id >= 7 ? gapStatusOptions : resultOptions),
+              ]}
             />
           </QsControl>,
         ],
@@ -549,7 +584,19 @@ export function QuickSightDashboardPage() {
         // Age groups, open gaps, HbA1c bands and years keep their natural order (a number order, not a word order).
         [
           FL.ageGroup,
-          multi("ageGroup", FL.ageGroup, optionsOf(options.ageGroup)),
+          multi(
+            "ageGroup",
+            FL.ageGroup,
+            optionsOf(
+              version.id >= 7
+                ? // Version 7: only the age ranges that apply to this measure.
+                  (() => {
+                    const m = /(\d+)\s*[–-]\s*(\d+)/.exec(def.population);
+                    return m ? ageRangesBetween(Number(m[1]), Number(m[2])) : options.ageGroup;
+                  })()
+                : options.ageGroup,
+            ),
+          ),
         ],
         [FL.race, multi("race", FL.race, optionsOf(az(options.race)))],
         [
@@ -558,7 +605,10 @@ export function QuickSightDashboardPage() {
         ],
         [
           FL.provider,
-          multi("provider", FL.provider, optionsOf(az(options.provider))),
+          // Version 7: left out for now. It needs a member-to-provider file from Madigan (sheet FR-703.9, a stretch goal).
+          version.id >= 7
+            ? null
+            : multi("provider", FL.provider, optionsOf(az(options.provider))),
         ],
         [
           FL.openGaps,
@@ -657,6 +707,14 @@ export function QuickSightDashboardPage() {
       }
     >
       <RunNotice />
+      {drawing ? (
+        <Box aria-busy="true" aria-label="Loading the dashboard">
+          <Typography sx={{ fontSize: 13, color: qs.color.mutedText, mb: 1 }}>
+            Loading the dashboard…
+          </Typography>
+          <Skeleton variant="rounded" height={520} />
+        </Box>
+      ) : (
       <NotesContext.Provider value={notes}>
         <QsFrame
           tabs={SHEETS.filter((t) => t !== "Admin" || role.dataQuality)}
@@ -677,6 +735,7 @@ export function QuickSightDashboardPage() {
           {body}
         </QsFrame>
       </NotesContext.Provider>
+      )}
     </PageContainer>
   );
 }
@@ -684,6 +743,82 @@ export function QuickSightDashboardPage() {
 export default QuickSightDashboardPage;
 
 /* ================================================================== Overview */
+
+/** Jira LPP-16238: the latest 10 runs of this measure for the whole population and the measurement year. Not changed by the controls. Change vs Previous is against the run before it. */
+interface RunHistoryRow {
+  id: string;
+  measure: string;
+  start: string;
+  end: string;
+  runAt: Date;
+  num: number;
+  den: number;
+  rate: number;
+  change: number | null;
+}
+function RunHistoryTile({ code, year }: { code: MeasureCode; year: number }) {
+  const { choices } = useRun();
+  const rows = useMemo<RunHistoryRow[]>(() => {
+    const keep = getAsOfStep();
+    const everyone = allMembers();
+    const latest10 = choices.slice(0, 11);
+    const out = latest10.map((r) => {
+      setAsOfStep(r.step);
+      const t = tally(everyone, code, year);
+      return { r, t };
+    });
+    setAsOfStep(keep);
+    return out.slice(0, 10).map(({ r, t }, i) => {
+      const before = out[i + 1];
+      return {
+        id: r.id,
+        measure: v3Code(code),
+        start: fmtDate(new Date(year, 0, 1)),
+        end: fmtDate(new Date(year, 11, 31)),
+        runAt: r.at,
+        num: t.met,
+        den: t.denominator,
+        rate: t.rate,
+        change: before ? t.rate - before.t.rate : null,
+      };
+    });
+  }, [choices, code, year]);
+  return (
+    <QsTile
+      cols={36}
+      title="Measure Run History"
+      subtitle={`The latest ${rows.length} runs, newest first, for everyone in the files. The controls above do not change this table.`}
+      fr="708"
+      ask={["Q34"]}
+    >
+      <QsTable
+        label="Measure run history"
+        exportFile="measure-run-history"
+        rowKey={(r) => r.id}
+        maxHeight={100000}
+        defaultSort={{ key: "run", dir: "desc" }}
+        cols={[
+          { key: "measure", header: "Measure", value: (r) => r.measure, nowrap: true },
+          { key: "start", header: "Measurement Start", value: (r) => r.start, nowrap: true },
+          { key: "end", header: "Measurement End", value: (r) => r.end, nowrap: true },
+          { key: "run", header: "Run Date & Time", value: (r) => r.runAt.getTime(), render: (r) => fmtRunTime(r.runAt), nowrap: true },
+          { key: "num", header: "Total Numerator", value: (r) => r.num, align: "right" },
+          { key: "den", header: "Total Denominator", value: (r) => r.den, align: "right" },
+          { key: "rate", header: "Total Period", value: (r) => r.rate, render: (r) => p1(r.rate), align: "right" },
+          {
+            key: "chg",
+            header: "Change vs Previous",
+            value: (r) => r.change ?? -1e9,
+            render: (r) => (r.change === null ? "" : `${r.change > 0 ? "+" : ""}${r.change.toFixed(2)} pts`),
+            align: "right",
+            nowrap: true,
+          },
+        ]}
+        rows={rows}
+      />
+    </QsTile>
+  );
+}
 
 function Overview({
   code,
@@ -700,6 +835,7 @@ function Overview({
 }) {
   const { version } = useVersion();
   const v3 = version.id >= 3;
+  const v7 = version.id >= 7;
   const { initial, t } = kpisFor(code, list, year);
   const whole = kpisFor(code, allMembers(), year);
   const run = runInfo();
@@ -710,13 +846,25 @@ function Overview({
   const metPct = share(t.met, t.denominator);
   const gsd = code === "GSD" && !v3 ? secondRate(list, year) : null;
   const a1c = code === "GSD" && v3 ? a1cCounts(list, year) : null;
-  const dims: { dim: Dimension; title: string; cols: number }[] = [
-    { dim: "sex", title: `Met % by ${FL.sex.toLowerCase()}`, cols: 12 },
-    { dim: "ageGroup", title: `Met % by ${FL.ageGroup.toLowerCase()}`, cols: 12 },
-    { dim: "ethnicity", title: "Met % by ethnicity", cols: 18 },
-    { dim: "race", title: "Met % by race", cols: 18 },
-    { dim: "provider", title: "Met % by primary care provider", cols: 36 },
-  ];
+  // Version 7: every row splits at the same place (12 and 24 of 36 columns), like the trend row above, and the order puts the
+  // age range next to Met and not met. Row 1: Met and not met 12 + age range 24. Row 2: gender 12 + ethnicity 24. Row 3: race 36.
+  const allDims: { dim: Dimension; title: string; cols: number }[] = v7
+    ? [
+        { dim: "ageGroup", title: `Met % by ${FL.ageGroup.toLowerCase()}`, cols: 24 },
+        { dim: "sex", title: `Met % by ${FL.sex.toLowerCase()}`, cols: 12 },
+        { dim: "ethnicity", title: "Met % by ethnicity", cols: 24 },
+        { dim: "race", title: "Met % by race", cols: 36 },
+        { dim: "provider", title: "Met % by primary care provider", cols: 36 },
+      ]
+    : [
+        { dim: "sex", title: `Met % by ${FL.sex.toLowerCase()}`, cols: 12 },
+        { dim: "ageGroup", title: `Met % by ${FL.ageGroup.toLowerCase()}`, cols: 12 },
+        { dim: "ethnicity", title: "Met % by ethnicity", cols: 18 },
+        { dim: "race", title: "Met % by race", cols: 18 },
+        { dim: "provider", title: "Met % by primary care provider", cols: 36 },
+      ];
+  // Version 7: no provider chart or filter for now (needs a member-to-provider file from Madigan).
+  const dims = allDims.filter((d) => !(v7 && d.dim === "provider"));
   const c = useTrendControls();
   const trend = useMemo(
     () => (c.comparing ? null : trendRows(code, list, c.g, c.range)),
@@ -778,7 +926,7 @@ function Overview({
           label="Whole population"
           exportFile="baseline-summary"
           rowKey={(r) => r[0]}
-          maxHeight={300}
+          maxHeight={v7 ? 100000 : 300}
           cols={[
             { key: "k", header: "Item", value: (r) => r[0] },
             {
@@ -790,28 +938,136 @@ function Overview({
           ]}
           rows={[
             ["Measurement period", periodText(year).replace(" to ", " – ")],
-            ["Initial population", n0(whole.initial)],
-            ["Eligible", n0(whole.t.denominator)],
-            ["Excluded", n0(whole.t.excluded)],
-            [
-              "Met",
-              `${n0(whole.t.met)} (${p1(share(whole.t.met, whole.t.denominator))})`,
-            ],
-            [
-              "Not met",
-              `${n0(whole.t.gap)} (${p1(share(whole.t.gap, whole.t.denominator))})`,
-            ],
+            ...(v7
+              ? [
+                  ["Members Evaluated", n0(whole.initial)],
+                  ["Initial Population", n0(whole.t.eligible)],
+                  ["Total Eligible Population", n0(whole.t.denominator)],
+                  ["Excluded Population", n0(whole.t.excluded)],
+                  [
+                    "Population Meeting Measure",
+                    `${n0(whole.t.met)} (${p1(share(whole.t.met, whole.t.denominator))})`,
+                  ],
+                  [
+                    "Population Not Meeting Measure",
+                    `${n0(whole.t.gap)} (${p1(share(whole.t.gap, whole.t.denominator))})`,
+                  ],
+                ]
+              : [
+                  ["Initial population", n0(whole.initial)],
+                  ["Eligible", n0(whole.t.denominator)],
+                  ["Excluded", n0(whole.t.excluded)],
+                  [
+                    "Met",
+                    `${n0(whole.t.met)} (${p1(share(whole.t.met, whole.t.denominator))})`,
+                  ],
+                  [
+                    "Not met",
+                    `${n0(whole.t.gap)} (${p1(share(whole.t.gap, whole.t.denominator))})`,
+                  ],
+                ]),
           ]}
         />
       </QsTile>
       <QsTile cols={24} bare fr="702">
         <QsText>
-          <p>
-            <b>Key performance indicators.</b> These cards update with the
-            controls you pick above.
-          </p>
+          {v7 ? (
+            <p>
+              <b>Measurement Period Summary.</b> The key metrics for{" "}
+              {periodText(year).replace(" to ", " – ")}. These cards update
+              with the controls you pick above.
+            </p>
+          ) : (
+            <p>
+              <b>Key performance indicators.</b> These cards update with the
+              controls you pick above.
+            </p>
+          )}
         </QsText>
       </QsTile>
+      {v7 && (
+        <>
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Members Evaluated"
+            value={n0(initial)}
+            tip="Everyone in the files for these controls, before the measure's own rules are applied."
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Initial Population"
+            value={n0(t.eligible)}
+            tip="Members who belong in this measure (age, sex and enrollment), before exclusions."
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Total Eligible Population"
+            value={n0(t.denominator)}
+            tip={`${V3_DEFINITION[code]} Total eligible = initial population minus exclusions and members still in review.`}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Excluded Population"
+            value={n0(t.excluded)}
+            tip={V3_EXCLUSIONS[code]}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Population Meeting Measure"
+            value={n0(t.met)}
+            tip={V3_MET[code]}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Population % Meeting Measure"
+            value={p1(metPct)}
+            highlight
+            color={qs.meaning.met}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Population Not Meeting Measure"
+            value={n0(t.gap)}
+          />
+          <QsKpi
+            cols={6}
+            fr="702"
+            label="Population % Not Meeting Measure"
+            value={t.denominator ? p1(100 - metPct) : p1(0)}
+            color={qs.meaning.gapText}
+          />
+        </>
+      )}
+      {v7 && (() => {
+        const ins = exampleInsight({ name: V3_GAP_LABEL[code], rate: metPct, gap: t.gap, eligible: t.denominator });
+        const dataAsOf = run.sources.reduce((a, x) => (x.receivedOn > a ? x.receivedOn : a), run.sources[0]?.receivedOn ?? selectedRun.at);
+        return (
+          <>
+            <QsTile
+              cols={18}
+              title="Explanation"
+              subtitle={`Example text. Run date ${fmtDate(selectedRun.at)}, data as of ${fmtDate(dataAsOf)}`}
+            >
+              <QsText>
+                <p>{ins.explanation}</p>
+              </QsText>
+            </QsTile>
+            <QsTile cols={18} title="Recommended Action" subtitle="Example text">
+              <QsText>
+                <p>{ins.action}</p>
+              </QsText>
+            </QsTile>
+          </>
+        );
+      })()}
+      {!v7 && (<>
       <QsKpi cols={8} fr="702" label="Initial population" value={n0(initial)} />
       <QsKpi
         cols={8}
@@ -854,6 +1110,7 @@ function Overview({
         value={t.denominator ? p1(100 - metPct) : p1(0)}
         color={qs.meaning.gapText}
       />
+      </>)}
       {a1c && (
         <>
           <QsKpi
@@ -959,12 +1216,35 @@ function Overview({
               value={c.preset}
               disabled={c.comparing}
               onChange={(v) => c.setPreset(v)}
-              options={rangePresets[c.g].map((x) => ({
-                value: x.value,
-                label: x.label,
-              }))}
+              options={[
+                ...rangePresets[c.g].map((x) => ({
+                  value: x.value,
+                  label: x.label,
+                })),
+                ...(v7 ? [{ value: "custom", label: "Custom" }] : []),
+              ]}
             />
           ) : (
+            <>
+              <DateField
+                label="From"
+                disabled={c.comparing}
+                value={isoDay(c.range.from)}
+                onChange={(e) =>
+                  e.target.value && c.setFrom(fromIso(e.target.value))
+                }
+              />
+              <DateField
+                label="To"
+                disabled={c.comparing}
+                value={isoDay(c.range.to)}
+                onChange={(e) =>
+                  e.target.value && c.setTo(fromIso(e.target.value))
+                }
+              />
+            </>
+          )}
+          {v7 && c.preset === "custom" && (
             <>
               <DateField
                 label="From"
@@ -1008,7 +1288,7 @@ function Overview({
             label="Trend comparison"
             exportFile="trend-comparison"
             rowKey={(r) => r.label}
-            maxHeight={300}
+            maxHeight={v7 ? 100000 : 300}
             cols={[
               {
                 key: "l",
@@ -1035,7 +1315,7 @@ function Overview({
             label="Trend numbers"
             exportFile="trend-numbers"
             rowKey={(r) => r.id}
-            maxHeight={300}
+            maxHeight={v7 ? 100000 : 300}
             defaultSort={{ key: "end", dir: "desc" }}
             cols={[
               {
@@ -1073,11 +1353,15 @@ function Overview({
       </QsTile>
       <QsTile
         cols={24}
-        title={`${metric} over time`}
-        subtitle="Starts again each January 1"
+        title={v7 ? `Trends for ${V3_GAP_LABEL[code]}` : `${metric} over time`}
+        subtitle={
+          v7
+            ? `${metric}. Starts again each January 1`
+            : "Starts again each January 1"
+        }
         fr="708"
       >
-        <TrendChart code={code} list={list} c={c} />
+        <TrendChart code={code} list={list} c={c} {...(v7 ? { height: 460 } : {})} />
       </QsTile>
       <QsTile
         cols={12}
@@ -1112,25 +1396,33 @@ function Overview({
             cols={cols}
             title={title}
             subtitle={
-              small
-                ? `* Fewer than ${SMALL_GROUP} eligible members. Dashed line: benchmark.`
-                : "Dashed line: benchmark"
+              v7
+                ? small
+                  ? `* Fewer than ${SMALL_GROUP} eligible members.`
+                  : undefined
+                : small
+                  ? `* Fewer than ${SMALL_GROUP} eligible members. Dashed line: benchmark.`
+                  : "Dashed line: benchmark"
             }
             fr="703"
             ask={[
-              "Q19",
+              ...(v7 ? [] : ["Q19"]),
               ...(dim === "race" || dim === "provider" ? ["Q11"] : []),
             ]}
           >
             <QsBarChart
               label={`${title}`}
               bars={bars}
-              benchmark={BENCHMARK[code]}
+              {...(v7
+                ? { wrap: true, valueWidth: 118 }
+                : {})}
+              benchmark={v7 ? undefined : BENCHMARK[code]}
               empty="Nobody is eligible for these filters"
             />
           </QsTile>
         );
       })}
+      {v7 && <RunHistoryTile code={code} year={year} />}
       <QsTile
         cols={36}
         title="Everything that affects this calculation"
@@ -1301,10 +1593,13 @@ function Details({
     {
       key: "res",
       header: FL.result,
-      value: (m) => stateLabel[stateOf(m)],
+      value: (m) =>
+        getVersion() >= 7 ? gapStatusText(stateOf(m)) : stateLabel[stateOf(m)],
       nowrap: true,
       render: (m) => (
-        <QsFmt color={stateColor[stateOf(m)]}>{stateLabel[stateOf(m)]}</QsFmt>
+        <QsFmt color={stateColor[stateOf(m)]}>
+          {getVersion() >= 7 ? gapStatusText(stateOf(m)) : stateLabel[stateOf(m)]}
+        </QsFmt>
       ),
     },
     {
@@ -1554,6 +1849,7 @@ function AdminSheet({
 }) {
   const { version } = useVersion();
   const v3 = version.id >= 3;
+  const v7 = version.id >= 7;
   const all = useMemo(() => rejectedRows(), []);
   const { runs } = useRun();
   const [runOpen, setRunOpen] = useState<Run | null>(null);
@@ -1781,7 +2077,7 @@ function AdminSheet({
         )}
         <QsTile
           cols={36}
-          title="Run history"
+          title={v7 ? "Run History" : "Run history"}
           subtitle="Every nightly run. Click a run for its files, problems and measures. Use the Results as of Run control above to see the numbers as they were then."
           fr="108"
         >
@@ -1843,7 +2139,7 @@ function AdminSheet({
         <RunDetails run={runOpen} onClose={() => setRunOpen(null)} />
         <QsTile
           cols={36}
-          title="Files ingested"
+          title={v7 ? "Files Ingested" : "Files ingested"}
           subtitle="Days since update = the date of the last run minus the date the last file was received."
           fr="710.11"
           ask={["Q29"]}
@@ -1915,7 +2211,7 @@ function AdminSheet({
         </QsTile>
         <QsTile
           cols={36}
-          title="Artifacts by file"
+          title={v7 ? "Artifacts by File" : "Artifacts by file"}
           subtitle="A file can turn into one or more artifacts, so files and artifacts are counted apart."
           fr="710.10"
           ask={["Q20"]}
@@ -1957,7 +2253,7 @@ function AdminSheet({
         </QsTile>
         <QsTile
           cols={36}
-          title="File loads: successes and failures"
+          title={v7 ? "File Loads: Successes and Failures" : "File loads: successes and failures"}
           subtitle="Every file load by data type. Rows affected depends on the data: one bad row can fail a whole file."
           fr="710.14"
         >
@@ -2045,7 +2341,15 @@ function AdminSheet({
         </QsTile>
         <QsTile
           cols={36}
-          title={withWarnings ? "Rejected rows and warnings" : "Rejected rows"}
+          title={
+            v7
+              ? withWarnings
+                ? "Rejected Row Detail (With Warnings)"
+                : "Rejected Row Detail"
+              : withWarnings
+                ? "Rejected rows and warnings"
+                : "Rejected rows"
+          }
           subtitle="File and row, then the field, the value received and the rule it broke."
           fr="710.17"
           ask={["Q7"]}
@@ -2090,12 +2394,12 @@ function AdminSheet({
                 nowrap: true,
               },
               { key: "fld", header: "Field", value: (r) => r.field },
-              { key: "v", header: "Value received", value: (r) => r.value },
+              { key: "v", header: v7 ? "Value Received" : "Value received", value: (r) => r.value },
               { key: "rule", header: "Rule broken", value: (r) => r.rule },
               { key: "rs", header: "Reason", value: (r) => r.reason },
               {
                 key: "ms",
-                header: "Measures affected",
+                header: v7 ? "Potential Measure(s) Affected" : "Measures affected",
                 value: (r) => r.measures,
               },
               {
@@ -2112,7 +2416,7 @@ function AdminSheet({
         </QsTile>
         <QsTile
           cols={36}
-          title="Member matching"
+          title={v7 ? "Member Matching" : "Member matching"}
           subtitle="Rows from files that did not attach to any member. Two steps: rows with no member ID, then rows with an ID that matches nobody."
           fr="710.19"
         >
@@ -2136,7 +2440,7 @@ function AdminSheet({
         </QsTile>
         <QsTile
           cols={36}
-          title="Calculation settings in use"
+          title={v7 ? "Calculation Settings in Use" : "Calculation settings in use"}
           subtitle="What the numbers on every dashboard are calculated with"
           fr="710.21"
           ask={["Q19"]}
@@ -2180,6 +2484,7 @@ function AdminSheet({
 
 function HelpSheet() {
   const v3 = useVersion().version.id >= 3;
+  const v7 = useVersion().version.id >= 7;
   return (
     <QsSheet>
       <QsTile cols={36} title="How to use this dashboard" fr="701">
@@ -2204,6 +2509,32 @@ function HelpSheet() {
               <b>Overview</b> shows the results, the charts by group and the
               trend. Hover a bar for the counts.
             </li>
+            {v7 && (
+              <>
+                <li>
+                  <b>Eligible Population Baseline Summary</b> (left) is the whole
+                  population for the year. It does not change with the controls.{" "}
+                  <b>Measurement Period Summary</b> (right) are the key metrics.
+                  They follow every control.
+                </li>
+                <li>
+                  <b>Gap Status:</b> Closed means met. Open means not met yet.
+                  Excluded and Needs review are shown too, because the numbers count
+                  them. It uses the same words as the Members and Care Gaps pages.
+                </li>
+                <li>
+                  <b>Trends:</b> pick Daily, Weekly, Monthly, Quarterly or Annual.
+                  Pick a date range, or choose Custom and set a From and a To date.
+                  The trend runs to the most recent run date. A star means claims can
+                  still arrive for 90 days.
+                </li>
+                <li>
+                  <b>Measure Run History</b> lists the latest runs: the rate each run
+                  produced for everyone in the files, and the change from the run
+                  before it. The controls do not change it.
+                </li>
+              </>
+            )}
             <li>
               <b>Click the Met or Not met bar</b> to list those members on the
               Details sheet.
@@ -2216,6 +2547,12 @@ function HelpSheet() {
               <b>Data</b> shows the files behind the numbers and why members
               were left out.
             </li>
+            {v7 && (
+              <li>
+                <b>Admin</b> shows data quality: files received, rejected rows and
+                missing fields. Only people with data-quality access see this sheet.
+              </li>
+            )}
             <li>
               <b>Reset</b> (top right) goes back to the starting choices.
             </li>

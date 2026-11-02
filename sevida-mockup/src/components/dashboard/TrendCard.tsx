@@ -77,6 +77,8 @@ const defaultPreset: Record<Granularity, string> = {
   quarterly: "4",
   annual: "0",
 };
+/** Version 7 (Jira LPP-16239): monthly starts at the prior 18 months, quarterly at 24 months (8 quarters). Annual shows every year we have. */
+const defaultPresetV7: Record<Granularity, string> = { ...defaultPreset, monthly: "18", quarterly: "8" };
 export function presetRange(g: Granularity, value: string): { from: Date; to: Date } {
   const end = defaultRange("annual").to;
   const n = rangePresets[g].find((x) => x.value === value)?.n ?? 0;
@@ -90,9 +92,10 @@ export function presetRange(g: Granularity, value: string): { from: Date; to: Da
 /** Granularity, range and compare choices shared by the single trend and the five small ones on the Overview. */
 export function useTrendControls() {
   const v3 = getVersion() >= 3;
+  const dp = getVersion() >= 7 ? defaultPresetV7 : defaultPreset;
   const [g, setG] = useState<Granularity>("monthly");
-  const [preset, setPresetValue] = useState(defaultPreset.monthly);
-  const [range, setRange] = useState(v3 ? presetRange("monthly", defaultPreset.monthly) : defaultRange("monthly"));
+  const [preset, setPresetValue] = useState(dp.monthly);
+  const [range, setRange] = useState(v3 ? presetRange("monthly", dp.monthly) : defaultRange("monthly"));
   const [which, setWhich] = useState<TrendMetric>("met");
   const [compare, setCompare] = useState(false);
   const canCompare = g === "monthly" || g === "quarterly";
@@ -100,12 +103,14 @@ export function useTrendControls() {
   const pickG = (next: Granularity) => {
     setG(next);
     if (v3) {
-      setPresetValue(defaultPreset[next]);
-      setRange(presetRange(next, defaultPreset[next]));
+      setPresetValue(dp[next]);
+      setRange(presetRange(next, dp[next]));
     } else setRange(defaultRange(next));
   };
   const setPreset = (value: string) => {
     setPresetValue(value);
+    // Custom keeps the dates that are on screen. The From and To fields then change them.
+    if (value === "custom") return;
     setRange(presetRange(g, value));
   };
   // Keep the range inside the longest allowed for the granularity. The end that was not edited moves.
@@ -260,7 +265,9 @@ export function TrendChart({
       ],
     };
   }, [code, list, c.g, c.range, c.which, c.comparing]);
-  const { min, max } = scaleOf(view.series.flatMap((s) => s.values));
+  const v7 = getVersion() >= 7;
+  // Version 7: a fixed 0 to 100% axis in even steps (0, 25, 50, 75, 100), written with the % sign, and room for the end value.
+  const { min, max } = v7 ? { min: 0, max: 100 } : scaleOf(view.series.flatMap((s) => s.values));
   if (!view.labels.length)
     return (
       <Typography variant="body2" sx={{ color: "text.secondary" }}>
@@ -275,6 +282,7 @@ export function TrendChart({
       max={max}
       decimals={1}
       height={height}
+      {...(v7 ? { ticks: [0, 25, 50, 75, 100], tickUnit: "%", padRight: 60 } : {})}
       label={`${c.which === "met" ? "Met" : "Not met"} percent of ${name} over time`}
     />
   );

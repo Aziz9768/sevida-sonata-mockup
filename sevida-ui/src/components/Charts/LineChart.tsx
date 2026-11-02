@@ -30,6 +30,12 @@ export interface LineChartProps {
   unit?: string;
   /** Decimals in the written values and in the hover box. Default 0. */
   decimals?: number;
+  /** Values for the side axis. Default: lowest, middle and highest. */
+  ticks?: number[];
+  /** Written after each side-axis number, for example "%". Default none. */
+  tickUnit?: string;
+  /** Room on the right for the end-point value, in px. Default 44. */
+  padRight?: number;
 }
 
 /** Fewest pixels between two bottom labels. */
@@ -50,12 +56,15 @@ export function LineChart({
   height = 220,
   unit = "%",
   decimals = 0,
+  ticks: tickValues,
+  tickUnit = "",
+  padRight = 44,
 }: LineChartProps) {
   const theme = useTheme();
   const [ref, W] = useChartWidth();
   const [hover, setHover] = useState<number | null>(null);
   const padL = 34,
-    padR = 44,
+    padR = padRight,
     padT = 12,
     padB = 26;
   const iw = W - padL - padR,
@@ -63,7 +72,7 @@ export function LineChart({
   const n = labels.length;
   const x = (i: number) => padL + (n === 1 ? iw / 2 : (i / (n - 1)) * iw);
   const y = (v: number) => padT + ih - ((v - min) / (max - min)) * ih;
-  const ticks = [min, min + (max - min) / 2, max];
+  const ticks = tickValues ?? [min, min + (max - min) / 2, max];
   const font = theme.typography.fontFamily;
   const fmt = (v: number) => v.toFixed(decimals);
   const step = Math.max(
@@ -110,6 +119,7 @@ export function LineChart({
               fontFamily={font}
             >
               {Math.round(t)}
+              {tickUnit}
             </text>
           </g>
         ))}

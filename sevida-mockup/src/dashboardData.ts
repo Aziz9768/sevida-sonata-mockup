@@ -390,7 +390,8 @@ export function groupRates(
     .map(([group, ms]) => ({ group, t: tally(ms, code, year) }))
     .filter((r) => r.t.denominator > 0);
   if (dim === "ageGroup") {
-    const order = ageBands.map((b) => b.label);
+    // Version 7: the age ranges of the Members list (version 3 and later) come in age order, youngest first.
+    const order = (getVersion() >= 7 && v3() ? AGE_RANGES : ageBands).map((b) => b.label);
     return rows.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
   }
   if (dim === "sex") return rows.sort((a, b) => a.group.localeCompare(b.group));
