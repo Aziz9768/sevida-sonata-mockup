@@ -460,9 +460,13 @@ function Protected() {
           element={
             <Navigate
               to={
-                version.id >= 3 && role.menus.includes("care-gaps")
-                  ? "/care-gaps"
-                  : home
+                // Version 7: the app opens on Analytics (the Overview) for anyone who can see it.
+                version.id >= 7 &&
+                (role.menus.includes("dashboards") || role.menus.includes("quicksight"))
+                  ? "/dashboards"
+                  : version.id >= 3 && role.menus.includes("care-gaps")
+                    ? "/care-gaps"
+                    : home
               }
               replace
             />
