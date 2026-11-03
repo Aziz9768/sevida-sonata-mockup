@@ -16,6 +16,10 @@ import {
   QsColumnChart,
   QsControl,
   QsControlsBar,
+  QsDonut,
+  QsGapBars,
+  QsGapColumns,
+  QsGapTrend,
   QsFmt,
   QsFrame,
   QsKpi,
@@ -34,6 +38,7 @@ import {
   militaryOf,
   dataFiles,
   ageAtYearEnd,
+  ageBandsOf,
   fmtDate,
   measureByCode,
   measureFor,
@@ -42,15 +47,18 @@ import {
   allMembers,
   members,
   resultsFor,
+  continuouslyEnrolled,
   stateLabel,
   stateName,
   tally,
+  YEARS,
   getAsOfStep,
   setAsOfStep,
 } from "../data";
 import type { Member, MeasureCode, MeasureState } from "../data";
 import {
   ageGroupOf,
+  bandsFor,
   compareSeries,
   ethnicityOf,
   openGapCount,
@@ -62,6 +70,8 @@ import {
   filterMembers,
   fmtRun,
   groupRates,
+  gapsByManager,
+  bucketLabel,
   granularityOptions,
   inputsFor,
   kpisFor,
@@ -75,6 +85,10 @@ import {
   a1cCounts,
   sexOf,
   trendRows,
+  fmtRunLong,
+  snapshotAt,
+  compareDays,
+  evaluatedIn,
 } from "../dashboardData";
 import type {
   DashFilters,
@@ -96,7 +110,6 @@ import {
   gapShort,
   ageLabel,
   ageParts,
-  ageRangesBetween,
   militaryV3,
   tricareIdOf,
 } from "../v3Data";
@@ -108,6 +121,7 @@ import { SMALL_GROUP } from "../insights";
 import { useRole } from "../roles";
 import { RunDetails, RunNotice, RunSelect } from "../components/RunBits";
 import { fmtRunTime, useRun } from "../runs";
+import { PCMS, pcmByName, pcmLabel } from "../v7Data";
 import { exampleInsight } from "../components/dashboard/ResultInsight";
 import { useFakeLoad } from "../components/analytics/AnalyticsBits";
 import type { Run } from "../runs";
@@ -145,6 +159,48 @@ const byName = (items: [string, ReactNode][]) =>
     .filter((i) => i[1] !== null)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map((i) => i[1]);
+/** Version 8 (Lucid chart): the About box text. Only BCS is on the Lucid chart; the other measures keep the existing wording. */
+const aboutFor = (code: MeasureCode): [string, string][] =>
+  code === "BCS-E"
+    ? [
+        [
+          "Eligible population:",
+          "members 42–74 years of age as of 31 December of the measurement year, recommended for routine breast cancer screening and continuously enrolled from 1 October two years prior to the measurement year through 31 December of the measurement year, without a required exclusion.",
+        ],
+        [
+          "Numerator:",
+          "one or more mammograms any time on or between October 1 two years prior to the measurement period and the end of the measurement period.",
+        ],
+        [
+          "Exclusions:",
+          "death, hospice, palliative care, I-SNP or long-term institution (Medicare, 66 and older), advanced illness and frailty (66 and older), bilateral mastectomy, or gender-affirming chest surgery with a diagnosis of gender dysphoria.",
+        ],
+      ]
+    : [
+        ["Eligible population:", V3_DEFINITION[code]],
+        ["Numerator (closed gap):", V3_MET[code]],
+        ["Exclusions:", V3_EXCLUSIONS[code]],
+      ];
+/** Version 8 (Lucid chart): "HEDIS Care Gaps Dashboard - Breast Cancer Screening (BCS)". */
+const lucidTitle = (code: MeasureCode) =>
+  `HEDIS Care Gaps Dashboard - ${V3_GAP_LABEL[code].replace(/^\w+\s[-·]\s/, "")} (${gapShort(code)})`;
+/** Version 7 (Lucid design): "1st Jan 2026". */
+const ordDate = (d: Date) => {
+  const n = d.getDate();
+  const th = n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th";
+  return `${n}${th} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
+};
+/** Version 7 (UX order): controls in the order people use them, not A to Z. Anything not listed goes last, A to Z. */
+const byOrder = (items: [string, ReactNode][], order: string[]) => {
+  const at = (n: string) => {
+    const i = order.indexOf(n);
+    return i < 0 ? order.length : i;
+  };
+  return [...items]
+    .filter((i) => i[1] !== null)
+    .sort((a, b) => at(a[0]) - at(b[0]) || a[0].localeCompare(b[0]))
+    .map((i) => i[1]);
+};
 
 /** Controls that live on one sheet only. A choice made there still filters the other sheets, so those sheets say so. */
 const SHEET_ONLY: {
@@ -191,7 +247,7 @@ const SHEET_ONLY: {
   {
     sheet: "Overview",
     get label() {
-      return FL.provider;
+      return getVersion() >= 7 ? "Primary Care Manager" : FL.provider;
     },
     text: (f) => f.provider.join(", "),
   },
@@ -278,7 +334,30 @@ function OtherSheetFilters({
   );
 }
 
+/** Version 7: the # Open Gaps menu in words. */
+const OPEN_GAP_WORDS: Record<string, string> = {
+  "=": "Exactly",
+  "<": "Fewer than",
+  "<=": "At most",
+  ">": "More than",
+  ">=": "At least",
+};
 const SHEETS = ["Overview", "Details", "Data", "Admin", "Help"];
+/** Version 7: three sheets only (Overview, Members, Admin). The Details sheet is called Members; Data and Help are not shown. */
+const tabLabel = (t: string) =>
+  getVersion() >= 7 && t === "Details" ? "Members" : t;
+const tabsFor = () => (getVersion() >= 7 ? ["Overview", "Details", "Admin"] : SHEETS);
+
+/** Version 7: the populations the Member Details table can list. */
+type MemberDetailsFilter = { pop: "all" | "initial" | "eligible" | "excluded" | "met" | "gap"; tricare: string; name: string };
+const POPULATIONS: { value: MemberDetailsFilter["pop"]; label: string; states: MeasureState[] | null }[] = [
+  { value: "all", label: "All Members Evaluated", states: null },
+  { value: "initial", label: "Initial Population", states: ["Met", "Gap", "Excluded", "Review"] },
+  { value: "eligible", label: "Eligible Population", states: ["Met", "Gap"] },
+  { value: "excluded", label: "Excluded Population", states: ["Excluded"] },
+  { value: "met", label: "Met Count", states: ["Met"] },
+  { value: "gap", label: "Not Met Count", states: ["Gap"] },
+];
 const withAll = (xs: string[]) => [{ value: "", label: ALL }, ...optionsOf(xs)];
 const p1 = (n: number) => `${n.toFixed(1)}%`;
 const n0 = (n: number) => n.toLocaleString("en-US");
@@ -316,6 +395,8 @@ export function QuickSightDashboardPage() {
   }, [version.id, mParam]);
   const [f, setF] = useState<DashFilters>(emptyFilters());
   const [view, setView] = useState<"" | "Met" | "Gap">("");
+  // Version 7 (Lucid design): the Member Details sheet has its own Population, Tricare ID and Member Name controls.
+  const [md, setMd] = useState<MemberDetailsFilter>({ pop: "all", tricare: "", name: "" });
   const [notes, setNotes] = useState({ fr: version.id < 3, ask: false });
   const [withWarnings, setWithWarnings] = useState(false);
   const options = useMemo(() => facetOptions(), []);
@@ -324,6 +405,7 @@ export function QuickSightDashboardPage() {
   const reset = () => {
     setF(emptyFilters());
     setView("");
+    setMd({ pop: "all", tricare: "", name: "" });
   };
 
   const year = f.year;
@@ -334,7 +416,7 @@ export function QuickSightDashboardPage() {
   useEffect(() => {
     if (!isV7) return;
     const before = document.title;
-    document.title = `${sheet}, ${v3Code(code)}, Analytics, Sevida`;
+    document.title = `${tabLabel(sheet)}, ${v3Code(code)}, Analytics, Sevida`;
     return () => {
       document.title = before;
     };
@@ -364,7 +446,12 @@ export function QuickSightDashboardPage() {
     </QsControl>
   );
   const cYear = (
-    <QsControl key="year">
+    <QsControl
+      key="year"
+      // Version 8: the start and end dates are in the info tooltip, not printed under the control.
+      info={version.id >= 8 ? `Measurement Start: ${ordDate(new Date(f.year, 0, 1))}. Measurement End: ${ordDate(new Date(f.year, 11, 31))}.` : undefined}
+      showInfo
+    >
       <SelectField
         label={FL.year}
         value={String(f.year)}
@@ -374,6 +461,14 @@ export function QuickSightDashboardPage() {
           label: String(y),
         }))}
       />
+      {version.id === 7 && (
+        // Lucid design: the start and end of the measurement year sit under the year, and change with it.
+        <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 0.5 }}>
+          Measurement Start: {ordDate(new Date(f.year, 0, 1))}
+          <br />
+          Measurement End: {ordDate(new Date(f.year, 11, 31))}
+        </Typography>
+      )}
     </QsControl>
   );
   const dd = (
@@ -455,6 +550,23 @@ export function QuickSightDashboardPage() {
     const [num = "", unit = "year"] = (f[key] || "").split("|");
     const put = (n: string, u: string) =>
       set(key, n === "" ? "" : `${n}|${u}`);
+    if (version.id === 7) {
+      // Version 7: one menu of whole years across the ages of the measure, instead of a number and a unit.
+      const [lo, hi] = ageBandsOf(f.year)[code];
+      const years = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+      const cur = num !== "" && unit === "year" ? num : "";
+      const shown = cur !== "" && !years.includes(Number(cur)) ? [...years, Number(cur)].sort((x, y) => x - y) : years;
+      return (
+        <QsControl key={key}>
+          <SelectField
+            label={label}
+            value={cur}
+            onChange={(v) => put(v, "year")}
+            options={[{ value: "", label: "Any" }, ...shown.map((y) => ({ value: String(y), label: `${y} years` }))]}
+          />
+        </QsControl>
+      );
+    }
     return (
       <QsControl key={key}>
         <Typography
@@ -494,6 +606,35 @@ export function QuickSightDashboardPage() {
     const op = op0 || "=";
     const put = (o: string, n: string) =>
       set("openGaps", n === "" ? "" : `${o}|${n}`);
+    if (version.id >= 7) {
+      // Version 7: one menu of ready choices. Nobody has to type a number or pick a symbol.
+      const choices: { value: string; label: string }[] = [
+        { value: "", label: "Any" },
+        { value: "=|0", label: "No open gaps" },
+        { value: "=|1", label: "1 open gap" },
+        { value: "=|2", label: "2 open gaps" },
+        { value: "=|3", label: "3 open gaps" },
+        { value: "=|4", label: "4 open gaps" },
+        { value: ">=|1", label: "1 or more open gaps" },
+        { value: ">=|2", label: "2 or more open gaps" },
+        { value: ">=|3", label: "3 or more open gaps" },
+      ];
+      const cur = num === "" ? "" : `${op}|${num}`;
+      const all = choices.some((c) => c.value === cur) ? choices : [...choices, { value: cur, label: `${OPEN_GAP_WORDS[op] ?? op} ${num}` }];
+      return (
+        <QsControl key="openGaps" info="How many measures the member has not met.">
+          <SelectField
+            label={FL.openGaps}
+            value={cur}
+            onChange={(v) => {
+              const [o, n] = v.split("|");
+              put(o ?? "=", n ?? "");
+            }}
+            options={all}
+          />
+        </QsControl>
+      );
+    }
     return (
       <QsControl key="openGaps" info="How many measures the member has not met.">
         <Typography
@@ -526,9 +667,13 @@ export function QuickSightDashboardPage() {
     );
   };
 
+  // Version 7: period and scope first, then who, then gaps.
+  const arrange = (items: [string, ReactNode][], order: string[]) =>
+    // Version 8 (Lucid chart): only the controls in the list are shown. The others (run, member, gap status, # open gaps, ...) are hidden.
+    version.id >= 8 ? byOrder(items.filter((i) => order.includes(i[0])), order) : byName(items);
   const overviewControls = (
     <QsControlsBar fr="703" ask={["Q1", "Q4", "Q12"]}>
-      {byName([
+      {arrange([
         [FL.measure, cMeasure],
         [RUN_LABEL, cRun],
         [FL.year, cYear],
@@ -561,8 +706,9 @@ export function QuickSightDashboardPage() {
         ],
         ...(version.id >= 3
           ? ([
-              ["Age Min", ageField("ageMin", "Age Min")],
-              ["Age Max", ageField("ageMax", "Age Max")],
+              // Version 7 (Lucid design): Age Range is the only age control. Age Min and Age Max would overlap with it.
+              [version.id === 7 ? "Age Lo" : "Age Min", version.id >= 8 ? null : ageField("ageMin", "Age Min")],
+              ["Age Max", version.id >= 8 ? null : ageField("ageMax", "Age Max")],
             ] as [string, ReactNode][])
           : []),
         [
@@ -591,10 +737,7 @@ export function QuickSightDashboardPage() {
             optionsOf(
               version.id >= 7
                 ? // Version 7: only the age ranges that apply to this measure.
-                  (() => {
-                    const m = /(\d+)\s*[–-]\s*(\d+)/.exec(def.population);
-                    return m ? ageRangesBetween(Number(m[1]), Number(m[2])) : options.ageGroup;
-                  })()
+                  bandsFor(code, f.year).map((b) => b.label)
                 : options.ageGroup,
             ),
           ),
@@ -605,10 +748,16 @@ export function QuickSightDashboardPage() {
           multi("ethnicity", FL.ethnicity, optionsOf(az(options.ethnicity))),
         ],
         [
-          FL.provider,
-          // Version 7: left out for now. It needs a member-to-provider file from Madigan (sheet FR-703.9, a stretch goal).
+          version.id >= 7 ? "Primary Care Manager" : FL.provider,
+          // Version 7 (Lucid design): the manager shows with the NPI, so a search by name or NPI finds them. A to Z by name.
           version.id >= 7
-            ? null
+            ? multi(
+                "provider",
+                "Primary Care Manager",
+                [...PCMS]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((p) => ({ value: p.name, label: `${p.name} - NPI: ${p.npi}` })),
+              )
             : multi("provider", FL.provider, optionsOf(az(options.provider))),
         ],
         [
@@ -622,15 +771,84 @@ export function QuickSightDashboardPage() {
                 "How many measures the member has not met.",
               ),
         ],
+      ], [
+        // Lucid: exactly these six, in this order.
+        FL.measure,
+        FL.year,
+        "Primary Care Manager",
+        FL.ageGroup,
+        FL.race,
+        FL.ethnicity,
+        FL.sex,
       ])}
     </QsControlsBar>
   );
   const detailControls = (
     <QsControlsBar fr="703" ask={["Q12"]}>
-      {byName([
+      {arrange([
         [FL.measure, cMeasure],
         [RUN_LABEL, cRun],
         [FL.year, cYear],
+        ...(version.id >= 7
+          ? ([
+              [
+                "Population",
+                <QsControl key="pop" showInfo info="Which members the table lists. All Members Evaluated is everyone in the files.">
+                  <SelectField
+                    label="Population"
+                    value={md.pop}
+                    onChange={(v) => setMd({ ...md, pop: v as MemberDetailsFilter["pop"] })}
+                    options={POPULATIONS.map((p) => ({ value: p.value, label: p.label }))}
+                  />
+                </QsControl>,
+              ],
+              [
+                "Tricare ID",
+                version.id >= 8 ? (
+                  // Lucid chart: a menu with All, like Population.
+                  <QsControl key="tricare" showInfo info="Pick one member by Tricare ID. All lists everyone.">
+                    <SelectField
+                      label="Tricare ID"
+                      value={md.tricare}
+                      onChange={(v) => setMd({ ...md, tricare: v })}
+                      options={withAll([...new Set(allMembers().map((m) => tricareIdOf(m)))].sort())}
+                    />
+                  </QsControl>
+                ) : (
+                  <QsControl key="tricare">
+                    <TextField
+                      label="Tricare ID"
+                      placeholder="Search by Tricare ID"
+                      value={md.tricare}
+                      onChange={(e) => setMd({ ...md, tricare: e.target.value })}
+                    />
+                  </QsControl>
+                ),
+              ],
+              [
+                "Member Name",
+                version.id >= 8 ? (
+                  <QsControl key="mname" showInfo info="Pick one member by name. All lists everyone.">
+                    <SelectField
+                      label="Member Name"
+                      value={md.name}
+                      onChange={(v) => setMd({ ...md, name: v })}
+                      options={withAll([...new Set(allMembers().map((m) => m.name))].sort((a, b) => a.localeCompare(b)))}
+                    />
+                  </QsControl>
+                ) : (
+                  <QsControl key="mname">
+                    <TextField
+                      label="Member Name"
+                      placeholder="Search by name"
+                      value={md.name}
+                      onChange={(e) => setMd({ ...md, name: e.target.value })}
+                    />
+                  </QsControl>
+                ),
+              ],
+            ] as [string, ReactNode][])
+          : []),
         [FL.dob, dateRange(FL.dob, "dobFrom", "dobTo")],
         [FL.excluded, multi("excluded", FL.excluded, azOpt(measureOptionsFor()))],
         [FL.evDate, dateRange(FL.evDate, "evFrom", "evTo")],
@@ -638,7 +856,7 @@ export function QuickSightDashboardPage() {
         [FL.state, dd("state", FL.state, az(options.state))],
         [FL.county, dd("county", FL.county, az(options.county))],
         [FL.military, dd("military", FL.military, az(options.military))],
-      ])}
+      ], [FL.measure, "Population", "Tricare ID", "Member Name"])}
     </QsControlsBar>
   );
   const smallControls = (
@@ -665,21 +883,23 @@ export function QuickSightDashboardPage() {
         }}
       />
     ) : sheet === "Details" ? (
-      <Details code={code} list={list} year={year} view={view} />
+      <Details code={code} list={list} year={year} view={view} md={md} />
     ) : sheet === "Data" ? (
       <DataSheet code={code} list={list} year={year} def={def} />
     ) : sheet === "Admin" ? (
-      <AdminSheet withWarnings={withWarnings} onChange={setWithWarnings} />
+      <AdminSheet withWarnings={withWarnings} onChange={setWithWarnings} code={code} year={year} />
     ) : (
       <HelpSheet />
     );
 
   return (
     <PageContainer
-      title={version.id >= 2 ? "Analytics" : "Quality measure analytics"}
+      title={version.id >= 8 ? lucidTitle(code) : version.id >= 2 ? "Analytics" : "Quality measure analytics"}
       titleVariant="overview"
       subtitle={
-        version.id >= 3
+        version.id >= 8
+          ? undefined
+          : version.id >= 3
           ? V3_GAP_LABEL[code]
           : "The dashboard drawn only with what QuickSight can build."
       }
@@ -718,9 +938,9 @@ export function QuickSightDashboardPage() {
       ) : (
       <NotesContext.Provider value={notes}>
         <QsFrame
-          tabs={SHEETS.filter((t) => t !== "Admin" || role.dataQuality)}
-          active={sheet}
-          onTab={setSheet}
+          tabs={tabsFor().filter((t) => t !== "Admin" || role.dataQuality).map(tabLabel)}
+          active={tabLabel(sheet)}
+          onTab={(t) => setSheet(t === "Members" && getVersion() >= 7 ? "Details" : t)}
           onReset={reset}
         >
           {sheet === "Overview"
@@ -752,12 +972,17 @@ interface RunHistoryRow {
   start: string;
   end: string;
   runAt: Date;
+  evaluated: number;
+  initial: number;
+  excluded: number;
   num: number;
   den: number;
   rate: number;
   change: number | null;
+  closedChange: number | null;
 }
 function RunHistoryTile({ code, year }: { code: MeasureCode; year: number }) {
+  const code3 = v3Code(code);
   const { choices } = useRun();
   const rows = useMemo<RunHistoryRow[]>(() => {
     const keep = getAsOfStep();
@@ -777,10 +1002,14 @@ function RunHistoryTile({ code, year }: { code: MeasureCode; year: number }) {
         start: fmtDate(new Date(year, 0, 1)),
         end: fmtDate(new Date(year, 11, 31)),
         runAt: r.at,
+        evaluated: everyone.length,
+        initial: t.eligible,
+        excluded: t.excluded,
         num: t.met,
         den: t.denominator,
         rate: t.rate,
         change: before ? t.rate - before.t.rate : null,
+        closedChange: before ? t.met - before.t.met : null,
       };
     });
   }, [choices, code, year]);
@@ -797,24 +1026,34 @@ function RunHistoryTile({ code, year }: { code: MeasureCode; year: number }) {
         exportFile="measure-run-history"
         rowKey={(r) => r.id}
         maxHeight={100000}
-        defaultSort={{ key: "run", dir: "desc" }}
+        defaultSort={{ key: "at", dir: "desc" }}
         cols={[
-          { key: "measure", header: "Measure", value: (r) => r.measure, nowrap: true },
+          { key: "run", header: "Run #", value: (r) => r.runAt.getTime(), render: (r) => r.id, nowrap: true },
           { key: "start", header: "Measurement Start", value: (r) => r.start, nowrap: true },
           { key: "end", header: "Measurement End", value: (r) => r.end, nowrap: true },
-          { key: "run", header: "Run Date & Time", value: (r) => r.runAt.getTime(), render: (r) => fmtRunTime(r.runAt), nowrap: true },
-          { key: "num", header: "Total Numerator", value: (r) => r.num, align: "right" },
-          { key: "den", header: "Total Denominator", value: (r) => r.den, align: "right" },
-          { key: "rate", header: "Total Period", value: (r) => r.rate, render: (r) => p1(r.rate), align: "right" },
+          { key: "at", header: "Run Date/Time", value: (r) => r.runAt.getTime(), render: (r) => fmtRunTime(r.runAt), nowrap: true },
+          { key: "ev", header: "Members Evaluated", value: (r) => r.evaluated, render: (r) => n0(r.evaluated), align: "right" },
+          { key: "init", header: "Initial Population", value: (r) => r.initial, render: (r) => n0(r.initial), align: "right" },
+          { key: "den", header: "Total Eligible", value: (r) => r.den, render: (r) => n0(r.den), align: "right" },
+          { key: "exc", header: "Excluded", value: (r) => r.excluded, render: (r) => n0(r.excluded), align: "right" },
+          { key: "num", header: "Numerator (Closed)", value: (r) => r.num, render: (r) => n0(r.num), align: "right" },
+          { key: "rate", header: `${code3} Rate (%)`, value: (r) => r.rate, render: (r) => r.rate.toFixed(1), align: "right" },
           {
             key: "chg",
             header: "Change vs Previous",
             value: (r) => r.change ?? -1e9,
             render: (r) => (r.change === null ? "" : `${r.change > 0 ? "+" : ""}${r.change.toFixed(2)} pts`),
             align: "right",
-            nowrap: true,
+          },
+          {
+            key: "cchg",
+            header: "Closed Δ",
+            value: (r) => r.closedChange ?? -1e9,
+            render: (r) => (r.closedChange === null ? "" : `${r.closedChange > 0 ? "+" : ""}${r.closedChange}`),
+            align: "right",
           },
         ]}
+        wrapHeaders
         rows={rows}
       />
     </QsTile>
@@ -837,6 +1076,8 @@ function Overview({
   const { version } = useVersion();
   const v3 = version.id >= 3;
   const v7 = version.id >= 7;
+  const v8 = version.id >= 8;
+  const about = aboutFor(code);
   const { initial, t } = kpisFor(code, list, year);
   const whole = kpisFor(code, allMembers(), year);
   const run = runInfo();
@@ -867,6 +1108,7 @@ function Overview({
   // Version 7: no provider chart or filter for now (needs a member-to-provider file from Madigan).
   const dims = allDims.filter((d) => !(v7 && d.dim === "provider"));
   const c = useTrendControls();
+  const [topN, setTopN] = useState(10);
   const trend = useMemo(
     () => (c.comparing ? null : trendRows(code, list, c.g, c.range)),
     [code, list, c.g, c.range, c.comparing],
@@ -882,42 +1124,10 @@ function Overview({
   const shown = (r: number | null) =>
     r === null ? "–" : p1(c.which === "met" ? r : 100 - r);
 
-  return (
-    <QsSheet>
-      <QsTile cols={36} bare fr="701" ask={["Q9", "Q21"]}>
-        {!v3 && (
-        <Typography
-          component="h2"
-          sx={{
-            m: 0,
-            fontSize: qs.type.sheetTitle.size,
-            fontWeight: qs.type.sheetTitle.weight,
-          }}
-        >
-          {def.code} · {def.name}
-        </Typography>
-        )}
-        <QsText>
-          <p>
-            {def.population}. {def.needs} Measurement period: {periodText(year)}
-            .
-          </p>
-          <p>
-            <b>Last updated:</b> {fmtRun(selectedRun.at)} · <b>Next update:</b>{" "}
-            {fmtRun(run.next)}
-          </p>
-          <p>
-            <b>Source files:</b>{" "}
-            {run.sources
-              .map((x) => `${x.title} ${fmtDate(x.receivedOn)}`)
-              .join(" · ")}
-          </p>
-        </QsText>
-      </QsTile>
-
+  const baselineTile = (
       <QsTile
-        cols={12}
-        rows={3}
+        cols={v7 ? 12 : 12}
+        rows={v7 ? 4 : 3}
         title="Eligible population baseline summary"
         subtitle={`The entire eligible population for ${year}. It does not change with the controls.`}
         fr="702"
@@ -941,16 +1151,16 @@ function Overview({
             ["Measurement period", periodText(year).replace(" to ", " – ")],
             ...(v7
               ? [
-                  ["Members Evaluated", n0(whole.initial)],
+                  ["Member Population", n0(whole.initial)],
                   ["Initial Population", n0(whole.t.eligible)],
-                  ["Total Eligible Population", n0(whole.t.denominator)],
+                  ["Eligible Population", n0(whole.t.denominator)],
                   ["Excluded Population", n0(whole.t.excluded)],
                   [
-                    "Population Meeting Measure",
+                    `${v3Code(code)} Met Count`,
                     `${n0(whole.t.met)} (${p1(share(whole.t.met, whole.t.denominator))})`,
                   ],
                   [
-                    "Population Not Meeting Measure",
+                    `${v3Code(code)} Not Met Count`,
                     `${n0(whole.t.gap)} (${p1(share(whole.t.gap, whole.t.denominator))})`,
                   ],
                 ]
@@ -970,9 +1180,103 @@ function Overview({
           ]}
         />
       </QsTile>
-      <QsTile cols={24} bare fr="702">
+  );
+  return (
+    <QsSheet>
+      {v7 && !v8 && (
+        <QsTile cols={36} bare fr="702.10">
+          <Box
+            component="details"
+            open
+            sx={{ "& summary": { cursor: "pointer", fontWeight: 700, fontSize: qs.type.visualTitle.size, mb: 1 } }}
+          >
+            <summary>About This Measure ({V3_GAP_LABEL[code]})</summary>
+            <QsText>
+              <p>
+                <b>Eligible population:</b> {V3_DEFINITION[code]}
+              </p>
+              <p>
+                <b>Numerator (closed gap):</b> {V3_MET[code]}
+              </p>
+              <p>
+                <b>Exclusions:</b> {V3_EXCLUSIONS[code]}
+              </p>
+              <p>
+                Counts are distinct members. The latest run of each measurement year is shown, and the trend uses every run.
+              </p>
+            </QsText>
+          </Box>
+        </QsTile>
+      )}
+      {v8 && (
+        // Lucid: a collapsible "About this measure (HEDIS BCS)" box. (Quick Sight cannot collapse a text box: ask the Quick Sight team.)
+        <QsTile cols={36} bare plain fr="702.10">
+          <Box
+            component="details"
+            sx={{ "& summary": { cursor: "pointer", fontWeight: 700, fontSize: qs.type.visualTitle.size, mb: 1 } }}
+          >
+            <summary>About this measure (HEDIS {gapShort(code)})</summary>
+            <QsText>
+              {about.map(([h, t]) => (
+                <p key={h}>
+                  <b>{h}</b> {t}
+                </p>
+              ))}
+              <p>Counts are distinct members: the latest run of each measurement year is shown, with every run in the trend.</p>
+            </QsText>
+          </Box>
+        </QsTile>
+      )}
+      <QsTile cols={36} bare plain={v8} fr="701" ask={["Q9", "Q21"]}>
+        {!v3 && (
+        <Typography
+          component="h2"
+          sx={{
+            m: 0,
+            fontSize: qs.type.sheetTitle.size,
+            fontWeight: qs.type.sheetTitle.weight,
+          }}
+        >
+          {def.code} · {def.name}
+        </Typography>
+        )}
         <QsText>
-          {v7 ? (
+          {v8 ? (
+            // One line. The source files are on the Admin sheet, in Files Ingested.
+            <p>
+              <b>Measurement period:</b> {periodText(year)} · <b>Last Updated:</b> {fmtRunLong(selectedRun.at)} ·{" "}
+              <b>Next Refresh:</b> {fmtRunLong(run.next)}
+            </p>
+          ) : (
+            <>
+              <p>
+                {v7 ? "" : `${def.population}. ${def.needs} `}Measurement period: {periodText(year)}
+                .
+              </p>
+              <p>
+                <b>{v7 ? "Last Updated:" : "Last updated:"}</b> {v7 ? fmtRunLong(selectedRun.at) : fmtRun(selectedRun.at)} ·{" "}
+                <b>{v7 ? "Next Refresh:" : "Next update:"}</b> {v7 ? fmtRunLong(run.next) : fmtRun(run.next)}
+              </p>
+              <p>
+                <b>Source files:</b>{" "}
+                {run.sources
+                  .map((x) => `${x.title} ${fmtDate(x.receivedOn)}`)
+                  .join(" · ")}
+              </p>
+            </>
+          )}
+        </QsText>
+      </QsTile>
+
+      {!v7 && baselineTile}
+      <QsTile cols={v7 ? 36 : 24} bare plain={v8} fr="702">
+        <QsText>
+          {v8 ? (
+            <p>
+              <b>Measurement Period Summary</b> · {periodText(year).replace(" to ", " – ")}. Cards follow the controls
+              above and count distinct members. The latest run of each year is shown.
+            </p>
+          ) : v7 ? (
             <p>
               <b>Measurement Period Summary.</b> The key metrics for{" "}
               {periodText(year).replace(" to ", " – ")}. These cards update
@@ -986,73 +1290,262 @@ function Overview({
           )}
         </QsText>
       </QsTile>
-      {v7 && (
-        <>
+      {v7 && (() => {
+        // Lucid design: row 1 compares this year with last year, row 2 compares with the last completed month and the same month a year earlier.
+        const prevY = year - 1;
+        const hasPrevY = YEARS.includes(prevY);
+        const pt = hasPrevY ? tally(list, code, prevY) : null;
+        const prevEval = hasPrevY ? evaluatedIn(list, prevY) : 0;
+        const pctChange = (cur: number, prev: number) =>
+          prev ? `${cur >= prev ? "+" : "-"}${Math.abs(((cur - prev) / prev) * 100).toFixed(1)}%${cur > prev ? " ▲" : cur < prev ? " ▼" : ""}` : "no earlier figure";
+        const ptsChange = (cur: number, prev: number) => {
+          const d = cur - prev;
+          return `${d >= 0 ? "+" : "-"}${Math.abs(d).toFixed(1)} pts${d > 0.05 ? " ▲" : d < -0.05 ? " ▼" : ""}`;
+        };
+        // Version 8 (Lucid chart): big numbers read 18.4K.
+        const kn = (n: number) => (v8 && Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}K` : n0(n));
+        const withPct = (n: number, of: number) => `${kn(n)} (${p1(share(n, of))})`;
+        const row1 = (
+          label: string,
+          cur: number,
+          prev: number | null,
+          tip: string | undefined,
+          pct: boolean,
+          upIsBad = false,
+        ) => (
           <QsKpi
-            cols={6}
+            key={label}
+            cols={9}
             fr="702"
-            label="Members Evaluated"
-            value={n0(initial)}
-            tip="Everyone in the files for these controls, before the measure's own rules are applied."
+            qs8={v8}
+            label={label}
+            value={kn(cur)}
+            tip={tip}
+            sub={hasPrevY ? undefined : `No ${prevY} data to compare with.`}
+            changes={
+              hasPrevY && prev !== null
+                ? [{
+                      prefix: `vs ${prevY}`,
+                      before: kn(prev),
+                      // Lucid: up is green, except Excluded where up is red.
+                      tone: !v8 || cur === prev ? "neutral" : (cur > prev) !== upIsBad ? "good" : "bad",
+                      change: pctChange(cur, prev),
+                    }]
+                : undefined
+            }
+            compare={
+              hasPrevY && prev !== null
+                ? [
+                    { label: String(year), value: cur, shown: pct ? withPct(cur, initial) : kn(cur) },
+                    { label: String(prevY), value: prev, shown: pct ? withPct(prev, prevEval) : kn(prev) },
+                  ]
+                : undefined
+            }
           />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Initial Population"
-            value={n0(t.eligible)}
-            tip="Members who belong in this measure (age, sex and enrollment), before exclusions."
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Total Eligible Population"
-            value={n0(t.denominator)}
-            tip={`${V3_DEFINITION[code]} Total eligible = initial population minus exclusions and members still in review.`}
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Excluded Population"
-            value={n0(t.excluded)}
-            tip={V3_EXCLUSIONS[code]}
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Population Meeting Measure"
-            value={n0(t.met)}
-            tip={V3_MET[code]}
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Population % Meeting Measure"
-            value={p1(metPct)}
-            highlight
-            color={qs.meaning.met}
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Population Not Meeting Measure"
-            value={n0(t.gap)}
-          />
-          <QsKpi
-            cols={6}
-            fr="702"
-            label="Population % Not Meeting Measure"
-            value={t.denominator ? p1(100 - metPct) : p1(0)}
-            color={qs.meaning.gapText}
-          />
-        </>
-      )}
+        );
+        const days = compareDays(year);
+        const sPm = snapshotAt(code, list, days.prevMonth);
+        const sPy = snapshotAt(code, list, days.prevYear);
+        const monthName = (d: Date) => d.toLocaleString("en-US", { month: "short", year: "numeric" });
+        const cur = { met: t.met, gap: t.gap, den: t.denominator };
+        type Snap = { met: number; gap: number; den: number } | null;
+        const row2 = (
+          label: string,
+          kind: "count" | "rate",
+          side: "met" | "gap",
+          tip?: string,
+          extra?: { highlight?: boolean; color?: string },
+        ) => {
+          const val = (x: NonNullable<Snap>) => (kind === "count" ? x[side] : share(x[side], x.den));
+          const show = (x: NonNullable<Snap>) =>
+            kind === "count" ? withPct(x[side], x.den) : p1(share(x[side], x.den));
+          const tone = (c: number, p: number): "good" | "bad" | "neutral" =>
+            c === p ? "neutral" : (c > p) === (side === "met") ? "good" : "bad";
+          const lines: { prefix: string; before: string; change: string; tone: "good" | "bad" | "neutral" }[] = [];
+          const bars: { label: string; value: number; shown: string; note?: string }[] = [
+            { label: "Current", value: val(cur), shown: show(cur) },
+          ];
+          const add = (snap: Snap, prefix: string, short: string) => {
+            if (!snap) return;
+            const c = val(cur);
+            const p = val(snap);
+            const change = kind === "count" ? pctChange(c, p) : ptsChange(c, p);
+            lines.push({
+              prefix: v8 ? "vs" : prefix,
+              before: kind === "count" ? kn(snap[side]) : p1(p),
+              change,
+              tone: tone(c, p),
+            });
+            // Version 8: the bar names the period and carries the change, because a KPI holds only one comparison.
+            bars.push(
+              v8
+                ? { label: `${short} ${prefix.replace("vs ", "")}`, value: p, shown: show(snap), note: change }
+                : { label: short, value: p, shown: show(snap) },
+            );
+          };
+          add(sPm, `vs ${monthName(days.prevMonth)}`, "Prev. month");
+          add(sPy, `vs ${monthName(days.prevYear)}`, "Prev. year");
+          return (
+            <QsKpi
+              cols={9}
+              fr="702"
+              qs8={v8}
+              label={label}
+              value={kind === "count" ? kn(cur[side]) : p1(t.denominator ? val(cur) : 0)}
+              tip={tip}
+              highlight={extra?.highlight}
+              color={extra?.color}
+              changes={lines}
+              compare={bars}
+            />
+          );
+        };
+        return (
+          <>
+            {row1("Member Population", initial, hasPrevY ? prevEval : null, "All members in the population from the Measurement Start Period.", false)}
+            {row1("Initial Population", t.eligible, pt ? pt.eligible : null, `All members meeting the measurement criteria to identify gaps in care. For ${v3Code(code)}: ${v8 && code === "BCS-E" ? "members aged 42-74" : (() => { const x = V3_DEFINITION[code].split(/ who were|\. /)[0].replace(/\.$/, ""); return x.charAt(0).toLowerCase() + x.slice(1); })()}.`, true)}
+            {row1("Eligible Population", t.denominator, pt ? pt.denominator : null, v8 ? "All members who are not excluded from the measure." : `All members who are not excluded from the measure. ${V3_DEFINITION[code]}`, true)}
+            {row1("Excluded Population", t.excluded, pt ? pt.excluded : null, v8 && code === "BCS-E" ? "All members who are excluded from the measure - e.g. have hospice, palliative care, frailty, had a mastectomy." : `All members who are excluded from the measure. For ${v3Code(code)}: ${V3_EXCLUSIONS[code].charAt(0).toLowerCase()}${V3_EXCLUSIONS[code].slice(1)}`, true, true)}
+            {row2(`${v3Code(code)} Met Count`, "count", "met", V3_MET[code])}
+            {row2(`${v3Code(code)} Met Rate`, "rate", "met", undefined, { highlight: true, color: qs.meaning.met })}
+            {row2(`${v3Code(code)} Not Met Count`, "count", "gap")}
+            {row2(`${v3Code(code)} Not Met Rate`, "rate", "gap", undefined, { color: qs.meaning.gapText })}
+          </>
+        );
+      })()}
       {v7 && (() => {
         const ins = exampleInsight({ name: V3_GAP_LABEL[code], rate: metPct, gap: t.gap, eligible: t.denominator });
         const dataAsOf = run.sources.reduce((a, x) => (x.receivedOn > a ? x.receivedOn : a), run.sources[0]?.receivedOn ?? selectedRun.at);
+        if (v8) {
+          // Version 8: both tiles are Quick Sight custom insights (text + fields + calculations), so every number is live.
+          const code3 = v3Code(code);
+          const days = compareDays(year);
+          const sPm = snapshotAt(code, list, days.prevMonth);
+          const sPy = snapshotAt(code, list, days.prevYear);
+          const mon = (d: Date) => d.toLocaleString("en-US", { month: "short", year: "numeric" });
+          const pts = (c: number, p: number) => {
+            const d = c - p;
+            return `${d >= 0 ? "+" : "-"}${Math.abs(d).toFixed(1)} pts${d > 0.05 ? " ▲" : d < -0.05 ? " ▼" : ""}`;
+          };
+          const curRate = share(t.met, t.denominator);
+          const vs = (snap: typeof sPm, d: Date) =>
+            snap ? `${mon(d)}: ${p1(snap.rate)} (${pts(curRate, snap.rate)}, ${n0(snap.met)} met)` : null;
+          const dims: [Dimension, string][] = [
+            ["ageGroup", FL.ageGroup],
+            ["sex", FL.sex],
+            ["race", FL.race],
+            ["ethnicity", FL.ethnicity],
+          ];
+          const groups = dims.map(([dim, label]) => ({
+            dim,
+            label,
+            rows: groupRates(code, list, year, dim).filter((r) => r.t.denominator >= SMALL_GROUP),
+          }));
+          const weakest = groups
+            .filter((g) => g.rows.length > 1)
+            .map((g) => {
+              const r = [...g.rows].sort((a, b) => share(a.t.met, a.t.denominator) - share(b.t.met, b.t.denominator))[0];
+              return { label: g.label, group: r.group, rate: share(r.t.met, r.t.denominator), gap: r.t.gap, den: r.t.denominator };
+            });
+          const bigAge = [...(groups.find((g) => g.dim === "ageGroup")?.rows ?? [])].sort((a, b) => b.t.gap - a.t.gap)[0];
+          const managers = gapsByManager(code, list, year);
+          const topMgr = [...managers].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name)).filter((m) => m.open > 0).slice(0, 3);
+          const mgrName = (name: string) => {
+            const m = pcmByName(name);
+            return m ? `Dr. ${pcmLabel(m)}` : name;
+          };
+          const bench = BENCHMARK[code];
+          const needed = Math.max(0, Math.ceil((bench / 100) * t.denominator) - t.met);
+          const lastMonth = vs(sPm, days.prevMonth);
+          const lastYear = vs(sPy, days.prevYear);
+          return (
+            <>
+              {baselineTile}
+              <QsTile
+                cols={12}
+                title="Explanation"
+                subtitle={`Custom insight. Run date ${fmtDate(selectedRun.at)}, data as of ${fmtDate(dataAsOf)}`}
+              >
+                <QsText>
+                  <p>
+                    <b>{V3_GAP_LABEL[code]}</b> is <b>{p1(curRate)}</b> met for {year}: {n0(t.met)} of {n0(t.denominator)} eligible members
+                    have met it and {n0(t.gap)} have not.
+                  </p>
+                  <p>
+                    <b>Population.</b> {n0(initial)} members, {n0(t.eligible)} in the initial population, {n0(t.excluded)} excluded,{" "}
+                    {n0(t.denominator)} eligible.
+                  </p>
+                  <p>
+                    <b>Change.</b> {lastMonth ? `Versus ${lastMonth}.` : "No last-month figure for this year."}{" "}
+                    {lastYear ? `Versus ${lastYear}.` : "No figure for the same month last year."}
+                  </p>
+                  <p>
+                    <b>Benchmark.</b> {bench}% target.{" "}
+                    {needed > 0
+                      ? `${p1(curRate)} is ${(bench - curRate).toFixed(1)} pts below it; ${n0(needed)} more ${needed === 1 ? "member needs" : "members need"} to meet it.`
+                      : `Reached, ${(curRate - bench).toFixed(1)} pts above it.`}
+                  </p>
+                  {weakest.length > 0 && (
+                    <p>
+                      <b>Lowest met rate.</b>{" "}
+                      {weakest.map((w) => `${w.label} ${w.group} ${p1(w.rate)} (${n0(w.gap)} not met of ${n0(w.den)})`).join(" · ")}
+                    </p>
+                  )}
+                </QsText>
+              </QsTile>
+              <QsTile cols={12} title="Recommended Action" subtitle="Custom insight. Follows the controls above.">
+                <QsText>
+                  {t.gap === 0 ? (
+                    <p>
+                      <b>No open gaps.</b> Every eligible member has met {code3}. Keep the monthly claims and results coming in so new
+                      members are checked.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        <b>Reach {n0(t.gap)} members.</b> These members have an open {code3} gap. Use the Not met bar to open the member
+                        list and book their visit or test.
+                      </p>
+                      {topMgr.length > 0 && (
+                        <p>
+                          <b>Start with these managers.</b>{" "}
+                          {topMgr.map((m) => `${mgrName(m.name)} ${n0(m.open)} open (${n0(m.closed)} closed)`).join(" · ")}
+                        </p>
+                      )}
+                      {bigAge && (
+                        <p>
+                          <b>Focus on {FL.ageGroup.toLowerCase()} {bigAge.group}.</b> {n0(bigAge.t.gap)} open gaps, the most of any{" "}
+                          {FL.ageGroup.toLowerCase()} ({p1(share(bigAge.t.met, bigAge.t.denominator))} met).
+                        </p>
+                      )}
+                      {weakest.some((w) => w.label !== FL.ageGroup) && (
+                        <p>
+                          <b>Check outreach.</b>{" "}
+                          {weakest
+                            .filter((w) => w.label !== FL.ageGroup)
+                            .map((w) => `${w.group} (${w.label.toLowerCase()}) is ${p1(w.rate)}`)
+                            .join(" · ")}
+                          . Review how these members are being reached.
+                        </p>
+                      )}
+                      <p>
+                        <b>Goal.</b>{" "}
+                        {needed > 0
+                          ? `Closing ${n0(needed)} of the ${n0(t.gap)} open gaps reaches the ${bench}% benchmark.`
+                          : `The ${bench}% benchmark is met. Keep closing the remaining ${n0(t.gap)}.`}
+                      </p>
+                    </>
+                  )}
+                </QsText>
+              </QsTile>
+            </>
+          );
+        }
         return (
           <>
+            {baselineTile}
             <QsTile
-              cols={18}
+              cols={24}
               title="Explanation"
               subtitle={`Example text. Run date ${fmtDate(selectedRun.at)}, data as of ${fmtDate(dataAsOf)}`}
             >
@@ -1060,7 +1553,7 @@ function Overview({
                 <p>{ins.explanation}</p>
               </QsText>
             </QsTile>
-            <QsTile cols={18} title="Recommended Action" subtitle="Example text">
+            <QsTile cols={24} title="Recommended Action" subtitle="Example text">
               <QsText>
                 <p>{ins.action}</p>
               </QsText>
@@ -1354,16 +1847,47 @@ function Overview({
       </QsTile>
       <QsTile
         cols={24}
-        title={v7 ? `Trends for ${V3_GAP_LABEL[code]}` : `${metric} over time`}
+        title={v7 ? (trend ? `Open vs Closed Gaps Trend ${granularityOptions.find((o) => o.value === c.g)?.label ?? ""}` : `Trends for ${V3_GAP_LABEL[code]}`) : `${metric} over time`}
         subtitle={
           v7
-            ? `${metric}. Starts again each January 1`
+            ? trend
+              ? `Open and closed gaps at the end of each period, with the compliance rate. Starts again each January 1${
+                  v8
+                    ? trend.some((r, i) => c.g === "monthly" && i === trend.length - 1 && r.end.getDate() !== new Date(r.end.getFullYear(), r.end.getMonth() + 1, 0).getDate())
+                      ? ". Each bar is the month end. * Month to date."
+                      : ". Each bar is the end of the period."
+                    : ""
+                }`
+              : `${metric}. Starts again each January 1`
             : "Starts again each January 1"
         }
         fr="708"
       >
-        <TrendChart code={code} list={list} c={c} {...(v7 ? { height: 460 } : {})} />
+        {v7 && trend ? (
+          <QsGapTrend
+            qs8={v8}
+            xTitle={{ daily: "Day", weekly: "Week", monthly: "Month", quarterly: "Quarter", annual: "Year" }[c.g as string] ?? "Month"}
+            label="Open and closed gaps over time, with the compliance rate"
+            height={460}
+            rows={trend.map((r, i) => ({
+              label:
+                v8 && c.g === "monthly"
+                  ? `${r.end.toLocaleString("en-US", { month: "short" })} ${r.end.getFullYear()}`
+                  : bucketLabel(c.g, r.end, c.range),
+              closed: r.met,
+              open: Math.max(0, r.counted - r.met),
+              rate: r.rate,
+              partial:
+                c.g === "monthly" &&
+                i === trend.length - 1 &&
+                r.end.getDate() !== new Date(r.end.getFullYear(), r.end.getMonth() + 1, 0).getDate(),
+            }))}
+          />
+        ) : (
+          <TrendChart code={code} list={list} c={c} {...(v7 ? { height: 460 } : {})} />
+        )}
       </QsTile>
+      {!v7 && (
       <QsTile
         cols={12}
         title="Met and not met"
@@ -1383,6 +1907,9 @@ function Overview({
           ]}
         />
       </QsTile>
+      )}
+      {!v7 && (
+      <>
       {dims.map(({ dim, title, cols }) => {
         const rows = groupRates(code, list, year, dim);
         const small = rows.some((r) => r.t.denominator < SMALL_GROUP);
@@ -1423,7 +1950,142 @@ function Overview({
           </QsTile>
         );
       })}
-      {v7 && <RunHistoryTile code={code} year={year} />}
+      </>
+      )}
+      {v7 && (() => {
+        const code3 = v3Code(code);
+        const gapRows = (dim: Dimension) =>
+          groupRates(code, list, year, dim).map((r) => ({
+            label: `${r.group}${r.t.denominator < SMALL_GROUP ? " *" : ""}`,
+            open: r.t.gap,
+            closed: r.t.met,
+            note: `${p1(r.t.rate)} closed`,
+          }));
+        const smallNote = (dim: Dimension) =>
+          groupRates(code, list, year, dim).some((r) => r.t.denominator < SMALL_GROUP)
+            ? `* Fewer than ${SMALL_GROUP} eligible members.`
+            : undefined;
+        const sexRows = groupRates(code, list, year, "sex").sort((a, b) => b.t.denominator - a.t.denominator);
+        const managers = gapsByManager(code, list, year);
+        const topOpen = [...managers].sort((a, b) => b.open - a.open || b.closed - a.closed || a.name.localeCompare(b.name)).slice(0, topN);
+        const topClosed = [...managers].sort((a, b) => b.closed - a.closed || b.open - a.open || a.name.localeCompare(b.name)).slice(0, topN);
+        const mgrLabel = (name: string) => {
+          const m = pcmByName(name);
+          return m ? `Dr. ${pcmLabel(m)}` : name;
+        };
+        return (
+          <>
+            {v8 && (
+              // Lucid chart: four gap charts in one row, clustered columns (Open beside Closed), titled "BCS Gaps by Age Range".
+              <>
+                {(
+                  [
+                    ["ageGroup", FL.ageGroup],
+                    ["race", "Race"],
+                    ["ethnicity", "Ethnicity"],
+                  ] as [Dimension, string][]
+                ).map(([dim, name]) => (
+                  <QsTile key={dim} cols={9} title={`${code3} Gaps by ${name}`} subtitle={smallNote(dim)} fr="703" ask={dim === "race" ? ["Q11"] : undefined}>
+                    <QsGapColumns label={`${code3} gaps by ${name.toLowerCase()}`} rows={gapRows(dim)} />
+                  </QsTile>
+                ))}
+                <QsTile cols={9} title={`${code3} Gaps by ${FL.sex}`} subtitle={smallNote("sex")} fr="703">
+                  <QsDonut
+                    qs8
+                    label={`${code3} gaps by ${FL.sex.toLowerCase()}`}
+                    slices={sexRows.map((r) => ({
+                      label: r.group,
+                      value: r.t.denominator,
+                      detail: `Closed ${r.t.met}, Open ${r.t.gap}`,
+                    }))}
+                  />
+                </QsTile>
+              </>
+            )}
+            <QsTile cols={36} bare fr="703">
+              <Box sx={{ maxWidth: 220 }}>
+                <SelectField
+                  label="Top n Managers"
+                  value={String(topN)}
+                  onChange={(v) => setTopN(Number(v))}
+                  options={[5, 10, 15].map((n) => ({ value: String(n), label: String(n) }))}
+                />
+              </Box>
+            </QsTile>
+            <QsTile
+              cols={18}
+              title={`Top ${topN} Open Gaps by Primary Care Manager`}
+              subtitle="Managers with the most open gaps first, high to low."
+              fr="703"
+            >
+              <QsGapBars
+                label={`Top ${topN} open gaps by primary care manager`}
+                first="open"
+                totals={v8}
+                rows={topOpen.map((r) => ({ label: mgrLabel(r.name), open: r.open, closed: r.closed }))}
+                empty="No manager has an eligible member for these controls"
+              />
+            </QsTile>
+            <QsTile
+              cols={18}
+              title={`Top ${topN} Closed Gaps by Primary Care Manager`}
+              subtitle="Managers with the most closed gaps first, high to low. Uses the same n as the chart on the left."
+              fr="703"
+            >
+              <QsGapBars
+                label={`Top ${topN} closed gaps by primary care manager`}
+                first="closed"
+                totals={v8}
+                rows={topClosed.map((r) => ({ label: mgrLabel(r.name), open: r.open, closed: r.closed }))}
+                empty="No manager has an eligible member for these controls"
+              />
+            </QsTile>
+            <QsTile
+              cols={12}
+              title="Met and not met"
+              subtitle="Click a bar to list those members on Details"
+              fr="707.1"
+              ask={["Q3"]}
+            >
+              <QsColumnChart
+                label="Number of members met and not met"
+                max={Math.max(10, Math.ceil(Math.max(t.met, t.gap) / 10) * 10)}
+                unit=""
+                decimals={0}
+                onSelect={(b) => onBar(b.label === "Met" ? "Met" : "Gap")}
+                bars={[
+                  { label: "Met", value: t.met, color: qs.meaning.met },
+                  { label: "Not met", value: t.gap, color: qs.meaning.gap },
+                ]}
+              />
+            </QsTile>
+            {!v8 && (
+              <>
+            <QsTile cols={24} title={`${code3} Gaps by ${FL.ageGroup}`} subtitle={smallNote("ageGroup")} fr="703">
+              <QsGapBars label={`${code3} gaps by ${FL.ageGroup.toLowerCase()}`} rows={gapRows("ageGroup")} noteWidth={86} totals={v8} />
+            </QsTile>
+            <QsTile cols={36} title={`${code3} Gaps by Race`} subtitle={smallNote("race")} fr="703" ask={["Q11"]}>
+              <QsGapBars label={`${code3} gaps by race`} rows={gapRows("race")} noteWidth={86} totals={v8} />
+            </QsTile>
+            <QsTile cols={24} title={`${code3} Gaps by Ethnicity`} subtitle={smallNote("ethnicity")} fr="703">
+              <QsGapBars label={`${code3} gaps by ethnicity`} rows={gapRows("ethnicity")} noteWidth={86} totals={v8} />
+            </QsTile>
+            <QsTile cols={12} title={`${code3} Gaps by ${FL.sex}`} subtitle={smallNote("sex")} fr="703">
+              <QsDonut
+                qs8={v8}
+                label={`${code3} gaps by ${FL.sex.toLowerCase()}`}
+                slices={sexRows.map((r) => ({
+                  label: r.group,
+                  value: r.t.denominator,
+                  detail: `Closed ${r.t.met}, Open ${r.t.gap}`,
+                }))}
+              />
+            </QsTile>
+              </>
+            )}
+          </>
+        );
+      })()}
       <QsTile
         cols={36}
         title="Everything that affects this calculation"
@@ -1528,21 +2190,32 @@ function Details({
   list,
   year,
   view,
+  md,
 }: {
   code: MeasureCode;
   list: Member[];
   year: number;
   view: "" | "Met" | "Gap";
+  md: MemberDetailsFilter;
 }) {
   const { memberLists } = useRole();
   const v3 = useVersion().version.id >= 3;
-  const shown = useMemo(
-    () =>
-      view
-        ? list.filter((m) => resultsFor(m, year)[code].state === view)
-        : list,
-    [list, view, year, code],
-  );
+  const v7 = useVersion().version.id >= 7;
+  const v8 = useVersion().version.id >= 8;
+  const [selectedId, setSelectedId] = useState("");
+  const shown = useMemo(() => {
+    let rows = view ? list.filter((m) => resultsFor(m, year)[code].state === view) : list;
+    if (v7) {
+      const states = POPULATIONS.find((p) => p.value === md.pop)?.states;
+      if (states) rows = rows.filter((m) => states.includes(resultsFor(m, year)[code].state));
+      const tri = md.tricare.trim();
+      if (tri) rows = rows.filter((m) => (v8 ? tricareIdOf(m) === tri : tricareIdOf(m).includes(tri)));
+      const nm = md.name.trim().toLowerCase();
+      if (nm) rows = rows.filter((m) => (v8 ? m.name.toLowerCase() === nm : m.name.toLowerCase().includes(nm)));
+    }
+    return rows;
+  }, [list, view, year, code, v7, v8, md]);
+  const selected = shown.find((m) => m.id === selectedId) ?? null;
   const stateOf = (m: Member) => resultsFor(m, year)[code].state;
   const cols: QsCol<Member>[] = [
     {
@@ -1588,7 +2261,7 @@ function Details({
     {
       key: "ag",
       header: FL.ageGroup,
-      value: (m) => ageGroupOf(m, year),
+      value: (m) => ageGroupOf(m, year, code),
       nowrap: true,
     },
     {
@@ -1630,8 +2303,17 @@ function Details({
     },
     {
       key: "pcp",
-      header: LABEL.provider,
+      header: getVersion() >= 7 ? "Primary Care Manager" : LABEL.provider,
       value: providerOf,
+      // Lucid chart (version 8): "Dr. Name (NPI: ...)".
+      ...(v8
+        ? {
+            render: (m: Member) => {
+              const p = pcmByName(providerOf(m));
+              return p ? `Dr. ${pcmLabel(p)}` : providerOf(m);
+            },
+          }
+        : {}),
       nowrap: true,
     },
     {
@@ -1674,6 +2356,36 @@ function Details({
         </QsTile>
       </QsSheet>
     );
+  /** Version 7 (Lucid design): the same order as the design: Tricare ID, First Name, Last Name, Date of Birth, Age (years), Gender, Race, Ethnicity, Primary Care Manager. Other columns follow. */
+  const v7cols: QsCol<Member>[] = (() => {
+    if (!v7) return cols;
+    const link = (m: Member, text: string) => (
+      <Link to={`/members/${m.id}`} style={{ color: qs.color.accent, fontWeight: 700 }}>
+        {text}
+      </Link>
+    );
+    const by = (k: string) => cols.find((c) => c.key === k)!;
+    const first: QsCol<Member> = { key: "first", header: "First Name", value: (m) => m.first, render: (m) => link(m, m.first), nowrap: true };
+    const last: QsCol<Member> = { key: "last", header: "Last Name", value: (m) => m.last, render: (m) => link(m, m.last), nowrap: true };
+    const head = [
+      by("tricare"),
+      first,
+      last,
+      { ...by("dob"), header: "Date of Birth" },
+      {
+        ...by("age"),
+        header: "Age (years)",
+        value: (m: Member) => ageAtYearEnd(m.dob, year),
+        render: (m: Member) => ageAtYearEnd(m.dob, year),
+      },
+      by("sex"),
+      by("race"),
+      by("eth"),
+      by("pcp"),
+    ];
+    const used = new Set([...head.map((c) => c.key), "name"]);
+    return [...head, ...cols.filter((c) => !used.has(c.key))];
+  })();
   return (
     <QsSheet>
       {view && (
@@ -1691,21 +2403,137 @@ function Details({
       )}
       <QsTile
         cols={36}
-        title="List of members in the initial population"
-        subtitle={`${n0(shown.length)} members. Click a header to sort. Every column is always shown, scroll sideways for more. The name opens the member page.`}
+        title={v7 ? "Member Detail Table" : "List of members in the initial population"}
+        subtitle={
+          v7
+            ? `${n0(shown.length)} members. Click a row to see the explanation and recommendation below. Click a header to sort. A name opens the member page.`
+            : `${n0(shown.length)} members. Click a header to sort. Every column is always shown, scroll sideways for more. The name opens the member page.`
+        }
         fr="707"
         ask={["Q7", "Q13", "Q14"]}
       >
         <QsTable
           label="Members"
           exportFile="members"
-          cols={cols}
+          cols={v7cols}
           rows={shown}
           rowKey={(m) => m.id}
           maxHeight={560}
+          {...(v7 ? { onRowSelect: (m: Member) => setSelectedId(m.id), selectedKey: selected?.id ?? "" } : {})}
         />
       </QsTile>
+      {v7 && <MemberInsightPanels member={selected} code={code} year={year} />}
     </QsSheet>
+  );
+}
+
+/* ------------------------------------------------------------------ Version 7: explanation and recommendation for one member */
+
+const stateWord: Record<MeasureState, string> = {
+  Met: "Gap closed",
+  Gap: "Gap open",
+  Excluded: "Excluded",
+  Review: "Needs review",
+  "Not eligible": "Not in this measure",
+};
+const stepWord = (o: string) =>
+  o === "pass" ? "Yes" : o === "fail" || o === "unmet" ? "No" : o === "excluded" ? "Yes, excluded" : o === "review" ? "Needs review" : "Not checked";
+
+/** Version 8 (Lucid chart): the BCS rows of the Explanation table, each one a Yes or No about this member. */
+const lucidBcsRows = (m: Member, year: number): { k: string; v: string; d: string }[] => {
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  const yn = (b: boolean) => (b ? "Yes" : "No");
+  const inYear = (d: Date) => d >= start && d <= end;
+  const age = ageAtYearEnd(m.dob, year);
+  const hospice =
+    m.medicare.some((x) => x.hospice && x.start <= end && x.end >= start) || (!!m.dod && m.dod.getFullYear() === year);
+  const palliative = m.events.some((e) => e.tag === "palliative" && inYear(e.date));
+  const frail = age >= 66 && m.events.some((e) => e.tag === "frailty") && m.events.some((e) => e.tag === "dementia");
+  return [
+    { k: "Is continuously enrolled", v: yn(continuouslyEnrolled(m, year).ok), d: "" },
+    { k: "Hospice during measurement period", v: yn(hospice), d: "" },
+    { k: "Palliative care during measurement period", v: yn(palliative), d: "" },
+    { k: "Advanced illness and frailty exclusion", v: yn(frail), d: "" },
+    { k: "Mastectomy during history", v: yn(m.events.some((e) => e.tag === "mastectomy" && e.date <= end)), d: "" },
+    { k: "Gender-affirming chest surgery history", v: yn(m.events.some((e) => e.tag === "chest-surgery" && e.date <= end)), d: "" },
+  ];
+};
+
+/** The Explanation and Recommendation of one member (Lucid design). The recommendation words are example text until the AI insights test is done. */
+function MemberInsightPanels({ member, code, year }: { member: Member | null; code: MeasureCode; year: number }) {
+  const v8 = useVersion().version.id >= 8;
+  const def = measureFor(measureByCode(code)!, year);
+  if (!member)
+    return (
+      <QsTile cols={36} title="Member Details" subtitle="Click a member in the list above to see their explanation and recommendation here." fr="707.2">
+        {null}
+      </QsTile>
+    );
+  const r = resultsFor(member, year)[code];
+  const when = r.evidence ? fmtDate(r.evidence.date) : null;
+  const priority = r.state === "Gap" ? "High" : r.state === "Review" ? "Medium" : "Low";
+  const confidence = r.state === "Review" ? "Medium" : "High";
+  const action =
+    r.state === "Met"
+      ? `No action needed for ${V3_GAP_LABEL[code]} at this time.`
+      : r.state === "Gap"
+        ? `Reach out to the member to book what is missing: ${def.needs.charAt(0).toLowerCase()}${def.needs.slice(1)}`
+        : r.state === "Excluded"
+          ? "No action needed. The member is excluded from this measure."
+          : r.state === "Review"
+            ? "A care manager should review this member's record before the result is final."
+            : "No action needed. The member is not in this measure.";
+  const why =
+    r.state === "Met" && when
+      ? `${r.reason} The qualifying record is dated ${when}.`
+      : r.reason;
+  return (
+    <>
+      <QsTile cols={18} title="Explanation" subtitle="For the member clicked in the list above." fr="707.2">
+        <QsTable
+          label="Explanation for the selected member"
+          exportFile="member-explanation"
+          rowKey={(x) => x.k}
+          maxHeight={100000}
+          cols={
+            v8
+              ? [
+                  // Lucid chart: two columns, Item and Value.
+                  { key: "k", header: "Item", value: (x) => x.k },
+                  { key: "v", header: "Value", value: (x) => x.v },
+                ]
+              : [
+                  { key: "k", header: "Check", value: (x) => x.k },
+                  { key: "v", header: "Result", value: (x) => x.v },
+                  { key: "d", header: "What Was Found", value: (x) => x.d },
+                ]
+          }
+          rows={[
+            { k: "Tricare ID", v: tricareIdOf(member), d: "" },
+            { k: "Member Name", v: member.name, d: "" },
+            { k: "Outcome", v: r.state === "Met" ? "MET" : r.state === "Gap" ? "NOT MET" : r.state.toUpperCase(), d: r.reason },
+            { k: v3Code(code), v: r.state === "Not eligible" ? "False" : "True", d: "Whether the member is in this measure" },
+            ...(v8 && code === "BCS-E"
+              ? lucidBcsRows(member, year)
+              : r.steps.map((st) => ({ k: st.label, v: stepWord(st.outcome), d: st.detail }))),
+          ]}
+        />
+      </QsTile>
+      <QsTile cols={18} title="Recommendation" subtitle="For the member clicked in the list above. Example text: the words change when the AI insights test is done." fr="707.2">
+        <QsText>
+          <p>
+            <b>Status:</b> {stateWord[r.state]} · <b>Priority:</b> {priority} · <b>Confidence:</b> {confidence}
+          </p>
+          <p>
+            <b>Action:</b> {action}
+          </p>
+          <p>
+            <b>Why:</b> {why}
+          </p>
+        </QsText>
+      </QsTile>
+    </>
   );
 }
 
@@ -1842,9 +2670,13 @@ const ADMIN_EXAMPLE = {
 };
 
 function AdminSheet({
+  code,
+  year,
   withWarnings,
   onChange,
 }: {
+  code: MeasureCode;
+  year: number;
   withWarnings: boolean;
   onChange: (v: boolean) => void;
 }) {
@@ -2143,7 +2975,7 @@ function AdminSheet({
         )}
         <QsTile
           cols={36}
-          title={v7 ? "Run History" : "Run history"}
+          title={v7 ? "Nightly Run History" : "Run history"}
           subtitle="Every nightly run. Click a run for its files, problems and measures. Use the Results as of Run control above to see the numbers as they were then."
           fr="108"
         >
@@ -2203,6 +3035,7 @@ function AdminSheet({
           />
         </QsTile>
         <RunDetails run={runOpen} onClose={() => setRunOpen(null)} />
+        {v7 && <RunHistoryTile code={code} year={year} />}
         <QsTile
           cols={36}
           title={v7 ? "Files Ingested" : "Files ingested"}
@@ -2671,7 +3504,7 @@ function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
                   still arrive for 90 days.
                 </li>
                 <li>
-                  <b>Measure Run History</b> lists the latest runs: the rate each run
+                  <b>Measure Run History</b> (on the Admin sheet) lists the latest runs: the rate each run
                   produced for everyone in the files, and the change from the run
                   before it. The controls do not change it.
                 </li>
@@ -2679,19 +3512,32 @@ function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
             )}
             <li>
               <b>Click the Met or Not met bar</b> to list those members on the
-              Details sheet.
+              {v7 ? " Members" : " Details"} sheet.
             </li>
             <li>
-              <b>Details</b> has more controls and the list of members. Click a
-              column header to sort. Click a name to open the member.
+              {v7 ? (
+                <>
+                  <b>Members</b> has more controls (Population, Tricare ID,
+                  Member Name) and the list of members. Click a member row to see
+                  that member's Explanation and Recommendation under the list. Click
+                  a column header to sort.
+                </>
+              ) : (
+                <>
+                  <b>Details</b> has more controls and the list of members. Click a
+                  column header to sort. Click a name to open the member.
+                </>
+              )}
             </li>
-            <li>
-              <b>Data</b> shows the files behind the numbers and why members
-              were left out.
-            </li>
+            {!v7 && (
+              <li>
+                <b>Data</b> shows the files behind the numbers and why members
+                were left out.
+              </li>
+            )}
             {v7 && (
               <li>
-                <b>Admin</b> shows data quality: files received, rejected rows and
+                <b>Admin</b> shows data quality: run history, files received, rejected rows and
                 missing fields. Only people with data-quality access see this sheet.
               </li>
             )}

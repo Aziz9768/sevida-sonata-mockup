@@ -212,8 +212,9 @@ export const MISSING_SHORT: Record<MeasureCode, string> = {
 
 /** "Who is Considered" and "What is Left to Close the Gap" on the Care Gap page, as the sheet words them (typos fixed). GSD is blank in the sheet. */
 export const V3_WHO: Record<MeasureCode, string> = {
-  "BCS-E":
-    "Females aged 52–74 years who were recommended for a breast cancer screening.",
+  get "BCS-E"() {
+    return `Females aged ${getVersion() >= 7 ? 42 : 52}–74 years who were recommended for a breast cancer screening.`;
+  },
   "CCS-E":
     "Females aged 24–64 years who were recommended for a routine cervical cancer screening.",
   "COL-E": "Members aged 46–75 years.",
@@ -245,7 +246,9 @@ export const V3_LEFT: Record<MeasureCode, string[]> = {
 
 type Code = "BCS-E" | "CCS-E" | "COL-E" | "GSD" | "WCV";
 export const V3_DEFINITION: Record<Code, string> = {
-  "BCS-E": "Women aged 52–74 on Dec 31 who were recommended breast cancer screening.",
+  get "BCS-E"() {
+    return `Women aged ${getVersion() >= 7 ? 42 : 52}–74 on Dec 31 who were recommended breast cancer screening.`;
+  },
   "CCS-E": "Women aged 24–64 on Dec 31 who were recommended routine cervical cancer screening.",
   "COL-E": "Members aged 46–75 on Dec 31 who were recommended colorectal cancer screening.",
   GSD: "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.",

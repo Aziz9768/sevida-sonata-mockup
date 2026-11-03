@@ -177,7 +177,7 @@ function activeKeyFor(pathname: string, search = "", versionId = 2) {
   if (versionId >= 3) {
     if (first === "dashboards") return "analytics-overview";
     if (first === "quicksight")
-      return `analytics-${new URLSearchParams(search).get("m") ?? "BCS"}`;
+      return `analytics-${(new URLSearchParams(search).get("m") ?? "BCS").replace(/-E$/, "")}`;
     if (first === "dashboard") return `analytics-${pathname.split("/")[2] ?? "BCS"}`;
     return first === "care-gaps" ? "care-gaps" : "members";
   }
@@ -476,7 +476,7 @@ function Protected() {
           path="/analytics"
           element={
             <MenuGate path="/analytics">
-              {version.id === 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsOverviewQsPage /> : <AnalyticsOverviewPage />}
+              {version.id >= 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsOverviewQsPage /> : <AnalyticsOverviewPage />}
             </MenuGate>
           }
         />
@@ -484,7 +484,7 @@ function Protected() {
           path="/analytics/:code"
           element={
             <MenuGate path="/analytics">
-              {version.id === 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsMeasureQsPage /> : <AnalyticsMeasurePage />}
+              {version.id >= 7 ? <Navigate to="/dashboards" replace /> : version.id >= 6 ? <AnalyticsMeasureQsPage /> : <AnalyticsMeasurePage />}
             </MenuGate>
           }
         />

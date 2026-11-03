@@ -92,7 +92,8 @@ export function presetRange(g: Granularity, value: string): { from: Date; to: Da
 /** Granularity, range and compare choices shared by the single trend and the five small ones on the Overview. */
 export function useTrendControls() {
   const v3 = getVersion() >= 3;
-  const dp = getVersion() >= 7 ? defaultPresetV7 : defaultPreset;
+  // Version 8 (Lucid chart): the monthly trend opens on the last 12 months.
+  const dp = getVersion() >= 8 ? { ...defaultPresetV7, monthly: "12" } : getVersion() >= 7 ? defaultPresetV7 : defaultPreset;
   const [g, setG] = useState<Granularity>("monthly");
   const [preset, setPresetValue] = useState(dp.monthly);
   const [range, setRange] = useState(v3 ? presetRange("monthly", dp.monthly) : defaultRange("monthly"));

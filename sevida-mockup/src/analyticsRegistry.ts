@@ -13,6 +13,7 @@ import {
 } from "./dashboardData";
 import type { Dimension } from "./dashboardData";
 import { AGE_RANGES } from "./v3Data";
+import { getVersion } from "./version";
 import { MY, hashOf, tally } from "./data";
 import type { MeasureCode, Member } from "./data";
 
@@ -72,7 +73,9 @@ export const DASHBOARDS: DashDef[] = [
     higherIsBetter: true,
     benchmark: 70,
     real: "BCS-E",
-    ages: "women aged 52 to 74",
+    get ages() {
+      return `women aged ${getVersion() >= 7 ? 42 : 52} to 74`;
+    },
     plain: "who had a mammogram in the last two years",
     resultLabel: "Screened",
   },

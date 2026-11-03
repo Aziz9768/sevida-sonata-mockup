@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Box, Slider, Typography } from "@mui/material";
 import { InfoTip, StatusChip, titleCase } from "sevida-ui";
 import { qs } from "./qsTheme";
+import { getVersion } from "../version";
 
 /* ------------------------------------------------------------------ notes layer (mockup only, not part of QuickSight) */
 
@@ -342,11 +343,14 @@ export function QsControlsBar({
 export function QsControl({
   cols = 3,
   info,
+  showInfo,
   children,
 }: {
   cols?: 3 | 6;
   /** The info icon QuickSight allows next to a control title. */
   info?: string;
+  /** Version 8: the Lucid chart keeps the info icon on the Member Details filters (Population, Tricare ID, Member Name) only. */
+  showInfo?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -358,8 +362,9 @@ export function QsControl({
       }}
     >
       {children}
-      {info && (
-        <Box sx={{ position: "absolute", top: 0, right: 0 }}>
+      {/* Version 8: no info icon on a control. The Quick Sight guide shows only a name, a show-title switch and a title size for a control. */}
+      {info && (getVersion() < 8 || showInfo) && (
+        <Box sx={{ position: "absolute", top: 0, right: 0, zIndex: 2 }}>
           <InfoTip label={`About ${info.slice(0, 20)}`}>{info}</InfoTip>
         </Box>
       )}
@@ -447,6 +452,7 @@ export function QsTile({
   ask,
   tone,
   bare,
+  plain,
   review,
   children,
 }: {
@@ -460,6 +466,8 @@ export function QsTile({
   tone?: "danger" | "warning" | "info" | "highlight";
   /** No title row (text boxes and KPI tiles carry their own). */
   bare?: boolean;
+  /** A text box as Quick Sight draws it: text on the sheet, with no card, border or padding (the text box has no format settings). */
+  plain?: boolean;
   /** A note for reviewers, not part of the dashboard: it goes away with the "Questions for developers" switch. */
   review?: boolean;
   children: ReactNode;
@@ -474,15 +482,17 @@ export function QsTile({
         gridRow: rows ? { md: `span ${rows}` } : undefined,
         position: "relative",
         minWidth: 0,
-        bgcolor: t
-          ? t.bg
-          : tone === "highlight"
-            ? qs.tone.info.bg
-            : qs.color.primaryBackground,
-        border: t ? `1px solid ${t.border}` : qs.tile.border,
+        bgcolor: plain
+          ? "transparent"
+          : t
+            ? t.bg
+            : tone === "highlight"
+              ? qs.tone.info.bg
+              : qs.color.primaryBackground,
+        border: plain ? "none" : t ? `1px solid ${t.border}` : qs.tile.border,
         color: t ? t.text : undefined,
         borderRadius: `${qs.tile.radius}px`,
-        p: `${qs.tile.padding}px`,
+        p: plain ? "2px 4px" : `${qs.tile.padding}px`,
         display: "flex",
         flexDirection: "column",
       }}
@@ -532,6 +542,9 @@ export function QsKpi({
   ask,
   highlight,
   color,
+  changes,
+  compare,
+  qs8,
 }: {
   cols: number;
   label: string;
@@ -542,7 +555,16 @@ export function QsKpi({
   ask?: string[];
   highlight?: boolean;
   color?: string;
+  /** Version 7 (Lucid design): "vs previous" lines under the number. Tone good or bad colours the change, and the arrow and sign say the same in words. */
+  changes?: { prefix: string; before: string; change: string; tone: "good" | "bad" | "neutral" }[];
+  /** Version 7: small bars that compare the current figure with an earlier one. Each shows its number and percent. */
+  compare?: { label: string; value: number; shown: string; note?: string }[];
+  /** Version 8: drawn as Quick Sight draws it. One KPI visual with one comparison, and a separate bar chart visual under it. */
+  qs8?: boolean;
 }) {
+  const bars = compare ?? [];
+  const barMax = Math.max(1, ...bars.map((b) => b.value));
+  const barColors = [qs.meaning.main, qs.color.accent, qs.meaning.neutral];
   return (
     <QsTile
       cols={cols}
@@ -591,6 +613,93 @@ export function QsKpi({
         >
           {sub}
         </Typography>
+      )}
+      {(qs8 ? changes?.slice(0, 1) : changes)?.map((c) => (
+        <Typography
+          key={c.prefix}
+          sx={{ fontSize: qs.type.subtitle.size, color: qs.color.mutedText }}
+        >
+          {c.prefix} {c.before}{" "}
+          <Box
+            component="span"
+            sx={{
+              fontWeight: 700,
+              color:
+                c.tone === "good"
+                  ? qs.meaning.met
+                  : c.tone === "bad"
+                    ? qs.tone.danger.text
+                    : qs.color.secondaryForeground,
+            }}
+          >
+            ({c.change})
+          </Box>
+        </Typography>
+      ))}
+      {bars.length > 0 && qs8 && (
+        // A separate bar chart visual, laid over the KPI: category names at the left, a data label to the right of each bar.
+        <Box
+          sx={{ mt: 1, pt: 1, borderTop: `1px dashed ${qs.color.border}`, display: "grid", gap: 0.75 }}
+          role="img"
+          aria-label={`${label}: ${bars.map((b) => `${b.label} ${b.shown}${b.note ? ` ${b.note}` : ""}`).join(", ")}`}
+        >
+          {bars.map((b, i) => (
+            <Box key={b.label} sx={{ display: "grid", gridTemplateColumns: "minmax(78px, 42%) minmax(0, 1fr)", alignItems: "center", gap: 1 }}>
+              <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.secondaryForeground, lineHeight: 1.25, textAlign: "right" }}>
+                {b.label}
+                {b.note && (
+                  <Box component="span" sx={{ display: "block", color: qs.color.mutedText }}>
+                    {b.note}
+                  </Box>
+                )}
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
+                <Box
+                  sx={{
+                    width: `${Math.max(3, (b.value / barMax) * 62)}%`,
+                    height: 16,
+                    flex: "none",
+                    background: barColors[i % barColors.length],
+                  }}
+                />
+                <Typography sx={{ fontSize: qs.type.small.size, whiteSpace: "nowrap" }}>{b.shown}</Typography>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+      {bars.length > 0 && !qs8 && (
+        <Box sx={{ mt: 1, display: "grid", gap: 0.5 }} role="img" aria-label={`${label}: ${bars.map((b) => `${b.label} ${b.shown}`).join(", ")}`}>
+          {bars.map((b, i) => (
+            <Box
+              key={b.label}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "64px minmax(0, 1fr)",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.secondaryForeground }}>
+                {b.label}
+              </Typography>
+              <Box
+                sx={{
+                  width: `${Math.max(4, (b.value / barMax) * 100)}%`,
+                  minWidth: "fit-content",
+                  background: barColors[i % barColors.length],
+                  color: qs.color.accentForeground,
+                  fontSize: qs.type.small.size,
+                  px: 0.75,
+                  py: 0.25,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {b.shown}
+              </Box>
+            </Box>
+          ))}
+        </Box>
       )}
     </QsTile>
   );
@@ -1061,6 +1170,7 @@ export function QsTable<T>({
   exportFile,
   onRowSelect,
   wrapHeaders,
+  selectedKey,
 }: {
   cols: QsCol<T>[];
   rows: T[];
@@ -1074,6 +1184,8 @@ export function QsTable<T>({
   onRowSelect?: (r: T) => void;
   /** Let column headings wrap onto two lines so a wide table fits without a sideways scroll bar. */
   wrapHeaders?: boolean;
+  /** The row that is selected (Version 7: the member whose explanation shows below). It is tinted and announced as selected. */
+  selectedKey?: string;
 }) {
   const [sort, setSort] = useState(defaultSort);
   const sorted = (() => {
@@ -1191,6 +1303,7 @@ export function QsTable<T>({
                     : undefined
                 }
                 tabIndex={onRowSelect ? 0 : undefined}
+                aria-selected={selectedKey !== undefined ? rowKey(r) === selectedKey : undefined}
                 style={onRowSelect ? { cursor: "pointer" } : undefined}
               >
                 {cols.map((c, i) => (
@@ -1200,9 +1313,12 @@ export function QsTable<T>({
                     sx={{
                       ...cell,
                       bgcolor:
-                        ri % 2
-                          ? qs.color.secondaryBackground
-                          : qs.color.primaryBackground,
+                        selectedKey !== undefined && rowKey(r) === selectedKey
+                          ? qs.tone.info.bg
+                          : ri % 2
+                            ? qs.color.secondaryBackground
+                            : qs.color.primaryBackground,
+                      fontWeight: selectedKey !== undefined && rowKey(r) === selectedKey ? 700 : undefined,
                       position: i === 0 ? "sticky" : undefined,
                       left: i === 0 ? 0 : undefined,
                       textAlign: c.align ?? "left",
@@ -1258,4 +1374,504 @@ export function QsFmt({
   children: ReactNode;
 }) {
   return <span style={{ color, fontWeight: 700 }}>{children}</span>;
+}
+
+/* ============================================================ Version 7: Open and Closed gap charts (Lucid design) */
+
+/** Open gaps and closed gaps. Closed is the blue and open the orange, two colours that stay apart for people with red-green colour blindness. Every segment also carries its number, and the legend names both. */
+export const QS_OPEN = qs.meaning.gap;
+export const QS_CLOSED = qs.color.accent;
+const onOpen = qs.color.primaryForeground;
+const onClosed = qs.color.accentForeground;
+
+/** Words wrapped to at most `lines` lines of `maxChars` characters. The last line is never cut with "…". */
+function wrapWords(text: string, maxChars: number, lines = 3): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const w of text.split(" ")) {
+    if (cur && (cur + " " + w).length > maxChars) {
+      out.push(cur);
+      cur = w;
+    } else cur = cur ? cur + " " + w : w;
+  }
+  if (cur) out.push(cur);
+  if (out.length > lines) {
+    const head = out.slice(0, lines - 1);
+    return [...head, out.slice(lines - 1).join(" ")];
+  }
+  return out;
+}
+
+/** The top of an axis that has four equal steps of a round size (for example 0, 20, 40, 60, 80). */
+const niceMax = (v: number) => {
+  const need = Math.max(1, v) / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(need)));
+  for (const m of [1, 2, 3, 4, 5, 6, 8, 10]) if (m * pow >= need) return Math.max(4, 4 * m * pow);
+  return 40 * pow;
+};
+
+export function QsLegend({ items }: { items: { label: string; color: string; line?: boolean }[] }) {
+  return (
+    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 1 }} aria-label="Legend" role="group">
+      {items.map((i) => (
+        <Box key={i.label} sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          <Box
+            sx={
+              i.line
+                ? { width: 16, height: 0, borderTop: `3px solid ${i.color}` }
+                : { width: 12, height: 12, background: i.color }
+            }
+          />
+          <Typography sx={{ fontSize: qs.type.subtitle.size, color: qs.color.secondaryForeground }}>{i.label}</Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+export interface QsGapTrendRow {
+  label: string;
+  closed: number;
+  open: number;
+  /** Compliance rate, 0 to 100, or null when nobody is counted. */
+  rate: number | null;
+  /** True for the last, unfinished month. */
+  partial?: boolean;
+}
+
+/**
+ * Stacked columns of closed and open gaps for each period, with the compliance rate as a line (right-hand axis, 0 to 100%).
+ * The number of members and the percent of the period sit inside each segment when there is room. Hover a period for all four figures.
+ */
+export function QsGapTrend({
+  rows,
+  height = 420,
+  label,
+  qs8,
+  xTitle = "Month",
+}: {
+  rows: QsGapTrendRow[];
+  height?: number;
+  label: string;
+  qs8?: boolean;
+  /** Version 8 (Lucid chart): the name under the x axis ("Month"). The y axis reads "Member Count (count)". */
+  xTitle?: string;
+}) {
+  const [ref, W] = useWidth();
+  const padL = 46, padR = 46, padT = 14, padB = qs8 ? 56 : 44;
+  const n = rows.length;
+  const slot = (W - padL - padR) / Math.max(1, n);
+  const bw = Math.min(56, slot * 0.72);
+  const ih = height - padT - padB;
+  const max = niceMax(Math.max(1, ...rows.map((r) => r.closed + r.open)));
+  const y = (v: number) => padT + ih - (v / max) * ih;
+  const yr = (v: number) => padT + ih - (v / 100) * ih;
+  const every = Math.max(1, Math.ceil((qs8 ? 58 : 40) / Math.max(1, slot)));
+  const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(1)}%` : "0.0%");
+  const line = rows
+    .map((r, i) => (r.rate === null ? null : `${padL + slot * i + slot / 2},${yr(r.rate)}`))
+    .filter(Boolean)
+    .join(" ");
+  const lastIdx = (() => {
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i].rate !== null) return i;
+    return -1;
+  })();
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <QsLegend
+        items={[
+          { label: "Open Gaps", color: QS_OPEN },
+          { label: "Closed Gaps", color: QS_CLOSED },
+          { label: "Compliance Rate", color: qs.meaning.main, line: true },
+        ]}
+      />
+      {n === 0 ? (
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>No data</Typography>
+      ) : (
+        <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke={qs.color.border} />
+              <text x={padL - 6} y={y(max * t) + 4} textAnchor="end" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(max * t)}
+              </text>
+              <text x={W - padR + 6} y={yr(100 * t) + 4} textAnchor="start" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(100 * t)}%
+              </text>
+            </g>
+          ))}
+          <text x={12} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(-90 12 ${padT + ih / 2})`} textAnchor="middle">
+            {qs8 ? "Member Count (count)" : "Members"}
+          </text>
+          {qs8 && (
+            <text x={padL + (W - padL - padR) / 2} y={height - 6} fontSize={11} fill={qs.color.mutedText} textAnchor="middle">
+              {xTitle}
+            </text>
+          )}
+          {rows.map((r, i) => {
+            const cx = padL + slot * i + slot / 2;
+            const total = r.closed + r.open;
+            const hC = (r.closed / max) * ih;
+            const hO = (r.open / max) * ih;
+            const tip = `${r.label}${r.partial ? " (month to date)" : ""}: Closed ${r.closed} (${pct(r.closed, total)}), Open ${r.open} (${pct(r.open, total)}), Compliance rate ${r.rate === null ? "none" : r.rate.toFixed(1) + "%"}`;
+            const seg = (h: number, v: number, top: number, fg: string, atTop = false) => {
+              // Version 8 follows the Lucid chart: the count and the percent sit in each segment (Quick Sight may show one value per label).
+              const can = bw >= 30 && h >= 30;
+              const one = bw >= 22 && h >= 14;
+              if (!v || !(can || one)) return null;
+              // The open segment is labelled near its top, so the compliance line and its value do not sit on the number.
+              const ty = atTop && can ? top + 16 : top + h / 2 + (can ? -2 : 4);
+              return (
+                <text x={cx} y={ty} textAnchor="middle" fontSize={11} fontWeight={700} fill={fg}>
+                  <tspan x={cx}>{v}</tspan>
+                  {can && (
+                    <tspan x={cx} dy={13} fontWeight={400}>
+                      {pct(v, total)}
+                    </tspan>
+                  )}
+                </text>
+              );
+            };
+            return (
+              <g key={`${r.label}-${i}`}>
+                <title>{tip}</title>
+                <rect x={cx - slot / 2} y={padT} width={slot} height={ih + padB} fill="transparent" />
+                {r.closed > 0 && <rect x={cx - bw / 2} y={y(0) - hC} width={bw} height={hC} fill={QS_CLOSED} stroke={qs.color.primaryBackground} strokeWidth={1} />}
+                {r.open > 0 && <rect x={cx - bw / 2} y={y(0) - hC - hO} width={bw} height={hO} fill={QS_OPEN} stroke={qs.color.primaryBackground} strokeWidth={1} />}
+                {seg(hC, r.closed, y(0) - hC, onClosed)}
+                {seg(hO, r.open, y(0) - hC - hO, onOpen, true)}
+                {i % every === 0 && (
+                  <text x={cx} y={height - (qs8 ? 30 : 24)} textAnchor="middle" fontSize={11} fill={qs.color.secondaryForeground}>
+                    {r.label}
+                    {r.partial ? " *" : ""}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          <polyline points={line} fill="none" stroke={qs.meaning.main} strokeWidth={2} />
+          {rows.map((r, i) =>
+            r.rate === null ? null : (
+              <circle key={i} cx={padL + slot * i + slot / 2} cy={yr(r.rate)} r={3.5} fill={qs.meaning.main} stroke={qs.color.primaryBackground} strokeWidth={2} />
+            ),
+          )}
+          {qs8
+            ? rows.map((r, i) =>
+                r.rate === null ? null : (
+                  // Version 8: the line is labelled on every point, above it. A combo chart has no Line ends label.
+                  <text key={i} x={padL + slot * i + slot / 2} y={yr(r.rate) - 9} textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
+                    {r.rate.toFixed(0)}%
+                  </text>
+                ),
+              )
+            : lastIdx >= 0 &&
+              rows[lastIdx].rate !== null && (
+                <text
+                  x={padL + slot * lastIdx + slot / 2}
+                  y={yr(rows[lastIdx].rate!) - 9}
+                  textAnchor="middle"
+                  fontSize={12}
+                  fontWeight={700}
+                  fill={qs.color.primaryForeground}
+                  stroke="#fff"
+                  strokeWidth={3}
+                  paintOrder="stroke"
+                >
+                  {rows[lastIdx].rate!.toFixed(1)}%
+                </text>
+              )}
+          {!qs8 && (
+            <text x={padL} y={height - 4} fontSize={11} fill={qs.color.mutedText}>
+              {rows.some((r) => r.partial) ? "Each bar is the month end. * Month to date." : "Each bar is the end of the period."}
+            </text>
+          )}
+        </svg>
+      )}
+    </Box>
+  );
+}
+
+export interface QsGapRow {
+  label: string;
+  open: number;
+  closed: number;
+  /** Text in the right-hand column, for example "72.0% closed". */
+  note?: string;
+}
+
+/**
+ * Horizontal stacked bars of open and closed gaps, one row per name. `first` is the segment drawn next to the names, so a chart that ranks
+ * by open gaps starts with open. Names wrap onto up to three lines and are never cut. Each segment carries its number when it is wide enough.
+ */
+export function QsGapBars({
+  rows,
+  first = "open",
+  label,
+  empty = "Nobody is eligible for these filters",
+  noteWidth = 0,
+  totals,
+}: {
+  rows: QsGapRow[];
+  first?: "open" | "closed";
+  label: string;
+  empty?: string;
+  noteWidth?: number;
+  /** Version 8: the Show totals label at the end of each bar (a bar chart cannot hold a text column, so the note is in the tooltip only). */
+  totals?: boolean;
+}) {
+  const [ref, W] = useWidth();
+  const CH = 6.4;
+  const widest = Math.max(0, ...rows.map((r) => r.label.length)) * CH + 10;
+  const labelW = Math.round(Math.min(W * 0.4, Math.max(70, widest)));
+  const wrapAt = Math.max(8, Math.floor((labelW - 6) / CH));
+  const padL = labelW + 6, padR = 12 + (totals ? 34 : noteWidth), padT = 4, padB = 26;
+  const lineH = 14;
+  const laid = rows.map((r) => ({ r, lines: wrapWords(r.label, wrapAt) }));
+  const rowH = (l: string[]) => Math.max(30, l.length * lineH + 12);
+  let acc = padT;
+  const tops = laid.map(({ lines }) => {
+    const t = acc;
+    acc += rowH(lines);
+    return t;
+  });
+  const height = acc + padB;
+  const max = niceMax(Math.max(1, ...rows.map((r) => r.open + r.closed)));
+  const x = (v: number) => padL + (v / (max || 1)) * (W - padL - padR);
+  const order: ("open" | "closed")[] = first === "open" ? ["open", "closed"] : ["closed", "open"];
+  const color = { open: QS_OPEN, closed: QS_CLOSED };
+  const fg = { open: onOpen, closed: onClosed };
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <QsLegend items={[{ label: "Open Gaps", color: QS_OPEN }, { label: "Closed Gaps", color: QS_CLOSED }]} />
+      {rows.length === 0 ? (
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
+      ) : (
+        <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={x(max * t)} x2={x(max * t)} y1={padT} y2={height - padB} stroke={qs.color.border} />
+              <text x={x(max * t)} y={height - 10} textAnchor="middle" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(max * t)}
+              </text>
+            </g>
+          ))}
+          {laid.map(({ r, lines }, i) => {
+            const top = tops[i];
+            const h = rowH(lines);
+            const by = top + 6;
+            const bh = h - 12;
+            let start = 0;
+            const tip = `${r.label}: Open ${r.open}, Closed ${r.closed}${r.note ? `, ${r.note}` : ""}`;
+            return (
+              <g key={r.label}>
+                <title>{tip}</title>
+                <rect x={0} y={top} width={W} height={h} fill="transparent" />
+                <text fontSize={12} fill={qs.color.secondaryForeground} textAnchor="end">
+                  {lines.map((l, k) => (
+                    <tspan key={k} x={labelW} y={top + h / 2 + 4 - ((lines.length - 1) * lineH) / 2 + k * lineH}>
+                      {l}
+                    </tspan>
+                  ))}
+                </text>
+                {order.map((k) => {
+                  const v = r[k];
+                  const x0 = x(start);
+                  const w = x(start + v) - x0;
+                  start += v;
+                  return v > 0 ? (
+                    <g key={k}>
+                      <rect x={x0} y={by} width={Math.max(1, w)} height={bh} fill={color[k]} stroke={qs.color.primaryBackground} strokeWidth={1} />
+                      {w >= 22 && (
+                        <text x={x0 + w / 2} y={by + bh / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={fg[k]}>
+                          {v}
+                        </text>
+                      )}
+                    </g>
+                  ) : null;
+                })}
+                {totals ? (
+                  <text x={x(r.open + r.closed) + 6} y={top + h / 2 + 4} fontSize={12} fontWeight={700} fill={qs.color.primaryForeground}>
+                    {r.open + r.closed}
+                  </text>
+                ) : (
+                  r.note && (
+                    <text x={W - padR + 8} y={top + h / 2 + 4} fontSize={12} fill={qs.color.secondaryForeground}>
+                      {r.note}
+                    </text>
+                  )
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </Box>
+  );
+}
+
+/**
+ * Version 8 (Lucid chart): vertical clustered columns, Open (red) beside Closed (green) for each group, y axis "Member Count (count)".
+ * Long names are cut with "…" and the full name, open and closed counts are in the tooltip. Labels tilt so nine columns of width still read.
+ */
+export function QsGapColumns({
+  rows,
+  label,
+  height = 330,
+  empty = "Nobody is eligible for these filters",
+}: {
+  rows: QsGapRow[];
+  label: string;
+  height?: number;
+  empty?: string;
+}) {
+  const [ref, W] = useWidth();
+  const padL = 44, padR = 8, padT = 10, padB = 64;
+  const n = rows.length;
+  const slot = (W - padL - padR) / Math.max(1, n);
+  const gw = Math.min(40, slot * 0.82);
+  const bw = Math.max(3, gw / 2 - 1);
+  const ih = height - padT - padB;
+  const max = niceMax(Math.max(1, ...rows.map((r) => Math.max(r.open, r.closed))));
+  const y = (v: number) => padT + ih - (v / max) * ih;
+  const cut = (t: string) => (t.length > 11 ? `${t.slice(0, 10)}…` : t);
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <QsLegend items={[{ label: "Open Gaps", color: QS_OPEN }, { label: "Closed Gaps", color: QS_CLOSED }]} />
+      {n === 0 ? (
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
+      ) : (
+        <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke={qs.color.border} />
+              <text x={padL - 6} y={y(max * t) + 4} textAnchor="end" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(max * t)}
+              </text>
+            </g>
+          ))}
+          <text x={11} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(-90 11 ${padT + ih / 2})`} textAnchor="middle">
+            Member Count (count)
+          </text>
+          {rows.map((r) => {
+            const i = rows.indexOf(r);
+            const cx = padL + slot * i + slot / 2;
+            const x0 = cx - gw / 2;
+            const tip = `${r.label}: Open ${r.open}, Closed ${r.closed}${r.note ? `, ${r.note}` : ""}`;
+            const lab = (v: number, x: number) => (
+              <text x={x} y={y(v) - 3} textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
+                {bw >= 9 ? v : ""}
+              </text>
+            );
+            return (
+              <g key={`${r.label}-${i}`}>
+                <title>{tip}</title>
+                <rect x={cx - slot / 2} y={padT} width={slot} height={ih + padB} fill="transparent" />
+                <rect x={x0} y={y(r.open)} width={bw} height={Math.max(0, y(0) - y(r.open))} fill={QS_OPEN} />
+                <rect x={x0 + bw + 2} y={y(r.closed)} width={bw} height={Math.max(0, y(0) - y(r.closed))} fill={QS_CLOSED} />
+                {lab(r.open, x0 + bw / 2)}
+                {lab(r.closed, x0 + bw + 2 + bw / 2)}
+                <text
+                  x={cx}
+                  y={padT + ih + 14}
+                  fontSize={11}
+                  fill={qs.color.secondaryForeground}
+                  textAnchor="end"
+                  transform={`rotate(-35 ${cx} ${padT + ih + 14})`}
+                >
+                  {cut(r.label)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </Box>
+  );
+}
+
+/** A donut: each slice is one group's share. Names, numbers and percents sit in a list beside it, so nothing depends on colour. */
+export function QsDonut({
+  slices,
+  label,
+  empty = "Nobody is eligible for these filters",
+  qs8,
+}: {
+  slices: { label: string; value: number; detail?: string }[];
+  label: string;
+  empty?: string;
+  /** Version 8: data labels on the ring and a legend of names, as Quick Sight draws a donut. The detail is in the tooltip only. */
+  qs8?: boolean;
+}) {
+  const total = slices.reduce((a, s) => a + s.value, 0);
+  // One hue, darkest for the biggest slice (a share chart does not need a colour per group).
+  const steps = [qs.meaning.main, qs.color.accent, "#7C8FD6", "#B5C0EA", "#D9DFF4"];
+  const R = 70, r = 42, C = qs8 ? 120 : 90;
+  let a0 = -Math.PI / 2;
+  const mids: number[] = [];
+  if (qs8) {
+    let m0 = -Math.PI / 2;
+    for (const s of slices) {
+      const m1 = m0 + (s.value / (total || 1)) * Math.PI * 2;
+      mids.push((m0 + m1) / 2);
+      m0 = m1;
+    }
+  }
+  const arc = (v: number) => {
+    const a1 = a0 + (v / total) * Math.PI * 2;
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const p = (a: number, rad: number) => `${C + rad * Math.cos(a)},${C + rad * Math.sin(a)}`;
+    const d =
+      v === total
+        ? `M ${C},${C - R} A ${R},${R} 0 1 1 ${C - 0.01},${C - R} L ${C - 0.01},${C - r} A ${r},${r} 0 1 0 ${C},${C - r} Z`
+        : `M ${p(a0, R)} A ${R},${R} 0 ${large} 1 ${p(a1, R)} L ${p(a1, r)} A ${r},${r} 0 ${large} 0 ${p(a0, r)} Z`;
+    a0 = a1;
+    return d;
+  };
+  return (
+    <Box aria-label={label} role="group">
+      {slices.length === 0 || total === 0 ? (
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
+      ) : (
+        <Box sx={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap", ...(qs8 ? { flexDirection: "column", alignItems: "stretch", gap: 1 } : {}) }}>
+          <svg width={qs8 ? 240 : 180} height={qs8 ? 240 : 180} role="img" aria-label={label} style={qs8 ? { margin: "0 auto", maxWidth: "100%" } : undefined}>
+            {slices.map((s, i) => (
+              <path key={s.label} d={arc(s.value)} fill={steps[i % steps.length]} stroke={qs.color.primaryBackground} strokeWidth={2}>
+                <title>{`${s.label}: ${s.value} (${((s.value / total) * 100).toFixed(1)}%)${s.detail ? `, ${s.detail}` : ""}`}</title>
+              </path>
+            ))}
+            <text x={C} y={C - 2} textAnchor="middle" fontSize={20} fontWeight={700} fill={qs.color.primaryForeground}>
+              {total}
+            </text>
+            <text x={C} y={C + 14} textAnchor="middle" fontSize={11} fill={qs.color.mutedText}>
+              members
+            </text>
+            {qs8 &&
+              slices.map((s, i) => {
+                const a = mids[i];
+                const lx = C + (R + 10) * Math.cos(a);
+                const ly = C + (R + 10) * Math.sin(a);
+                const right = Math.cos(a) >= 0;
+                return (
+                  <text key={s.label} x={lx} y={ly + 4} textAnchor={right ? "start" : "end"} fontSize={11} fill={qs.color.primaryForeground}>
+                    {s.value} ({((s.value / total) * 100).toFixed(1)}%)
+                  </text>
+                );
+              })}
+          </svg>
+          {qs8 && <QsLegend items={slices.map((s, i) => ({ label: s.label, color: steps[i % steps.length] }))} />}
+          <Box sx={{ display: qs8 ? "none" : "grid", gap: 0.75, minWidth: 0 }}>
+            {slices.map((s, i) => (
+              <Box key={s.label} sx={{ display: "flex", gap: 1, alignItems: "baseline" }}>
+                <Box sx={{ width: 12, height: 12, flex: "none", background: steps[i % steps.length], alignSelf: "center" }} />
+                <Typography sx={{ fontSize: qs.type.body.size }}>
+                  <b>{s.label}</b> {s.value} ({((s.value / total) * 100).toFixed(1)}%)
+                  {s.detail ? <Box component="span" sx={{ color: qs.color.mutedText }}> · {s.detail}</Box> : null}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
 }

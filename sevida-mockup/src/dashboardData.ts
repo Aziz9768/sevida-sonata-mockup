@@ -17,9 +17,11 @@ import {
   CURRENT_YEAR,
   DEMO_NOW,
   NOT_MEDICARE,
+  NO_PCP,
   YEARS,
   a1cBandOf,
   ageAtYearEnd,
+  ageBandsOf,
   countyOf,
   dataFiles,
   fmtDate,
@@ -44,6 +46,7 @@ import type {
   Tally,
 } from "./data";
 import { fileTitle } from "./copy";
+import { pcmOf } from "./v7Data";
 import { seededGapOpen } from "./careGaps";
 import {
   A1C_VALUES,
@@ -127,14 +130,33 @@ export const sexOf = (m: Member) =>
 
 /** Age groups (the same list as on the Members list). Age is taken on Dec 31 of the measurement year, like the measures do. */
 export const ageBands = AGE_GROUPS;
-export const ageGroupOf = (m: Member, year: number) =>
-  v3() ? ageRangeOf(m.dob) : ageGroupFor(ageAtYearEnd(m.dob, year));
+/**
+ * Version 7 (Lucid design): ten-year age bands that cover the ages of the measure, for example 40-49, 50-59, 60-69, 70-74 for breast screening.
+ * The last band stops at the measure's top age.
+ */
+export const bandsFor = (code: MeasureCode, year: number): { label: string; lo: number; hi: number }[] => {
+  const [lo, hi] = ageBandsOf(year)[code];
+  const out: { label: string; lo: number; hi: number }[] = [];
+  for (let s = Math.floor(lo / 10) * 10; s <= hi; s += 10) {
+    const e = Math.min(s + 9, hi);
+    out.push({ label: `${s}-${e}`, lo: s, hi: e });
+  }
+  return out;
+};
+export const ageGroupOf = (m: Member, year: number, code?: MeasureCode) => {
+  if (getVersion() >= 7 && code) {
+    const age = ageAtYearEnd(m.dob, year);
+    return bandsFor(code, year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";
+  }
+  return v3() ? ageRangeOf(m.dob) : ageGroupFor(ageAtYearEnd(m.dob, year));
+};
 
 const groupOf = (key: string) => groupings.find((g) => g.key === key)!.of;
 export const raceOf = (m: Member) => (v3() ? raceV3(m) : groupOf("race")(m));
 export const ethnicityOf = (m: Member) =>
   v3() ? ethnicityV3(m) : groupOf("ethnicity")(m);
-export const providerOf = groupOf("provider");
+export const providerOf = (m: Member) =>
+  getVersion() >= 7 ? pcmOf(m) : groupOf("provider")(m);
 
 /** The measure states of one member for all five measures. */
 /** Not-met measures. In Version 3 this is the "# Open Gaps" of the Members list: a gap that staff already closed no longer counts (the current year only, a past year has no care work). */
@@ -226,7 +248,7 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
     if (f.county && countyOf(m) !== f.county) return false;
     if (f.military && (v3() ? militaryV3(m) : militaryOf(m)) !== f.military)
       return false;
-    if (f.ageGroup.length && !f.ageGroup.includes(ageGroupOf(m, f.year)))
+    if (f.ageGroup.length && !f.ageGroup.includes(ageGroupOf(m, f.year, code)))
       return false;
     if (f.race.length && !f.race.includes(raceOf(m))) return false;
     if (f.ethnicity.length && !f.ethnicity.includes(ethnicityOf(m)))
@@ -354,7 +376,7 @@ export const dimensionLabel: Record<Dimension, string> = {
   },
   provider: "primary care provider",
 };
-const keyOf = (dim: Dimension, year: number): ((m: Member) => string) =>
+const keyOf = (dim: Dimension, year: number, code?: MeasureCode): ((m: Member) => string) =>
   dim === "race"
     ? raceOf
     : dim === "ethnicity"
@@ -363,7 +385,7 @@ const keyOf = (dim: Dimension, year: number): ((m: Member) => string) =>
         ? sexOf
         : dim === "provider"
           ? providerOf
-          : (m) => ageGroupOf(m, year);
+          : (m) => ageGroupOf(m, year, code);
 
 export interface GroupRate {
   group: string;
@@ -379,7 +401,7 @@ export function groupRates(
   year: number,
   dim: Dimension,
 ): GroupRate[] {
-  const key = keyOf(dim, year);
+  const key = keyOf(dim, year, code);
   const by = new Map<string, Member[]>();
   for (const m of list) {
     const k = key(m);
@@ -391,7 +413,7 @@ export function groupRates(
     .filter((r) => r.t.denominator > 0);
   if (dim === "ageGroup") {
     // Version 7: the age ranges of the Members list (version 3 and later) come in age order, youngest first.
-    const order = (getVersion() >= 7 && v3() ? AGE_RANGES : ageBands).map((b) => b.label);
+    const order = (getVersion() >= 7 ? bandsFor(code, year) : ageBands).map((b) => b.label);
     return rows.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
   }
   if (dim === "sex") return rows.sort((a, b) => a.group.localeCompare(b.group));
@@ -613,6 +635,46 @@ export function trendRows(
   });
 }
 
+/** Version 7 (Lucid design): the rate and the counts as they stood at the end of one day. Null when that year has no data. */
+export function snapshotAt(code: MeasureCode, list: Member[], d: Date) {
+  const y = d.getFullYear();
+  if (!YEARS.includes(y)) return null;
+  const s = yearStats(list, code, y);
+  if (!s.den) return null;
+  const met = countUpTo(s.met, d.getTime() + DAY - 1);
+  return { met, den: s.den, gap: s.den - met, rate: (met / s.den) * 100 };
+}
+
+/** Version 7: the two days the rate cards compare with, the end of the last completed month and the end of the same month a year earlier. */
+export function compareDays(year: number) {
+  const ref = year === CURRENT_YEAR ? startOfDay(DEMO_NOW) : new Date(year, 11, 31);
+  const m = ref.getMonth();
+  return {
+    prevMonth: endOfMonth(ref.getFullYear(), m - 1),
+    prevYear: endOfMonth(ref.getFullYear() - 1, m - 1),
+  };
+}
+
+/** Version 7: members that were already born by the end of a year, the "members evaluated" count of that year. */
+export const evaluatedIn = (list: Member[], year: number) =>
+  list.filter((m) => m.dob.getFullYear() <= year).length;
+
+/** Version 7 (Lucid design): open and closed gaps for each primary care manager, for the members that pass the filters. Members without a manager are left out. */
+export function gapsByManager(code: MeasureCode, list: Member[], year: number) {
+  const by = new Map<string, { name: string; open: number; closed: number }>();
+  for (const m of list) {
+    const state = resultsFor(m, year)[code].state;
+    if (state !== "Met" && state !== "Gap") continue;
+    const name = providerOf(m);
+    if (name === NO_PCP) continue;
+    const row = by.get(name) ?? { name, open: 0, closed: 0 };
+    if (state === "Met") row.closed++;
+    else row.open++;
+    by.set(name, row);
+  }
+  return [...by.values()];
+}
+
 /** Same period of each year side by side (FR-708.7): months Jan to Dec, or quarters Q1 to Q4, one line per year. */
 export function compareSeries(
   code: MeasureCode,
@@ -684,6 +746,14 @@ export function runInfo() {
   );
   return { last, next, sources, schedule: "Every day at 2:00 AM" };
 }
+/** Version 7 (Lucid design): "16th October, 2026 @ 2:00 AM CT". */
+export const fmtRunLong = (x: Date) => {
+  const d = x.getDate();
+  const suffix = d % 10 === 1 && d !== 11 ? "st" : d % 10 === 2 && d !== 12 ? "nd" : d % 10 === 3 && d !== 13 ? "rd" : "th";
+  const h = x.getHours();
+  const time = `${h % 12 || 12}:${String(x.getMinutes()).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+  return `${d}${suffix} ${x.toLocaleString("en-US", { month: "long" })}, ${x.getFullYear()} @ ${time} CT`;
+};
 export const fmtRun = (x: Date) =>
   `${fmtDate(x)}, ${x.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 

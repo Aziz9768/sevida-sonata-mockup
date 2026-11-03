@@ -1645,13 +1645,16 @@ export const measures: MeasureDef[] = [
     ],
   },
 ];
-export const measureByCode = (c: string | undefined) => measures.find((m) => m.code === c);
+/** Finds a measure by its code. The sidebar and old links also use the short form (BCS for BCS-E), so that works too. */
+export const measureByCode = (c: string | undefined) =>
+  measures.find((m) => m.code === c) ?? (c ? measures.find((m) => m.code === `${c}-E`) : undefined);
 
 /** A measure as it reads for a measurement year. 2026 is the measure as written. 2025 changes the age range and the items NCQA confirmed; every other rule is carried over from 2026 and labelled that way. */
 const v3Defs = new Map<string, MeasureDef>();
 /** Version 3 wording of the current-year measure, from the final requirements sheet (HED-001 to HED-005). */
 function v3Def(def: MeasureDef): MeasureDef {
-  let r = v3Defs.get(def.code);
+  const defKey = `${getVersion() >= 7 ? 7 : 3}:${def.code}`;
+  let r = v3Defs.get(defKey);
   if (r) return r;
   const swap = (rules: Rule[], prefix: string, text: string): Rule[] => rules.map((x) => (x.text.startsWith(prefix) ? { ...x, text } : x));
   const add = (rules: Rule[], prefix: string, extra: Rule): Rule[] => {
@@ -1664,9 +1667,10 @@ function v3Def(def: MeasureDef): MeasureDef {
   const institution: Rule = { text: 'Excluded: age 66+ and enrolled in an institutional special needs plan (I-SNP), or living in a long-term institution (LTI flag) during the year.', from: 'spec', where: 'member-en, medicare-status' };
   r = { ...def };
   if (def.code === 'BCS-E') {
-    r.population = 'Women age 52–74';
-    r.ageRule = 'Female, age 52–74 on Dec 31';
-    let rules = swap(def.rules, 'Member is female', 'Member is female, 52–74 on Dec 31.');
+    const lo = getVersion() >= 7 ? 42 : 52;
+    r.population = `Women age ${lo}–74`;
+    r.ageRule = `Female, age ${lo}–74 on Dec 31`;
+    let rules = swap(def.rules, 'Member is female', `Member is female, ${lo}–74 on Dec 31.`);
     rules = swap(rules, 'Excluded: mastectomy', 'Excluded: mastectomy on one or both breasts, or gender-affirming chest surgery, before or during the year.');
     rules = add(rules, 'Excluded: mastectomy', institution);
     r.rules = rules;
@@ -1686,7 +1690,7 @@ function v3Def(def: MeasureDef): MeasureDef {
     rules = swap(rules, 'Gap when there is no final HbA1c', 'Gap when there is no final HbA1c this year, or the lowest one is 8% or higher.');
     r.rules = rules;
   }
-  v3Defs.set(def.code, r);
+  v3Defs.set(defKey, r);
   return r;
 }
 
@@ -1801,12 +1805,16 @@ export const yearRules: Record<number, YearRules> = {
 };
 /** Version 3 follows the final requirements sheet: breast screening starts at 52, and the high-risk HPV test also counts for cervical screening. */
 const v3Rules = (r: YearRules): YearRules => ({ ...r, ages: { ...r.ages, 'BCS-E': [52, 74], 'CCS-E': [24, 64], 'COL-E': [46, 75] }, hpvPath: true });
-const v3Cache = new Map<number, YearRules>();
+/** Version 7 follows the Lucid design: breast screening ages come from the measure itself (42–74 for 2026, 50–74 for 2025). */
+const v7Rules = (r: YearRules): YearRules => ({ ...r, ages: { ...r.ages, 'CCS-E': [24, 64], 'COL-E': [46, 75] }, hpvPath: true });
+const v3Cache = new Map<string, YearRules>();
 export const rulesOfYear = (year: number): YearRules => {
   const base = yearRules[year] ?? yearRules[MY];
   if (getVersion() < 3) return base;
-  let r = v3Cache.get(base.year);
-  if (!r) v3Cache.set(base.year, (r = v3Rules(base)));
+  const v7 = getVersion() >= 7;
+  const key = `${v7 ? 7 : 3}:${base.year}`;
+  let r = v3Cache.get(key);
+  if (!r) v3Cache.set(key, (r = v7 ? v7Rules(base) : v3Rules(base)));
   return r;
 };
 /** Age range of each measure on Dec 31 of the current year (from the measure rules). */
