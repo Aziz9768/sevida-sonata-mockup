@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -162,8 +162,13 @@ export const VERSIONS: VersionInfo[] = [
     name: "Version 8",
     date: "2026-11-03",
     summary:
-      "Version 7 redrawn with only what Amazon Quick Sight can build: KPI plus a separate bar chart, one comparison per KPI, count-only chart labels, totals on the bars.",
+      "Version 7 redrawn with only what Amazon Quick Sight can build, plus the application screens (Care Gaps, Care Gap Details, Members, Member page) aligned to Jira tickets LPP-16144 to LPP-16163.",
     changes: [
+      "Application screens follow the Jira tickets. Care Gaps list (LPP-16144): Gap Name, Gap Closed Date and Due Date as N/A when closed, Recommended Actions and Gap Considerations as AI text with a ...see more link, Open in red, all gaps shown newest first, the ticket's info-icon text, tab hover names.",
+      "Care Gap Details (LPP-16153, 16227, 16228, 16229): breadcrumb and title, summary fields, Gap Considerations / How To Close The Gap, a Source column in Evidence, and a new History tab.",
+      "Members list (LPP-16069, 10/22 call notes): Members (#) title, Gap Name(s) help text, Gender, hidden optional columns HEDIS Measures Eligibility and Recommended Actions, no Military Status column. Member header (LPP-16072): Tricare ID with See All IDs, Age, Gender, Open Care Gaps, Measures Met, Gap Data Last Updated, and Contact, Demographics and Payer blocks; Print menu only for roles with all-member or caseload scope.",
+      "Member tabs (LPP-16154 to 16163): Care Gaps, Profile, Claims, Diagnoses, Encounters, Immunizations, Labs, Medications, Observations, Procedures, Providers. Each is List of X (#), newest first (Providers A to Z), searches the fields its ticket names, locks the ticket columns and offers the rest in the Columns panel. Provider names read Last, First. Empty values read --. Measure cells link to the care gap. Providers' Related Records links open that tab for the provider. IDs, created and updated dates, amounts and places of service are sample values (each tab says so).",
+      "Open items from the tickets are not decided in code: Gap Name(s) vs Gap Measures wording, Excluded From and Missing Evidence columns, one empty-value mark for the app, the Diagnosis Flag column.",
       "Same numbers and same tabs as Version 7. Everything is redrawn so each part can be built in Quick Sight, and no data is removed. Version 7 stays as it was.",
       "Lucid alignment (second pass). Page title reads HEDIS Care Gaps Dashboard - Breast Cancer Screening (BCS). About this measure (HEDIS BCS) is a collapsible box, closed when the page opens, with the Lucid wording for Eligible population, Numerator and Exclusions (BCS only; the other measures keep their wording). Quick Sight text boxes cannot collapse: ask the Quick Sight team. One line gives Measurement period, Last Updated and Next Refresh. Measurement Start and Measurement End are in an info tooltip on the Measurement Year filter, not printed under it.",
       "Filters follow the Lucid order: Measurement Year, Primary Care Manager, Age Range, Race, Ethnicity, Gender. Exactly these six and no more: Results as of Run, Member, Gap Status and # Open Gaps are hidden (the latest run is used; Version 7 still has them). Age Range is the only age filter (no Age Min or Age Max). Overview filters show no info icon, as in Lucid.",
@@ -176,10 +181,24 @@ export const VERSIONS: VersionInfo[] = [
       "Explanation and Recommended Action are filled with live data, as Quick Sight custom insights (text, fields, calculations): the rate and counts, the population, the change versus last month and the same month last year, the benchmark gap, the lowest rate by age range, gender, race and ethnicity, the managers with the most open gaps and the age range with the most open gaps. They follow the controls.",
     ],
   },
+  {
+    id: 9,
+    name: "Version 9",
+    date: "2026-11-04",
+    summary:
+      "Version 8 plus the dashboard review feedback: Population names and hover text, searchable member filters, cards removed, Timeframe (Annual, Quarterly, Monthly) with a population table.",
+    changes: [
+      "Everything in Version 8 stays. Version 8 is as it was before this review.",
+      "Dashboard review changes (Overview and Members). Population filter: Member Population, Met Population and Not Met Population, with the tile descriptions on hover. The tiles and table columns use the same names, so the filter and the cards match. Tricare ID and Member Name are type-to-search. Removed: Eligible Population Baseline Summary, Explanation, Recommended Action, Met and Not Met and Compare With Last Year. Everything That Affects This Calculation now sits inside About this measure. The Primary Care Manager charts have the new one-line descriptions plus the old Recommended Action advice (reach, age range, outreach, goal) written live.",
+      "Timeframe replaces Show by and Date Range: Annual (5 years: 2022 to 2026 year to date), Quarterly (9 rolling quarters, Q3 2024 to Q3 2026) and Monthly (24 rolling months, Oct 2024 to Sep 2026, the last completed month). Each has the chart and a table of the population counts. The demo files hold 2025 and 2026 only, so earlier periods are sample numbers, marked with a star. The sample numbers are built to behave like real data: each year starts low in January, climbs month by month (a little faster at year end) and starts again the next January; each year ends a little lower the further back it goes; populations grow about 5% a year. In 2025 and 2026 the files stop having new evidence before the period ends, so it is spread across the period, and the year-end numbers are unchanged. The cards that compare with last month and last year use the same numbers.",
+      "Overview page (All Measures): the table of measures comes first, with an Open link on every row (a table cell can be a link in QuickSight; a card cannot). The text box at the top is gone: the measurement period is in the info icon of Measurement Year. The Members tile is now Member Population, with the same hover text as the measure dashboard. Clicking a bar or a row still works. Each measure dashboard has a breadcrumb, Analytics / Overview / BCS, to go back.",
+      "Less space on the measure dashboard: the two note lines are one line (the sentence about the cards is in About this measure). Timeframe sits inside the trend chart tile and Top N Managers inside both Top 10 tiles, instead of their own boxes. The suggested focus is one line that opens to the full advice. Two items are questions for the QuickSight team (Ask Q35): a control inside a chart tile, and a collapsible text box.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 8;
+export const LATEST_VERSION: VersionId = 9;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getVersion, useVersion } from "../version";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { Box, Skeleton, Typography } from "@mui/material";
 import {
   AutocompleteField,
@@ -89,12 +90,15 @@ import {
   snapshotAt,
   compareDays,
   evaluatedIn,
+  timeframeOptions,
+  timeframeRows,
 } from "../dashboardData";
 import type {
   DashFilters,
   Dimension,
   Granularity,
   RejectedRow,
+  Timeframe,
   TrendMetric,
 } from "../dashboardData";
 import {
@@ -358,6 +362,38 @@ const POPULATIONS: { value: MemberDetailsFilter["pop"]; label: string; states: M
   { value: "met", label: "Met Count", states: ["Met"] },
   { value: "gap", label: "Not Met Count", states: ["Gap"] },
 ];
+/** The tile descriptions, reused as the hover text of the Population filter (dashboard review: "same descriptions as widgets"). */
+const initialPopTip = (code: MeasureCode, v8: boolean) =>
+  `All members meeting the measurement criteria to identify gaps in care. For ${v3Code(code)}: ${
+    v8 && code === "BCS-E"
+      ? "members aged 42-74"
+      : (() => {
+          const x = V3_DEFINITION[code].split(/ who were|\. /)[0].replace(/\.$/, "");
+          return x.charAt(0).toLowerCase() + x.slice(1);
+        })()
+  }.`;
+const eligiblePopTip = (code: MeasureCode, v8: boolean) =>
+  v8 ? "All members who are not excluded from the measure." : `All members who are not excluded from the measure. ${V3_DEFINITION[code]}`;
+const excludedPopTip = (code: MeasureCode, v8: boolean) =>
+  v8 && code === "BCS-E"
+    ? "All members who are excluded from the measure - e.g. have hospice, palliative care, frailty, had a mastectomy."
+    : `All members who are excluded from the measure. For ${v3Code(code)}: ${V3_EXCLUSIONS[code].charAt(0).toLowerCase()}${V3_EXCLUSIONS[code].slice(1)}`;
+const MEMBER_POP_TIP = "All members in the population from the Measurement Start Period.";
+const NOT_MET_TIP = "Eligible members who have not met the measure yet. Each one has an open gap.";
+/** Version 8 names for the Population menu (dashboard review): Member Population, Met Population, Not Met Population. */
+const popOptionsV8 = (code: MeasureCode) =>
+  POPULATIONS.map((p) => ({
+    value: p.value,
+    label: { all: "Member Population", met: "Met Population", gap: "Not Met Population" }[p.value as string] ?? p.label,
+    tip: {
+      all: MEMBER_POP_TIP,
+      initial: initialPopTip(code, true),
+      eligible: eligiblePopTip(code, true),
+      excluded: excludedPopTip(code, true),
+      met: V3_MET[code],
+      gap: NOT_MET_TIP,
+    }[p.value],
+  }));
 const withAll = (xs: string[]) => [{ value: "", label: ALL }, ...optionsOf(xs)];
 const p1 = (n: number) => `${n.toFixed(1)}%`;
 const n0 = (n: number) => n.toLocaleString("en-US");
@@ -798,13 +834,24 @@ export function QuickSightDashboardPage() {
                     label="Population"
                     value={md.pop}
                     onChange={(v) => setMd({ ...md, pop: v as MemberDetailsFilter["pop"] })}
-                    options={POPULATIONS.map((p) => ({ value: p.value, label: p.label }))}
+                    options={version.id >= 9 ? popOptionsV8(code) : POPULATIONS.map((p) => ({ value: p.value, label: p.label }))}
                   />
                 </QsControl>,
               ],
               [
                 "Tricare ID",
-                version.id >= 8 ? (
+                version.id >= 9 ? (
+                  // Version 9 (dashboard review): type to search. Empty = All.
+                  <QsControl key="tricare" showInfo info="Pick one member by Tricare ID. All lists everyone.">
+                    <AutocompleteField
+                      label="Tricare ID"
+                      placeholder="All"
+                      value={md.tricare || null}
+                      onChange={(v) => setMd({ ...md, tricare: v ?? "" })}
+                      options={optionsOf([...new Set(allMembers().map((m) => tricareIdOf(m)))].sort())}
+                    />
+                  </QsControl>
+                ) : version.id >= 8 ? (
                   // Lucid chart: a menu with All, like Population.
                   <QsControl key="tricare" showInfo info="Pick one member by Tricare ID. All lists everyone.">
                     <SelectField
@@ -827,7 +874,17 @@ export function QuickSightDashboardPage() {
               ],
               [
                 "Member Name",
-                version.id >= 8 ? (
+                version.id >= 9 ? (
+                  <QsControl key="mname" showInfo info="Pick one member by name. All lists everyone.">
+                    <AutocompleteField
+                      label="Member Name"
+                      placeholder="All"
+                      value={md.name || null}
+                      onChange={(v) => setMd({ ...md, name: v ?? "" })}
+                      options={optionsOf([...new Set(allMembers().map((m) => m.name))].sort((a, b) => a.localeCompare(b)))}
+                    />
+                  </QsControl>
+                ) : version.id >= 8 ? (
                   <QsControl key="mname" showInfo info="Pick one member by name. All lists everyone.">
                     <SelectField
                       label="Member Name"
@@ -896,6 +953,12 @@ export function QuickSightDashboardPage() {
     <PageContainer
       title={version.id >= 8 ? lucidTitle(code) : version.id >= 2 ? "Analytics" : "Quality measure analytics"}
       titleVariant="overview"
+      breadcrumbs={
+        version.id >= 9
+          ? [{ label: "Analytics" }, { label: "Overview", href: "/dashboards" }, { label: gapShort(code) }]
+          : undefined
+      }
+      renderLink={renderCrumbLink}
       subtitle={
         version.id >= 8
           ? undefined
@@ -1077,6 +1140,7 @@ function Overview({
   const v3 = version.id >= 3;
   const v7 = version.id >= 7;
   const v8 = version.id >= 8;
+  const v9 = version.id >= 9;
   const about = aboutFor(code);
   const { initial, t } = kpisFor(code, list, year);
   const whole = kpisFor(code, allMembers(), year);
@@ -1109,6 +1173,9 @@ function Overview({
   const dims = allDims.filter((d) => !(v7 && d.dim === "provider"));
   const c = useTrendControls();
   const [topN, setTopN] = useState(10);
+  // Version 9 (dashboard review): one Timeframe control, Annual, Quarterly or Monthly, with a chart and a table of the population counts.
+  const [tf, setTf] = useState<Timeframe>("monthly");
+  const tfData = useMemo(() => (v9 ? timeframeRows(code, list, tf) : []), [v9, code, list, tf]);
   const trend = useMemo(
     () => (c.comparing ? null : trendRows(code, list, c.g, c.range)),
     [code, list, c.g, c.range, c.comparing],
@@ -1222,8 +1289,15 @@ function Overview({
                   <b>{h}</b> {t}
                 </p>
               ))}
-              <p>Counts are distinct members: the latest run of each measurement year is shown, with every run in the trend.</p>
+              <p>Counts are distinct members: the latest run of each measurement year is shown, with every run in the trend. The cards follow the controls above.</p>
             </QsText>
+            {/* Version 9 (dashboard review): "Everything that affects this calculation" belongs in this collapsible section. */}
+            {v9 && (
+              <Box sx={{ mt: 1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: qs.type.visualTitle.size, mb: 0.5 }}>Everything That Affects This Calculation</Typography>
+                <CalcList year={year} def={def} />
+              </Box>
+            )}
           </Box>
         </QsTile>
       )}
@@ -1269,6 +1343,8 @@ function Overview({
       </QsTile>
 
       {!v7 && baselineTile}
+      {/* Version 9: one line only. The sentence about the cards is in About this measure. */}
+      {!v9 && (
       <QsTile cols={v7 ? 36 : 24} bare plain={v8} fr="702">
         <QsText>
           {v8 ? (
@@ -1290,6 +1366,7 @@ function Overview({
           )}
         </QsText>
       </QsTile>
+      )}
       {v7 && (() => {
         // Lucid design: row 1 compares this year with last year, row 2 compares with the last completed month and the same month a year earlier.
         const prevY = year - 1;
@@ -1344,8 +1421,8 @@ function Overview({
           />
         );
         const days = compareDays(year);
-        const sPm = snapshotAt(code, list, days.prevMonth);
-        const sPy = snapshotAt(code, list, days.prevYear);
+        const sPm = snapshotAt(code, list, days.prevMonth, v9);
+        const sPy = snapshotAt(code, list, days.prevYear, v9);
         const monthName = (d: Date) => d.toLocaleString("en-US", { month: "short", year: "numeric" });
         const cur = { met: t.met, gap: t.gap, den: t.denominator };
         type Snap = { met: number; gap: number; den: number } | null;
@@ -1402,13 +1479,13 @@ function Overview({
         };
         return (
           <>
-            {row1("Member Population", initial, hasPrevY ? prevEval : null, "All members in the population from the Measurement Start Period.", false)}
-            {row1("Initial Population", t.eligible, pt ? pt.eligible : null, `All members meeting the measurement criteria to identify gaps in care. For ${v3Code(code)}: ${v8 && code === "BCS-E" ? "members aged 42-74" : (() => { const x = V3_DEFINITION[code].split(/ who were|\. /)[0].replace(/\.$/, ""); return x.charAt(0).toLowerCase() + x.slice(1); })()}.`, true)}
-            {row1("Eligible Population", t.denominator, pt ? pt.denominator : null, v8 ? "All members who are not excluded from the measure." : `All members who are not excluded from the measure. ${V3_DEFINITION[code]}`, true)}
-            {row1("Excluded Population", t.excluded, pt ? pt.excluded : null, v8 && code === "BCS-E" ? "All members who are excluded from the measure - e.g. have hospice, palliative care, frailty, had a mastectomy." : `All members who are excluded from the measure. For ${v3Code(code)}: ${V3_EXCLUSIONS[code].charAt(0).toLowerCase()}${V3_EXCLUSIONS[code].slice(1)}`, true, true)}
-            {row2(`${v3Code(code)} Met Count`, "count", "met", V3_MET[code])}
+            {row1("Member Population", initial, hasPrevY ? prevEval : null, MEMBER_POP_TIP, false)}
+            {row1("Initial Population", t.eligible, pt ? pt.eligible : null, initialPopTip(code, v8), true)}
+            {row1("Eligible Population", t.denominator, pt ? pt.denominator : null, eligiblePopTip(code, v8), true)}
+            {row1("Excluded Population", t.excluded, pt ? pt.excluded : null, excludedPopTip(code, v8), true, true)}
+            {row2(v9 ? "Met Population" : `${v3Code(code)} Met Count`, "count", "met", V3_MET[code])}
             {row2(`${v3Code(code)} Met Rate`, "rate", "met", undefined, { highlight: true, color: qs.meaning.met })}
-            {row2(`${v3Code(code)} Not Met Count`, "count", "gap")}
+            {row2(v9 ? "Not Met Population" : `${v3Code(code)} Not Met Count`, "count", "gap", v9 ? NOT_MET_TIP : undefined)}
             {row2(`${v3Code(code)} Not Met Rate`, "rate", "gap", undefined, { color: qs.meaning.gapText })}
           </>
         );
@@ -1416,12 +1493,15 @@ function Overview({
       {v7 && (() => {
         const ins = exampleInsight({ name: V3_GAP_LABEL[code], rate: metPct, gap: t.gap, eligible: t.denominator });
         const dataAsOf = run.sources.reduce((a, x) => (x.receivedOn > a ? x.receivedOn : a), run.sources[0]?.receivedOn ?? selectedRun.at);
+        // Version 9 (dashboard review): the Baseline Summary, Explanation and Recommended Action tiles are gone. The numbers are in the cards,
+        // the text is in About this measure, and the advice is in the descriptions of the Primary Care Manager charts.
+        if (v9) return null;
         if (v8) {
           // Version 8: both tiles are Quick Sight custom insights (text + fields + calculations), so every number is live.
           const code3 = v3Code(code);
           const days = compareDays(year);
-          const sPm = snapshotAt(code, list, days.prevMonth);
-          const sPy = snapshotAt(code, list, days.prevYear);
+          const sPm = snapshotAt(code, list, days.prevMonth, v9);
+          const sPy = snapshotAt(code, list, days.prevYear, v9);
           const mon = (d: Date) => d.toLocaleString("en-US", { month: "short", year: "numeric" });
           const pts = (c: number, p: number) => {
             const d = c - p;
@@ -1677,6 +1757,89 @@ function Overview({
         </>
       )}
 
+      {v9 && (() => {
+        const tfLabel = timeframeOptions.find((o) => o.value === tf)?.label ?? "";
+        const code3 = v3Code(code);
+        const anySample = tfData.some((r) => r.sample);
+        const last = tfData[tfData.length - 1];
+        return (
+          <>
+            <QsTile
+              cols={36}
+              ask={["Q8", "Q17", "Q35"]}
+              action={
+                <SelectField
+                  label="Timeframe"
+                  value={tf}
+                  onChange={(v) => setTf(v as Timeframe)}
+                  options={timeframeOptions.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              }
+              title={`Open vs Closed Gaps Trend ${tfLabel}`}
+              subtitle={`Open and closed gaps at the end of each period, with the compliance rate. ${
+                tf === "annual"
+                  ? `Shows ${tfData.length} years; ${last?.label ?? ""} runs to the most recent run date.`
+                  : `Shows ${tfData.length} ${tf === "quarterly" ? "rolling quarters" : "rolling months"}, completed periods only, ending ${last?.label ?? ""}.`
+              } Each year starts again on January 1.${anySample ? " Periods before 2025 are sample data." : ""}`}
+              fr="708"
+            >
+              <QsGapTrend
+                qs8
+                xTitle={{ annual: "Year", quarterly: "Quarter", monthly: "Month" }[tf]}
+                label={`Open and closed gaps over time, ${tfLabel.toLowerCase()}, with the compliance rate`}
+                height={460}
+                rows={tfData.map((r) => ({
+                  label: r.label,
+                  closed: r.met,
+                  open: r.gap,
+                  rate: r.rate,
+                  partial: r.partial,
+                }))}
+              />
+            </QsTile>
+            <QsTile
+              cols={36}
+              title={`Population Counts by ${tf === "annual" ? "Year" : tf === "quarterly" ? "Quarter" : "Month"}`}
+              subtitle={`The counts at the end of each period.${anySample ? " * Sample data: the demo files hold 2025 and 2026 only, so earlier periods are made-up numbers." : ""}`}
+              fr="708"
+              ask={["Q22"]}
+            >
+              <QsTable
+                label="Population counts by period"
+                exportFile="population-counts"
+                rowKey={(r) => r.id}
+                maxHeight={100000}
+                defaultSort={{ key: "end", dir: "desc" }}
+                cols={[
+                  {
+                    key: "end",
+                    header: tf === "annual" ? "Year" : tf === "quarterly" ? "Quarter" : "Month",
+                    value: (r) => r.end.getTime(),
+                    render: (r) => `${r.label}${r.sample ? " *" : ""}`,
+                    nowrap: true,
+                  },
+                  { key: "ev", header: "Member Population", value: (r) => r.evaluated, align: "right" },
+                  { key: "in", header: "Initial Population", value: (r) => r.initial, align: "right" },
+                  { key: "el", header: "Eligible Population", value: (r) => r.eligible, align: "right" },
+                  { key: "ex", header: "Excluded Population", value: (r) => r.excluded, align: "right" },
+                  { key: "met", header: "Met Population", value: (r) => r.met, align: "right" },
+                  { key: "gap", header: "Not Met Population", value: (r) => r.gap, align: "right" },
+                  {
+                    key: "rate",
+                    header: `${code3} Met Rate`,
+                    value: (r) => r.rate ?? -1,
+                    render: (r) => (r.rate === null ? "–" : p1(r.rate)),
+                    align: "right",
+                  },
+                ]}
+                rows={tfData}
+              />
+            </QsTile>
+          </>
+        );
+      })()}
+      {!v9 && (
+      <>
       <QsTile cols={36} title="Trend settings" fr="708" ask={["Q8", "Q17"]}>
         <Box
           sx={{
@@ -1887,6 +2050,8 @@ function Overview({
           <TrendChart code={code} list={list} c={c} {...(v7 ? { height: 460 } : {})} />
         )}
       </QsTile>
+      </>
+      )}
       {!v7 && (
       <QsTile
         cols={12}
@@ -1973,6 +2138,81 @@ function Overview({
           const m = pcmByName(name);
           return m ? `Dr. ${pcmLabel(m)}` : name;
         };
+        // Version 9 (dashboard review): the advice of the old Recommended Action tile now sits in the descriptions of the manager charts.
+        const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+        const pctOf = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(0)}%` : "0%");
+        const allOpen = sum(managers.map((r) => r.open));
+        const allClosed = sum(managers.map((r) => r.closed));
+        const openSub = `Providers with members who have the most open gaps, highest to lowest. The top ${topOpen.length} hold ${n0(sum(topOpen.map((r) => r.open)))} of ${n0(allOpen)} open gaps (${pctOf(sum(topOpen.map((r) => r.open)), allOpen)}).`;
+        const closedSub = `Providers with members who have the most closed gaps, highest to lowest. The top ${topClosed.length} hold ${n0(sum(topClosed.map((r) => r.closed)))} of ${n0(allClosed)} closed gaps (${pctOf(sum(topClosed.map((r) => r.closed)), allClosed)}).`;
+        const bench = BENCHMARK[code];
+        const needed = Math.max(0, Math.ceil((bench / 100) * t.denominator) - t.met);
+        const ageRows = groupRates(code, list, year, "ageGroup").filter((r) => r.t.denominator >= SMALL_GROUP);
+        const bigAge = [...ageRows].sort((a, b) => b.t.gap - a.t.gap)[0];
+        const weakest = (
+          [
+            ["sex", FL.sex],
+            ["race", "Race"],
+            ["ethnicity", "Ethnicity"],
+          ] as [Dimension, string][]
+        )
+          .map(([dim, label]) => {
+            const rs = groupRates(code, list, year, dim).filter((r) => r.t.denominator >= SMALL_GROUP);
+            if (rs.length < 2) return null;
+            const r = [...rs].sort((a, b) => share(a.t.met, a.t.denominator) - share(b.t.met, b.t.denominator))[0];
+            return `${r.group} (${label.toLowerCase()}) is ${p1(share(r.t.met, r.t.denominator))} met`;
+          })
+          .filter((x): x is string => !!x);
+        const topNSelect = (
+          <SelectField
+            label="Top N Managers"
+            value={String(topN)}
+            onChange={(v) => setTopN(Number(v))}
+            options={[5, 10, 15].map((n) => ({ value: String(n), label: String(n) }))}
+          />
+        );
+        const focus = (
+          <QsText>
+            {t.gap === 0 ? (
+              <p>
+                <b>No open gaps.</b> Every eligible member has met {code3}. Keep the claims and results coming in so new members are checked.
+              </p>
+            ) : (
+              <>
+                <p>
+                  <b>Reach {n0(t.gap)} members.</b> Each has an open {code3} gap.{" "}
+                  {topOpen.filter((r) => r.open > 0).length > 0 && (
+                    <>
+                      Start with the providers in the left chart:{" "}
+                      {topOpen
+                        .filter((r) => r.open > 0)
+                        .slice(0, 3)
+                        .map((r) => `${mgrLabel(r.name)} ${n0(r.open)} open (${n0(r.closed)} closed)`)
+                        .join(" · ")}
+                      .
+                    </>
+                  )}
+                </p>
+                {bigAge && (
+                  <p>
+                    <b>Focus on age range {bigAge.group}.</b> {n0(bigAge.t.gap)} open gaps, the most of any age range ({p1(share(bigAge.t.met, bigAge.t.denominator))} met).
+                  </p>
+                )}
+                {weakest.length > 0 && (
+                  <p>
+                    <b>Check outreach.</b> {weakest.join(" · ")}. Review how these members are being reached.
+                  </p>
+                )}
+                <p>
+                  <b>Goal.</b>{" "}
+                  {needed > 0
+                    ? `Closing ${n0(needed)} of the ${n0(t.gap)} open gaps reaches the ${bench}% benchmark.`
+                    : `The ${bench}% benchmark is met. Keep closing the remaining ${n0(t.gap)}.`}
+                </p>
+              </>
+            )}
+          </QsText>
+        );
         return (
           <>
             {v8 && (
@@ -2002,6 +2242,7 @@ function Overview({
                 </QsTile>
               </>
             )}
+            {!v9 && (
             <QsTile cols={36} bare fr="703">
               <Box sx={{ maxWidth: 220 }}>
                 <SelectField
@@ -2012,11 +2253,38 @@ function Overview({
                 />
               </Box>
             </QsTile>
+            )}
+            {v9 && (
+              // One line when closed: the four points in short. Open it for the full advice (live numbers, names, age range, outreach, goal).
+              <QsTile cols={36} bare plain fr="703" ask={["Q35"]}>
+                <Box
+                  component="details"
+                  sx={{ "& summary": { cursor: "pointer", fontSize: qs.type.visualTitle.size, lineHeight: 1.5 }, "& details, &": { m: 0 } }}
+                >
+                  <summary>
+                    <b>Suggested focus:</b>{" "}
+                    {t.gap === 0
+                      ? "No open gaps."
+                      : [
+                          `Reach ${n0(t.gap)} members`,
+                          bigAge ? `focus on age range ${bigAge.group}` : null,
+                          weakest.length > 0 ? "check outreach" : null,
+                          needed > 0 ? `close ${n0(needed)} more to reach the ${bench}% benchmark` : `${bench}% benchmark met`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                  </summary>
+                  <Box sx={{ mt: 1 }}>{focus}</Box>
+                </Box>
+              </QsTile>
+            )}
             <QsTile
               cols={18}
               title={`Top ${topN} Open Gaps by Primary Care Manager`}
-              subtitle="Managers with the most open gaps first, high to low."
+              subtitle={v9 ? openSub : "Managers with the most open gaps first, high to low."}
               fr="703"
+              ask={v9 ? ["Q35"] : undefined}
+              action={v9 ? topNSelect : undefined}
             >
               <QsGapBars
                 label={`Top ${topN} open gaps by primary care manager`}
@@ -2029,8 +2297,9 @@ function Overview({
             <QsTile
               cols={18}
               title={`Top ${topN} Closed Gaps by Primary Care Manager`}
-              subtitle="Managers with the most closed gaps first, high to low. Uses the same n as the chart on the left."
+              subtitle={v9 ? closedSub : "Managers with the most closed gaps first, high to low. Uses the same n as the chart on the left."}
               fr="703"
+              action={v9 ? topNSelect : undefined}
             >
               <QsGapBars
                 label={`Top ${topN} closed gaps by primary care manager`}
@@ -2040,6 +2309,7 @@ function Overview({
                 empty="No manager has an eligible member for these controls"
               />
             </QsTile>
+            {!v9 && (
             <QsTile
               cols={12}
               title="Met and not met"
@@ -2059,6 +2329,7 @@ function Overview({
                 ]}
               />
             </QsTile>
+            )}
             {!v8 && (
               <>
             <QsTile cols={24} title={`${code3} Gaps by ${FL.ageGroup}`} subtitle={smallNote("ageGroup")} fr="703">
@@ -2086,6 +2357,7 @@ function Overview({
           </>
         );
       })()}
+      {!v9 && (
       <QsTile
         cols={36}
         title="Everything that affects this calculation"
@@ -2093,6 +2365,7 @@ function Overview({
       >
         <CalcList year={year} def={def} />
       </QsTile>
+      )}
       {!v3 && (
       <QsTile
         cols={36}
@@ -3457,6 +3730,7 @@ function HelpSheet() {
 function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
   const v3 = useVersion().version.id >= 3;
   const v7 = useVersion().version.id >= 7;
+  const v9 = useVersion().version.id >= 9;
   return (
       <QsTile
         cols={36}
@@ -3487,10 +3761,19 @@ function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
             {v7 && (
               <>
                 <li>
-                  <b>Eligible Population Baseline Summary</b> (left) is the whole
-                  population for the year. It does not change with the controls.{" "}
-                  <b>Measurement Period Summary</b> (right) are the key metrics.
-                  They follow every control.
+                  {v9 ? (
+                    <>
+                      <b>Measurement Period Summary</b> holds the key metrics. They follow every control. What is counted and why is in{" "}
+                      <b>About this measure</b>.
+                    </>
+                  ) : (
+                    <>
+                      <b>Eligible Population Baseline Summary</b> (left) is the whole
+                      population for the year. It does not change with the controls.{" "}
+                      <b>Measurement Period Summary</b> (right) are the key metrics.
+                      They follow every control.
+                    </>
+                  )}
                 </li>
                 <li>
                   <b>Gap Status:</b> Closed means met. Open means not met yet.
@@ -3498,10 +3781,20 @@ function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
                   them. It uses the same words as the Members and Care Gaps pages.
                 </li>
                 <li>
-                  <b>Trends:</b> pick Daily, Weekly, Monthly, Quarterly or Annual.
-                  Pick a date range, or choose Custom and set a From and a To date.
-                  The trend runs to the most recent run date. A star means claims can
-                  still arrive for 90 days.
+                  {v9 ? (
+                    <>
+                      <b>Trends:</b> pick a Timeframe. Annual shows 5 years, Quarterly the last 9 quarters and Monthly the last 24
+                      months. Quarterly and Monthly end on the most recent completed period. The table under the chart lists the
+                      population counts for each period.
+                    </>
+                  ) : (
+                    <>
+                      <b>Trends:</b> pick Daily, Weekly, Monthly, Quarterly or Annual.
+                      Pick a date range, or choose Custom and set a From and a To date.
+                      The trend runs to the most recent run date. A star means claims can
+                      still arrive for 90 days.
+                    </>
+                  )}
                 </li>
                 <li>
                   <b>Measure Run History</b> (on the Admin sheet) lists the latest runs: the rate each run
@@ -3510,10 +3803,12 @@ function HowToTile({ inAdmin = false }: { inAdmin?: boolean }) {
                 </li>
               </>
             )}
+            {!v9 && (
             <li>
               <b>Click the Met or Not met bar</b> to list those members on the
               {v7 ? " Members" : " Details"} sheet.
             </li>
+            )}
             <li>
               {v7 ? (
                 <>

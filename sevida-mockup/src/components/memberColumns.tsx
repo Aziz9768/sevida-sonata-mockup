@@ -54,7 +54,7 @@ import type { VersionId } from "../version";
 import {
   AGE_RANGES,
   GENDER_V3,
-  MILITARY_V3,
+  militaryOptions,
   ageLabel,
   ageParts,
   ageRangeOf,
@@ -63,6 +63,7 @@ import {
   genderV3,
   memberIdsOf,
   militaryV3,
+  RECOMMENDED_SENTENCE,
   raceV3,
   tricareIdOf,
   v3GapOptions,
@@ -1107,6 +1108,9 @@ export function useMemberTableColumns(
     // Default columns: Member Name (pinned), Tricare ID, Age, Gender, Gap Name(s), # Open Gaps, Gap Identified Date.
     // Everything else the sheet lists is a hidden column the user can switch on. Filters follow the sheet's filter list.
     const versionThreeColumns = (): Column<MemberRow>[] => {
+      // Version 8 follows the Jira tickets (LPP-16069) and the 10/22 call notes: info icons only where the ticket has one, no Closed Gaps,
+      // Gap Closed On or Military Status columns, and HEDIS Measures Eligibility and Recommended Actions as optional columns.
+      const v8 = version >= 8;
       const nameCol = all.find((c) => c.key === "name")!;
       const idCol = all.find((c) => c.key === "id")!;
       const subCol = all.find((c) => c.key === "insurance")!;
@@ -1151,7 +1155,11 @@ export function useMemberTableColumns(
         {
           key: "tricare",
           header: "Tricare ID",
-          help: "The member's Tricare ID. Type it in the search box to find one member. Sample data: the demo members have no such number, so it is made up.",
+          ...(v8
+            ? {}
+            : {
+                help: "The member's Tricare ID. Type it in the search box to find one member. Sample data: the demo members have no such number, so it is made up.",
+              }),
           accessor: (m) => tricareIdOf(m),
           sortable: true,
           nowrap: true,
@@ -1160,7 +1168,11 @@ export function useMemberTableColumns(
         {
           key: "age",
           header: "Age",
-          help: "Age today: days under 1 month, months under 1 year, then years and months (for example 3 days, 8 months, 7 years 2 months).",
+          ...(v8
+            ? {}
+            : {
+                help: "Age today: days under 1 month, months under 1 year, then years and months (for example 3 days, 8 months, 7 years 2 months).",
+              }),
           accessor: (m) => ageParts(m.dob).days,
           render: (m) => ageLabel(m.dob),
           sortable: true,
@@ -1183,7 +1195,9 @@ export function useMemberTableColumns(
           header: "Gap Name(s)",
           filterLabel: "Gap Name",
           filterPinned: true,
-          help: "The care gaps this member still has open, by short form of the measure. Hover a short form to read the full name. At most two lines: when there are more, hover +N more to see them all. A gap that was closed is not listed here.",
+          help: v8
+            ? "The HEDIS care gap"
+            : "The care gaps this member still has open, by short form of the measure. Hover a short form to read the full name. At most two lines: when there are more, hover +N more to see them all. A gap that was closed is not listed here.",
           group: "Care Gaps",
           accessor: (m) => {
             const a = openGapsOf(m).map((g) => gapShort(g.def.code));
@@ -1222,7 +1236,9 @@ export function useMemberTableColumns(
           filterOrder: 11,
           header: "# Open Gaps",
           filterLabel: "# Open Gaps",
-          help: "How many care gaps this member still has open. A plain count.",
+          help: v8
+            ? "Number of measures whose criteria have not been met for the member"
+            : "How many care gaps this member still has open. A plain count.",
           group: "Care Gaps",
           accessor: (m) => openGapsOf(m).length,
           sortable: true,
@@ -1234,7 +1250,9 @@ export function useMemberTableColumns(
           key: "found",
           filterOrder: 9,
           header: "Gap Identified Date",
-          help: "The date each open care gap was found, one line per gap, with the measure it belongs to. At most two lines. Sorting and the date filter use the earliest one. Demo dates: the spec has no such field.",
+          help: v8
+            ? "Date on which the gap was identified. Based on information used to identify the gap - e.g. claims service date if known, otherwise shows the run date when the Gaps in Care engine was last run."
+            : "The date each open care gap was found, one line per gap, with the measure it belongs to. At most two lines. Sorting and the date filter use the earliest one. Demo dates: the spec has no such field.",
           group: "Care Gaps",
           accessor: earliest,
           render: (m) => {
@@ -1263,7 +1281,7 @@ export function useMemberTableColumns(
         },
         // ---- hidden columns the user can switch on
         // Version 4: the measures this member has already closed, in the same chip style as Gap Name(s).
-        ...(version >= 4
+        ...(version >= 4 && !v8
           ? [
               {
                 key: "closedGaps",
@@ -1297,6 +1315,9 @@ export function useMemberTableColumns(
               } as Column<MemberRow>,
             ]
           : []),
+        ...(v8
+          ? []
+          : [
         {
           key: "closedDate",
           filterOrder: 8,
@@ -1329,11 +1350,13 @@ export function useMemberTableColumns(
           sortable: true,
           nowrap: true,
           filter: { type: "dateRange" },
-        },
+        } as Column<MemberRow>,
+          ]),
         { ...idCol, defaultHidden: true, group: "IDs", nowrap: true },
         {
           ...subCol,
           header: "Subscriber ID",
+          ...(v8 ? { help: "An ID that may be used by more than one family member." } : {}),
           defaultHidden: true,
           group: "IDs",
           filter: undefined,
@@ -1377,6 +1400,9 @@ export function useMemberTableColumns(
           },
         },
         sourceCol("Ethnicity Source", "ethnicitySource", "ethnicity"),
+        ...(v8
+          ? []
+          : [
         {
           key: "military",
           filterOrder: 12,
@@ -1389,8 +1415,9 @@ export function useMemberTableColumns(
           defaultHidden: true,
           hideBelow: "lg",
           group: "Demographics",
-          filter: { type: "select", ordered: true, options: opt(MILITARY_V3) },
-        },
+          filter: { type: "select", ordered: true, options: opt(militaryOptions()) },
+        } as Column<MemberRow>,
+          ]),
         {
           key: "race",
           filterOrder: 13,
@@ -1404,6 +1431,53 @@ export function useMemberTableColumns(
           filter: { type: "multiselect", options: opt(valuesOf(raceV3)) },
         },
         sourceCol("Race Source", "raceSource", "race"),
+        ...(v8
+          ? [
+              // 10/22 call: HEDIS Measures Eligibility (every measure the member is part of) and Recommended Actions as optional columns.
+              {
+                ...eligibleCol,
+                header: "HEDIS Measures Eligibility",
+                help: undefined,
+                group: "Care Gaps",
+                defaultHidden: true,
+                sortable: true,
+              } as Column<MemberRow>,
+              {
+                key: "recommended",
+                header: "Recommended Actions",
+                help: "Actions to take to close the gap. A gap will show as Closed once evidence such as claims confirms the closure. Conducting the activity does not automatically close the gap.",
+                group: "Care Gaps",
+                defaultHidden: true,
+                width: 300,
+                accessor: (m: MemberRow) => {
+                  const a = openGapsOf(m).map((g) =>
+                    RECOMMENDED_SENTENCE(g.def.code, CURRENT_YEAR),
+                  );
+                  return a.length ? a : null;
+                },
+                render: (m: MemberRow) => {
+                  const gs = openGapsOf(m);
+                  return gs.length === 0
+                    ? "–"
+                    : noWrapTwo(
+                        gs.map((g) => (
+                          <span key={g.id}>
+                            <b>{gapShort(g.def.code)}:</b>{" "}
+                            {RECOMMENDED_SENTENCE(g.def.code, CURRENT_YEAR)}
+                          </span>
+                        )),
+                        gs
+                          .map(
+                            (g) =>
+                              `${gapShort(g.def.code)}: ${RECOMMENDED_SENTENCE(g.def.code, CURRENT_YEAR)}`,
+                          )
+                          .join(" "),
+                      );
+                },
+                searchable: false,
+              } as Column<MemberRow>,
+            ]
+          : []),
         // ---- filters with no column of their own
         {
           key: "gapStatus",

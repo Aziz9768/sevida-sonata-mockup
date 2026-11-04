@@ -66,6 +66,8 @@ export interface Option {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Text that shows when the pointer rests on the option (a short description). */
+  tip?: string;
 }
 
 export interface SelectFieldProps extends Omit<TextFieldProps, 'select' | 'children' | 'maxLength' | 'onChange' | 'value'> {
@@ -96,7 +98,7 @@ export function SelectField({ options, value, onChange, placeholder = 'Select…
       {...rest}
     >
       {options.map((o) => (
-        <MenuItem key={o.value} value={o.value} disabled={o.disabled}>
+        <MenuItem key={o.value} value={o.value} disabled={o.disabled} title={o.tip}>
           {o.label}
         </MenuItem>
       ))}

@@ -12,9 +12,12 @@ import {
 } from "sevida-ui";
 import type { Column } from "sevida-ui";
 import { Field } from "../components/Field";
+import { GapStatusChip } from "../components/GapStatusChip";
+import { LlmText } from "../components/LlmText";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { MemberHeader } from "./MemberDetailPage";
 import {
+  fmtDay,
   fmtWhen,
   impactsOf,
   lastRelevant,
@@ -36,6 +39,7 @@ import {
 import type { Evt, MeasureCode } from "../data";
 import {
   MISSING_SHORT,
+  RECOMMENDED_SENTENCE,
   V3_GAP_LABEL,
   V3_LEFT,
   V3_WHO,
@@ -60,6 +64,10 @@ const recordType = (e: Evt) =>
               : "Procedures";
 
 const DUE = new Date(CURRENT_YEAR, 11, 31);
+const parseDayLocal = (s: string) => {
+  const [y, m, d] = s.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
 const daysToDue = () =>
   Math.round(
     (DUE.getTime() -
@@ -71,7 +79,17 @@ const daysToDue = () =>
       86400000,
   );
 
+/** What the care gap algorithm reads for each measure (the sheet's "Quality measures: data, artifacts and files"), in the words of the Member tabs. LPP-16227 section 2. */
+const V8_DATA_USED: Record<MeasureCode, string> = {
+  "BCS-E": "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Observations, Medications, Claims.",
+  "CCS-E": "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Observations, Claims.",
+  "COL-E": "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Observations, Medications, Claims.",
+  GSD: "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Observations (HbA1c), Medications, Claims.",
+  WCV: "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Providers, Claims.",
+};
+
 function Overview({ g }: { g: GapView }) {
+  const v8 = useVersion().version.id >= 8;
   const { def, result } = g;
   const code = def.code as MeasureCode;
   const last = lastRelevant(g);
@@ -108,7 +126,7 @@ function Overview({ g }: { g: GapView }) {
       <Stack spacing={2.5}>
         <Typography>{sentence}</Typography>
         <Stack spacing={0.5}>
-          {sub("Who is Considered")}
+          {sub(v8 ? "Gap Considerations" : "Who is Considered")}
           {V3_WHO[code] ? (
             <Typography>
               <b>{gapShort(code)}:</b> {V3_WHO[code]}
@@ -116,9 +134,14 @@ function Overview({ g }: { g: GapView }) {
           ) : (
             missing
           )}
+          {v8 && (
+            <Typography>
+              <b>Data used:</b> {V8_DATA_USED[code]}
+            </Typography>
+          )}
         </Stack>
         <Stack spacing={0.5}>
-          {sub("What is Left to Close the Gap")}
+          {sub(v8 ? "How To Close The Gap" : "What is Left to Close the Gap")}
           {V3_LEFT[code].length ? (
             V3_LEFT[code].map((t, i) => (
               <Typography key={i}>
@@ -132,8 +155,12 @@ function Overview({ g }: { g: GapView }) {
         </Stack>
         <Field label="Due Date">
           {g.status === "Closed"
-            ? "Closed"
-            : `${daysToDue()} Days (${fmtDate(DUE)})`}
+            ? v8
+              ? "N/A"
+              : "Closed"
+            : v8
+              ? fmtDate(DUE)
+              : `${daysToDue()} Days (${fmtDate(DUE)})`}
         </Field>
       </Stack>
     </Card>
@@ -151,6 +178,7 @@ interface EvRow {
 }
 
 function Evidence({ g }: { g: GapView }) {
+  const v8 = useVersion().version.id >= 8;
   const code = g.def.code;
   const rows = useMemo<EvRow[]>(
     () =>
@@ -180,14 +208,16 @@ function Evidence({ g }: { g: GapView }) {
     },
     {
       key: "type",
-      header: "Record Type",
+      // LPP-16228: "Source" is the kind of record (Claims, Labs ...). The file it came in on is the optional Feed column.
+      header: v8 ? "Source" : "Record Type",
+      help: v8 ? "The kind of record this evidence comes from: Claims, Labs, Diagnoses, Procedures, Observations or Visits." : undefined,
       accessor: (r) => r.type,
       sortable: true,
       width: 130,
     },
     {
       key: "detail",
-      header: "Detail",
+      header: v8 ? "Details" : "Detail",
       accessor: (r) => r.detail,
       width: 320,
       render: (r) => (
@@ -209,10 +239,12 @@ function Evidence({ g }: { g: GapView }) {
       accessor: (r) => r.provider,
       sortable: true,
       width: 160,
+      defaultHidden: v8,
     },
     {
       key: "src",
-      header: "Source",
+      header: v8 ? "Feed" : "Source",
+      defaultHidden: v8,
       help: "The file the record came in.",
       accessor: (r) => r.source,
       sortable: true,
@@ -228,7 +260,8 @@ function Evidence({ g }: { g: GapView }) {
       <DataTable
         ariaLabel="Evidence"
         title="Evidence"
-        searchPlaceholder="Search by Record Type or Detail…"
+        searchPlaceholder={v8 ? "Search by Source or Details…" : "Search by Record Type or Detail…"}
+        storageKey={v8 ? "demo-gap-evidence-ver8-a" : undefined}
         columns={cols}
         rows={rows}
         getRowId={(r) => r.key}
@@ -245,6 +278,114 @@ function Evidence({ g }: { g: GapView }) {
   );
 }
 
+interface HistRow {
+  key: string;
+  gap: string;
+  identified: Date;
+  due: Date | null;
+  closed: Date | null;
+  updated: Date;
+  action: string;
+}
+
+/**
+ * LPP-16229: one row for each state the care gap has been in, newest first: Gap Name, Identified Date, Due Date (open) or Closed
+ * Date (closed), Last Updated and Recommended Actions. A closed gap has two rows: the closed one and the open one it came from.
+ */
+function History({ g }: { g: GapView }) {
+  const code = g.def.code as MeasureCode;
+  const rows = useMemo<HistRow[]>(() => {
+    const open: HistRow = {
+      key: "open",
+      gap: V3_GAP_LABEL[code],
+      identified: g.identified,
+      due: DUE,
+      closed: null,
+      updated: g.identified,
+      action: RECOMMENDED_SENTENCE(code, CURRENT_YEAR),
+    };
+    if (g.status === "Closed") {
+      const on = g.work.closed ? parseDayLocal(g.work.closed.on) : g.lastUpdated;
+      return [
+        {
+          key: "closed",
+          gap: V3_GAP_LABEL[code],
+          identified: g.identified,
+          due: null,
+          closed: on,
+          updated: on,
+          action: "N/A",
+        },
+        open,
+      ];
+    }
+    return [{ ...open, updated: g.lastUpdated }];
+  }, [g, code]);
+  const cols: Column<HistRow>[] = [
+    {
+      key: "gap",
+      header: "Gap Name",
+      accessor: (r) => r.gap,
+      sortable: true,
+      primary: true,
+      width: 280,
+    },
+    {
+      key: "identified",
+      header: "Identified Date",
+      accessor: (r) => r.identified,
+      render: (r) => fmtDate(r.identified),
+      sortable: true,
+      nowrap: true,
+    },
+    {
+      key: "due",
+      header: "Due Date",
+      help: "Only for a gap that is open.",
+      accessor: (r) => r.due,
+      render: (r) => (r.due ? fmtDate(r.due) : "N/A"),
+      sortable: true,
+      nowrap: true,
+    },
+    {
+      key: "closed",
+      header: "Closed Date",
+      help: "Only for a gap that is closed.",
+      accessor: (r) => r.closed,
+      render: (r) => (r.closed ? fmtDate(r.closed) : "N/A"),
+      sortable: true,
+      nowrap: true,
+    },
+    {
+      key: "updated",
+      header: "Last Updated",
+      accessor: (r) => r.updated,
+      render: (r) => fmtDate(r.updated),
+      sortable: true,
+      nowrap: true,
+    },
+    {
+      key: "action",
+      header: "Recommended Actions",
+      accessor: (r) => r.action,
+      render: (r) => (r.action === "N/A" ? "N/A" : <LlmText text={r.action} />),
+      width: 300,
+    },
+  ];
+  return (
+    <DataTable
+      ariaLabel="History"
+      title="History"
+      columns={cols}
+      rows={rows}
+      getRowId={(r) => r.key}
+      paginated={false}
+      defaultSort={{ key: "updated", direction: "desc" }}
+      storageKey="demo-gap-history-ver8-a"
+    />
+  );
+}
+
 /**
  * Version 3 of the Care Gap page (final sheet, Care Gaps Details Page tab): breadcrumb Care Gaps > Member Name > Gap Name, the title
  * "Member Name: Gap Name", the Member Header, a Care Gap Summary, and two tabs, Overview and Evidence. No status pills, no Actions button,
@@ -258,15 +399,28 @@ export function CareGapDetailPageV3() {
   const { get } = useGaps();
   const { version } = useVersion();
   const [search, setSearch] = useSearchParams();
-  const tab = search.get("tab") === "evidence" ? "evidence" : "overview";
+  const v8 = version.id >= 8;
+  const tab =
+    search.get("tab") === "evidence"
+      ? "evidence"
+      : v8 && search.get("tab") === "history"
+        ? "history"
+        : "overview";
   const g = m && def ? get(m, def.code as MeasureCode) : null;
   const label = def ? V3_GAP_LABEL[def.code as MeasureCode] : "Not found";
 
-  const crumbs = [
-    { label: "Care Gaps", href: "/care-gaps" },
-    ...(m ? [{ label: m.name, href: `/members/${m.id}?tab=gaps` }] : []),
-    { label },
-  ];
+  // Version 8 (LPP-16153): Care Gaps > BCS > Member Name. Earlier versions: Care Gaps > Member Name > Gap Name.
+  const crumbs = v8
+    ? [
+        { label: "Care Gaps", href: "/care-gaps" },
+        { label: def ? gapShort(def.code) : "Not found", href: "/care-gaps" },
+        ...(m ? [{ label: m.name }] : []),
+      ]
+    : [
+        { label: "Care Gaps", href: "/care-gaps" },
+        ...(m ? [{ label: m.name, href: `/members/${m.id}?tab=gaps` }] : []),
+        { label },
+      ];
   if (!m || !def || !g) {
     return (
       <PageContainer breadcrumbs={crumbs} renderLink={renderCrumbLink}>
@@ -291,13 +445,23 @@ export function CareGapDetailPageV3() {
   }
   const missingText =
     g.status === "Closed" ? "None" : MISSING_SHORT[def.code as MeasureCode];
+  const closed = g.status === "Closed";
   return (
     <PageContainer
-      title={`${m.name}: ${label}`}
+      title={v8 ? undefined : `${m.name}: ${label}`}
       breadcrumbs={crumbs}
       renderLink={renderCrumbLink}
     >
       <Stack spacing={2}>
+        {v8 && (
+          // LPP-16153: "Care Gap Name: Member Name" and the Open / Closed label (same green and red everywhere).
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+              {label}: {m.name}
+            </Typography>
+            <GapStatusChip closed={closed} />
+          </Stack>
+        )}
         <MemberHeader m={m} year={MY} nameTo={`/members/${m.id}`} />
         <Card title="Care Gap Summary">
           <Box
@@ -310,10 +474,28 @@ export function CareGapDetailPageV3() {
               },
             }}
           >
-            <Field label="Measure">{label}</Field>
-            <Field label="For">{m.name}</Field>
+            <Field label={v8 ? "Gap Name" : "Measure"}>{label}</Field>
+            {!v8 && <Field label="For">{m.name}</Field>}
             <Field label="Identified Date">{fmtDate(g.identified)}</Field>
-            <Field label={version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>{missingText}</Field>
+            {v8 &&
+              (closed ? (
+                <Field label="Closed Date">
+                  {g.work.closed ? fmtDay(g.work.closed.on) : fmtDate(g.lastUpdated)}
+                </Field>
+              ) : (
+                <Field label="Due Date">{fmtDate(DUE)}</Field>
+              ))}
+            <Field label={version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
+              {v8 ? (
+                closed ? (
+                  "N/A"
+                ) : (
+                  <LlmText text={RECOMMENDED_SENTENCE(def.code as MeasureCode, CURRENT_YEAR)} />
+                )
+              ) : (
+                missingText
+              )}
+            </Field>
             <Field label="Last Updated">
               {fmtWhen(g.lastUpdated.toISOString())}
             </Field>
@@ -326,6 +508,9 @@ export function CareGapDetailPageV3() {
           items={[
             { key: "overview", label: "Overview", content: <Overview g={g} /> },
             { key: "evidence", label: "Evidence", content: <Evidence g={g} /> },
+            ...(v8
+              ? [{ key: "history", label: "History", content: <History g={g} /> }]
+              : []),
           ]}
         />
       </Stack>

@@ -100,6 +100,8 @@ export interface DataTableProps<T> {
   searchPlaceholderCompact?: string;
   /** Remembers which columns the user showed / hid / reordered, in this browser, under this name. Leave out to not remember. */
   storageKey?: string;
+  /** Heading of the message shown when the search or filters match nothing. Default "No results match". */
+  noResultsTitle?: string;
   /** Pass `search` + `onSearchChange` to control the search text yourself (e.g. when the server searches). */
   search?: string;
   onSearchChange?: (search: string) => void;
@@ -210,6 +212,7 @@ export function DataTable<T>({
   searchPlaceholder,
   searchPlaceholderCompact,
   storageKey,
+  noResultsTitle = "No results match",
   search: searchProp,
   onSearchChange,
   filters: filtersProp,
@@ -708,7 +711,7 @@ export function DataTable<T>({
   const empty =
     filtersActive && total === 0 ? (
       <EmptyState
-        title="No results match"
+        title={noResultsTitle}
         description="Try a different search or remove a filter."
         action={
           <Button variant="secondary" onClick={clearAll}>

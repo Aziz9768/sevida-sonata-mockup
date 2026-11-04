@@ -13,13 +13,23 @@ export const V3_GAP_LABEL: Record<MeasureCode, string> = {
   "BCS-E": "BCS - Breast Cancer Screening",
   "CCS-E": "CCS - Cervical Cancer Screening",
   "COL-E": "COL - Colorectal Cancer Screening",
-  GSD: "GSD · Glycemic Status Assessment for Patients With Diabetes",
-  WCV: "WCV · Child and Adolescent Well-Care Visits",
+  // The sheet writes a dot here; the Jira tickets (LPP-16069) write a hyphen like the other three. Version 8 follows the tickets.
+  get GSD() {
+    return `GSD ${getVersion() >= 8 ? "-" : "·"} Glycemic Status Assessment for Patients With Diabetes`;
+  },
+  get WCV() {
+    return `WCV ${getVersion() >= 8 ? "-" : "·"} Child and Adolescent Well-Care Visits`;
+  },
 };
 /** BCS-E is written BCS in the sheet. */
 export const gapShort = (code: string) => code.replace(/-E$/, "");
 export const v3GapOptions = (Object.keys(V3_GAP_LABEL) as MeasureCode[]).map(
-  (c) => ({ value: c, label: V3_GAP_LABEL[c] }),
+  (c) => ({
+    value: c,
+    get label() {
+      return V3_GAP_LABEL[c];
+    },
+  }),
 );
 
 /** 11 digits, like a DoD benefits number. Sample data. */
@@ -65,7 +75,22 @@ export const MILITARY_V3 = [
 ];
 /** Members the file says nothing about show a dash. A few get each of the nine values so every filter choice finds someone. */
 /** Every TRICARE member has a military status. Active and retired members come from the data; the rest are spread over the nine values, with family members for children. */
+/** Version 8: the five values of LPP-16144 / LPP-16069, written as the tickets write them. */
+export const MILITARY_V8 = [
+  "Active Duty (AD)",
+  "Full-Time National Guard Duty (FTNGD)",
+  "Selected Reserve (SELRES)",
+  "Individual Ready Reserve (IRR)",
+  "Retired",
+];
+/** The Military Status choices of the version being shown. */
+export const militaryOptions = () => (getVersion() >= 8 ? MILITARY_V8 : MILITARY_V3);
 export const militaryV3 = (m: Member, year = DEMO_NOW.getFullYear()): string => {
+  if (getVersion() >= 8) {
+    if (m.military === "Active") return MILITARY_V8[0];
+    if (m.military === "Retired") return MILITARY_V8[4];
+    return MILITARY_V8[(hashOf(`${m.id}-mil`) >>> 4) % MILITARY_V8.length];
+  }
   if (m.military === "Active") return "Active Duty";
   if (m.military === "Retired") return "Retiree";
   const h = hashOf(`${m.id}-mil`);
@@ -121,7 +146,7 @@ export const sampleProfileOf = (m: Member) => {
       h % 4 === 0
         ? `PO Box ${1000 + (h % 8000)}, ${m.city}, ${m.state} ${m.zip}`
         : residential,
-    posting: /Active Duty|Guard\/Reserve - Active/.test(military)
+    posting: /Active Duty|Guard\/Reserve - Active|Full-Time National Guard/.test(military)
       ? POSTINGS[h % POSTINGS.length]
       : "–",
     phone: fmtPhone(m.phone),
@@ -209,6 +234,16 @@ export const MISSING_SHORT: Record<MeasureCode, string> = {
   GSD: "HbA1c result",
   WCV: "Well-care visit",
 };
+
+/** Version 8 (LPP-16144): the Recommended Actions text is a sentence written by the AI, not a short label. Open gaps only. */
+export const RECOMMENDED_SENTENCE = (code: MeasureCode, year: number): string =>
+  ({
+    "BCS-E": `Schedule a mammogram before Dec 31, ${year}.`,
+    "CCS-E": `Schedule a cervical cancer screening (cervical cytology) before Dec 31, ${year}.`,
+    "COL-E": `Schedule a colonoscopy, or send a stool-based screening test kit, before Dec 31, ${year}.`,
+    GSD: `Order an HbA1c test and record the result before Dec 31, ${year}.`,
+    WCV: `Schedule a well-care visit with a primary care provider before Dec 31, ${year}.`,
+  })[code];
 
 /** "Who is Considered" and "What is Left to Close the Gap" on the Care Gap page, as the sheet words them (typos fixed). GSD is blank in the sheet. */
 export const V3_WHO: Record<MeasureCode, string> = {

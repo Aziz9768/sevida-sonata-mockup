@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Box, Tab, Tabs as MuiTabs } from '@mui/material';
+import { Box, Tab, Tabs as MuiTabs, Tooltip } from '@mui/material';
 import { titleCase } from '../../utils/titleCase';
 
 export interface TabItem {
@@ -9,6 +9,8 @@ export interface TabItem {
   label: string;
   /** A small number shown after the label, e.g. open tasks. */
   count?: number;
+  /** Text that shows when the pointer rests on the tab, e.g. the full name of an abbreviation. */
+  tip?: string;
   disabled?: boolean;
   /** What to show under the tabs when this one is open. Leave out if you draw the content yourself. */
   content?: ReactNode;
@@ -63,17 +65,19 @@ export function Tabs({ items, value, defaultValue, onChange, ariaLabel, gap = tr
               aria-controls={i.content !== undefined ? panelId(i.key) : undefined}
               disabled={i.disabled}
               label={
-                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
-                  {titleCase(i.label)}
-                  {i.count !== undefined && (
-                    <Box
-                      component="span"
-                      sx={{ minWidth: 20, px: 0.75, borderRadius: 10, bgcolor: 'surfaceAlt', color: 'ink.700', fontSize: '.75rem', lineHeight: '18px', textAlign: 'center', fontWeight: 500 }}
-                    >
-                      {i.count}
-                    </Box>
-                  )}
-                </Box>
+                <Tooltip title={i.tip ?? ''} disableHoverListener={!i.tip} disableFocusListener={!i.tip} disableTouchListener={!i.tip} arrow>
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                    {titleCase(i.label)}
+                    {i.count !== undefined && (
+                      <Box
+                        component="span"
+                        sx={{ minWidth: 20, px: 0.75, borderRadius: 10, bgcolor: 'surfaceAlt', color: 'ink.700', fontSize: '.75rem', lineHeight: '18px', textAlign: 'center', fontWeight: 500 }}
+                      >
+                        {i.count}
+                      </Box>
+                    )}
+                  </Box>
+                </Tooltip>
               }
             />
           ))}

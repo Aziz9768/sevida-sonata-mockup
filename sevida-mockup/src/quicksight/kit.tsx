@@ -33,6 +33,7 @@ export const QUESTIONS: Record<string, string> = {
   Q19: "Where does the benchmark value come from (a data field or a fixed number), and can a bar chart draw it as a dashed line?",
   Q20: "What is an artifact, and how is it different from a file or a row? Until Madigan says, the cards show rows.",
   Q21: "Can hovering Last updated show the source files? A hover tooltip is not a QuickSight option on a text box, so the files are listed in the box.",
+  Q35: "Version 9 puts Timeframe and Top N inside their chart tiles and the suggested focus in a collapsible box. In QuickSight a control normally lives in the controls bar, and a text box cannot collapse. Can a control sit on top of its visual (free-form layout), and can a text box collapse? If not, the controls go back to the controls bar and the focus text stays open.",
   Q22: "Can a trend point be marked as in progress (last 90 days)? The table marks it with an asterisk.",
   Q23: "Can a KPI turn red when it passes a threshold that comes from data (rejection threshold)?",
   Q24: "Do KPI tiles support a hover note that says where the number comes from?",
@@ -454,6 +455,7 @@ export function QsTile({
   bare,
   plain,
   review,
+  action,
   children,
 }: {
   cols: number;
@@ -470,6 +472,8 @@ export function QsTile({
   plain?: boolean;
   /** A note for reviewers, not part of the dashboard: it goes away with the "Questions for developers" switch. */
   review?: boolean;
+  /** Version 9: a control that belongs to this visual (for example Timeframe), drawn at the right of the title row. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const n = useContext(NotesContext);
@@ -499,29 +503,32 @@ export function QsTile({
     >
       <Notes fr={fr} ask={ask} />
       {!bare && title && (
-        <Box sx={{ mb: 1.25, pr: 9 }}>
-          <Typography
-            component="h3"
-            sx={{
-              m: 0,
-              fontSize: qs.type.visualTitle.size,
-              fontWeight: qs.type.visualTitle.weight,
-              lineHeight: 1.3,
-            }}
-          >
-            {titleCase(title)}
-          </Typography>
-          {subtitle && (
+        <Box sx={{ mb: 1.25, pr: 9, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+          <Box sx={{ flex: "1 1 320px", minWidth: 0 }}>
             <Typography
+              component="h3"
               sx={{
-                fontSize: qs.type.subtitle.size,
-                color: t ? "inherit" : qs.color.mutedText,
-                mt: 0.25,
+                m: 0,
+                fontSize: qs.type.visualTitle.size,
+                fontWeight: qs.type.visualTitle.weight,
+                lineHeight: 1.3,
               }}
             >
-              {subtitle}
+              {titleCase(title)}
             </Typography>
-          )}
+            {subtitle && (
+              <Typography
+                sx={{
+                  fontSize: qs.type.subtitle.size,
+                  color: t ? "inherit" : qs.color.mutedText,
+                  mt: 0.25,
+                }}
+              >
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          {action && <Box sx={{ flex: "0 0 auto", width: 170 }}>{action}</Box>}
         </Box>
       )}
       <Box sx={{ flex: 1, minWidth: 0 }}>{children}</Box>

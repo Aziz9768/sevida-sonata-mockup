@@ -41,6 +41,8 @@ import { diagnosesOfYear } from "../components/memberColumns";
 import { useVersion } from "../version";
 import { RecordsTab, isRecordTab, recordTabOrder } from "../components/RecordsTab";
 import { RecordTabV3, recordsOf } from "../components/RecordTabV3";
+import { RecordTabV8, v8Counts } from "../components/RecordTabsV8";
+import type { V8TabKey } from "../components/RecordTabsV8";
 import { ProviderModal } from "../components/ProviderModal";
 import { memberExtras, benefitsOf } from "../recordFields";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
@@ -1098,6 +1100,7 @@ export function MemberHeader({
   nameTo?: string;
 }) {
   const { version } = useVersion();
+  const { role: headerRole } = useRole();
   // Version 3: the sheet gives no header fields, so it keeps who the member is (name, date of birth, enrollment status, Tricare ID,
   // age and gender, the same as the Members list), the data update dates, and print / export. The tiles and the details panel go.
   const v3 = version.id >= 3;
@@ -1198,10 +1201,53 @@ export function MemberHeader({
       : null,
   ].filter(Boolean);
 
+  // Version 8 (LPP-16072): Print / Download, only for the roles that may export, and "Measures Met" as "3 of 4".
+  const printMenu =
+    version.id >= 8 && (headerRole.scope === "all" || headerRole.scope === "caseload") ? (
+      <>
+        <Tooltip title="Print, Save as PDF">
+          <IconButton
+            aria-label="Print, Save as PDF"
+            aria-haspopup="menu"
+            onClick={(e) => setSummaryEl(e.currentTarget)}
+            variant="boxed"
+          >
+            <FileDownloadOutlinedIcon />
+          </IconButton>
+        </Tooltip>
+        <Menu
+          anchorEl={summaryEl}
+          open={!!summaryEl}
+          onClose={() => setSummaryEl(null)}
+        >
+          <MenuItem
+            onClick={() => {
+              setSummaryEl(null);
+              window.print();
+            }}
+          >
+            Print
+          </MenuItem>
+          <MenuItem onClick={() => void exportSummary("pdf")}>
+            Save as PDF (.pdf)
+          </MenuItem>
+          <MenuItem onClick={() => void exportSummary("xlsx")}>
+            Download Excel (.xlsx)
+          </MenuItem>
+        </Menu>
+      </>
+    ) : undefined;
   // Version 4: the original header look with the sheet's fields.
   if (version.id >= 4)
     return (
-      <MemberHeaderV4 m={m} openGaps={sum.open} updated={newestReceived()} nameTo={nameTo} />
+      <MemberHeaderV4
+        m={m}
+        openGaps={sum.open}
+        updated={newestReceived()}
+        nameTo={nameTo}
+        measuresMet={sum.scored > 0 ? `${sum.met} of ${sum.scored}` : undefined}
+        actions={printMenu}
+      />
     );
   // Version 3 draws the header exactly as the sheet's wireframe does (its own component).
   if (v3)
@@ -1489,11 +1535,16 @@ export function MemberDetailPage() {
   // Version 3 opens on the Care Gaps tab (the sheet's default). An old link to a tab that no longer exists lands there too.
   // Version 4 adds Profile back, right after Care Gaps. Care Gaps is still the tab that opens first.
   const v4 = version.id >= 4;
-  const V3_TABS = [
-    "gaps",
-    ...(v4 ? ["profile"] : []),
-    "claims", "diagnoses", "labs", "observations", "procedures", "providers", "visits",
-  ];
+  // Version 8 (LPP-16154): Care Gaps, Profile, then the record tabs A to Z. Visits is now Encounters; Immunizations and Medications are new.
+  const v8t = version.id >= 8;
+  const V8_RECORD_TABS: V8TabKey[] = ["claims", "diagnoses", "encounters", "immunizations", "labs", "medications", "observations", "procedures", "providers"];
+  const V3_TABS = v8t
+    ? ["gaps", "profile", ...V8_RECORD_TABS]
+    : [
+        "gaps",
+        ...(v4 ? ["profile"] : []),
+        "claims", "diagnoses", "labs", "observations", "procedures", "providers", "visits",
+      ];
   const rawTab0 = search.get("tab") ?? (v3 ? "gaps" : "measures");
   const rawTab = v3 && !V3_TABS.includes(rawTab0) ? "gaps" : rawTab0;
   const legacyKind = v3
@@ -1513,6 +1564,15 @@ export function MemberDetailPage() {
   const yq: Record<string, string> = year === MY ? {} : { year: String(year) };
   const sum = summaryOf(m, year === MY ? gapsOf(m) : [], year);
   // Version 3 tab bar (sheet: "Sub-Tab Order"). The sheet allows empty pages; the demo fills them with each member's records.
+  const v8counts = v8t ? v8Counts(m) : null;
+  const v8Items = v8counts
+    ? V8_RECORD_TABS.map((key) => ({
+        key,
+        label: key.charAt(0).toUpperCase() + key.slice(1),
+        count: v8counts[key] as number | undefined,
+        content: <RecordTabV8 m={m} tab={key} />,
+      }))
+    : [];
   const v3Items = [
     {
       key: "gaps",
@@ -1523,7 +1583,7 @@ export function MemberDetailPage() {
     ...(v4
       ? [{ key: "profile", label: "Profile", count: undefined as number | undefined, content: <ProfileTab m={m} /> }]
       : []),
-    ...(
+    ...(v8t ? v8Items : (
       [
         ["claims", "Claims"],
         ["diagnoses", "Diagnoses"],
@@ -1541,7 +1601,7 @@ export function MemberDetailPage() {
           ? new Set(recordsOf(m).filter((e) => e.provider).map((e) => e.provider)).size
           : recordsOf(m).filter((e) => v3TabOf(e) === key).length,
       content: <RecordTabV3 m={m} tab={key} />,
-    })),
+    }))),
   ].filter((t) => !role.hiddenTabs.includes(t.key));
 
   return (

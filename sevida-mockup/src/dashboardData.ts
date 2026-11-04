@@ -3,7 +3,7 @@ import { getVersion } from "./version";
 import {
   AGE_RANGES,
   GENDER_V3,
-  MILITARY_V3,
+  militaryOptions,
   ageParts,
   tricareIdOf,
   ageRangeOf,
@@ -26,6 +26,7 @@ import {
   dataFiles,
   fmtDate,
   groupings,
+  hashOf,
   MY,
   measures,
   allMembers,
@@ -306,7 +307,7 @@ export function facetOptions(): FacetOptions {
     ethnicity: sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
     state: memberStates,
     county: memberCounties,
-    military: v3() ? MILITARY_V3 : MILITARY_VALUES,
+    military: v3() ? militaryOptions() : MILITARY_VALUES,
     openGaps: OPEN_GAP_VALUES,
     a1c: A1C_VALUES,
   };
@@ -635,13 +636,27 @@ export function trendRows(
   });
 }
 
+/**
+ * Met members at the end of a day of a real year. With `spread` (Version 9), when the last evidence in the demo files is well before the end of the
+ * period (for 2025 it is August), the evidence is spread evenly over the whole period: the year-end result is unchanged and the months no longer
+ * stay flat at the end of the year. Every Version 9 number for a past day (the cards and the Timeframe table) goes through here, so they agree.
+ */
+function metByDay(s: ReturnType<typeof yearStats>, y: number, end: number, spread: boolean) {
+  const t0 = new Date(y, 0, 1).getTime();
+  const last = s.met.length ? s.met[s.met.length - 1] : 0;
+  const stop = y === CURRENT_YEAR ? startOfDay(DEMO_NOW).getTime() : new Date(y, 11, 31).getTime();
+  let t = end;
+  if (spread && last > t0 && last < stop - 20 * DAY) t = t0 + (t - t0) * ((last - t0) / (stop - t0));
+  return countUpTo(s.met, t + DAY - 1);
+}
+
 /** Version 7 (Lucid design): the rate and the counts as they stood at the end of one day. Null when that year has no data. */
-export function snapshotAt(code: MeasureCode, list: Member[], d: Date) {
+export function snapshotAt(code: MeasureCode, list: Member[], d: Date, spread = false) {
   const y = d.getFullYear();
   if (!YEARS.includes(y)) return null;
   const s = yearStats(list, code, y);
   if (!s.den) return null;
-  const met = countUpTo(s.met, d.getTime() + DAY - 1);
+  const met = metByDay(s, y, d.getTime(), spread);
   return { met, den: s.den, gap: s.den - met, rate: (met / s.den) * 100 };
 }
 
@@ -705,6 +720,143 @@ export function compareSeries(
     };
   });
   return { labels, series };
+}
+
+/* ---------------------------------------------------------------- Timeframe (Version 8, dashboard review) */
+
+export type Timeframe = "annual" | "quarterly" | "monthly";
+export const timeframeOptions: { value: Timeframe; label: string }[] = [
+  { value: "annual", label: "Annual" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "monthly", label: "Monthly" },
+];
+/** Annual shows 5 years, Quarterly 9 rolling quarters, Monthly 24 rolling months (dashboard review). */
+export const TIMEFRAME_LENGTH: Record<Timeframe, number> = { annual: 5, quarterly: 9, monthly: 24 };
+
+export interface TimeframeRow {
+  id: string;
+  label: string;
+  end: Date;
+  /** The year to date: the period is not over yet. */
+  partial: boolean;
+  /** Made-up numbers: the demo files only hold the years in YEARS. Earlier periods are sample data. */
+  sample: boolean;
+  /** Member Population: everyone evaluated. */
+  evaluated: number;
+  /** Initial Population. */
+  initial: number;
+  /** Eligible Population. */
+  eligible: number;
+  excluded: number;
+  met: number;
+  gap: number;
+  /** Met % of the eligible population at the end of the period. */
+  rate: number | null;
+}
+
+/**
+ * The rows behind the Timeframe chart and table. A period is counted at its last day: the Met count is what had been met by then
+ * (each measurement year starts again on January 1). Quarterly and Monthly show completed periods only, ending on the most recent completed
+ * quarter or month. Annual ends on the current year to date. Periods before the first year the demo holds are made-up sample numbers
+ * that follow the first real year's shape, a little lower the further back they go, with populations growing about 5% a year.
+ */
+export function timeframeRows(code: MeasureCode, list: Member[], tf: Timeframe): TimeframeRow[] {
+  const today = startOfDay(DEMO_NOW);
+  const ends: Date[] = [];
+  if (tf === "annual") {
+    for (let y = CURRENT_YEAR - TIMEFRAME_LENGTH.annual + 1; y <= CURRENT_YEAR; y++)
+      ends.push(y === CURRENT_YEAR ? today : new Date(y, 11, 31));
+  } else {
+    const step = tf === "monthly" ? 1 : 3;
+    // The last day of the most recent completed month or quarter.
+    let m = today.getFullYear() * 12 + today.getMonth() - 1;
+    if (tf === "quarterly") m -= ((m % 12) + 1) % 3;
+    for (let i = TIMEFRAME_LENGTH[tf] - 1; i >= 0; i--) {
+      const mm = m - i * step;
+      ends.push(endOfMonth(Math.floor(mm / 12), ((mm % 12) + 12) % 12));
+    }
+  }
+  const firstYear = Math.min(...YEARS);
+  const real = new Map<number, { stats: ReturnType<typeof yearStats>; k: Tally }>();
+  const realOf = (y: number) => {
+    let r = real.get(y);
+    if (!r) {
+      r = { stats: yearStats(list, code, y), k: tally(list, code, y) };
+      real.set(y, r);
+    }
+    return r;
+  };
+  const everyone = list.length;
+  const jan1 = (y: number) => new Date(y, 0, 1).getTime();
+  const dec31 = (y: number) => new Date(y, 11, 31).getTime();
+  /** A steady wobble between -amp and +amp, the same every time for the same key. */
+  const nz = (key: string, amp: number) => ((hashOf(key) % 2001) / 1000 - 1) * amp;
+  const metAt = (st: ReturnType<typeof yearStats>, y: number, end: number) => metByDay(st, y, end, true);
+
+  // The shape of a year, from the first real year: the share of the year's final Met count reached by each point of the year (0 to 1).
+  const base = realOf(firstYear);
+  const baseTotal = base.stats.met.length;
+  const baseFinal = base.stats.den ? baseTotal / base.stats.den : 0;
+  const r0 = baseTotal ? metAt(base.stats, firstYear, jan1(firstYear)) / baseTotal : 0.55;
+  const realShape = (p: number) =>
+    baseTotal ? metAt(base.stats, firstYear, jan1(firstYear) + p * (dec31(firstYear) - jan1(firstYear))) / baseTotal : r0 + (1 - r0) * p;
+  // A smooth curve that keeps climbing and speeds up a little in the last quarter, as year-end outreach does.
+  const smooth = (p: number) => r0 + (1 - r0) * (0.8 * p + 0.2 * p ** 3);
+  const shape = (p: number) => 0.6 * realShape(p) + 0.4 * smooth(p);
+
+  const label = (e: Date) =>
+    tf === "annual"
+      ? e.getFullYear() === CURRENT_YEAR
+        ? `${e.getFullYear()} YTD`
+        : String(e.getFullYear())
+      : tf === "quarterly"
+        ? `Q${Math.floor(e.getMonth() / 3) + 1} ${e.getFullYear()}`
+        : `${monthShort(e)} ${e.getFullYear()}`;
+  return ends.map((end) => {
+    const y = end.getFullYear();
+    const partial = tf === "annual" && y === CURRENT_YEAR;
+    const common = { id: String(end.getTime()), label: label(end), end, partial };
+    if (YEARS.includes(y)) {
+      const { stats, k } = realOf(y);
+      const met = metAt(stats, y, end.getTime());
+      return {
+        ...common,
+        sample: false,
+        evaluated: everyone,
+        initial: k.eligible,
+        eligible: k.denominator,
+        excluded: k.excluded,
+        met,
+        gap: Math.max(0, k.denominator - met),
+        rate: k.denominator ? (met / k.denominator) * 100 : null,
+      };
+    }
+    // Sample years. Populations grow about 5% a year, so earlier periods are a little smaller and join smoothly onto the first real year.
+    const monthsBack = Math.max(0, (jan1(firstYear) - end.getTime()) / (30.44 * DAY));
+    const f = Math.max(0.6, 1 - (0.05 * monthsBack) / 12);
+    const den = Math.max(1, Math.round(base.k.denominator * f));
+    const excluded = Math.max(0, Math.round(base.k.excluded * f));
+    // Each year ends a little lower the further back it is, and has its own opening level and pace.
+    const back = firstYear - y;
+    const finalRate = Math.min(95, Math.max(20, baseFinal * 100 - 2.4 * back + nz(`${code}${y}final`, 1.6)));
+    const open = Math.min(0.8, Math.max(0.3, r0 + nz(`${code}${y}open`, 0.04)));
+    const pace = 0.88 + (hashOf(`${code}${y}pace`) % 25) / 100;
+    const p = Math.min(1, Math.max(0, (end.getTime() - jan1(y)) / (dec31(y) - jan1(y))));
+    const part = r0 < 1 ? (shape(p ** pace) - r0) / (1 - r0) : 1;
+    const rate = (finalRate / 100) * (open + (1 - open) * part);
+    const met = Math.min(den, Math.round(den * rate));
+    return {
+      ...common,
+      sample: true,
+      evaluated: Math.round(everyone * f),
+      initial: Math.max(den + excluded, Math.round(base.k.eligible * f)),
+      eligible: den,
+      excluded,
+      met,
+      gap: den - met,
+      rate: (met / den) * 100,
+    };
+  });
 }
 
 /* ---------------------------------------------------------------- run info (FR-705) */

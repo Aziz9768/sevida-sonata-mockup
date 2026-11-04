@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { PageContainer, SelectField } from "sevida-ui";
 import { RunNotice, RunSelect } from "../components/RunBits";
 import { MY, allMembers, fmtDate, measures } from "../data";
@@ -61,6 +61,7 @@ export function DashboardCardsPage() {
     [v3, multi, year],
   );
   const v7 = version.id >= 7;
+  const v9 = version.id >= 9;
   const run = runInfo();
   const { run: selectedRun } = useRun();
   const dataAsOf = run.sources.reduce(
@@ -142,13 +143,53 @@ export function DashboardCardsPage() {
       value: (r) => r.initial,
       align: "right",
     },
+    // Version 9: a visible way in. Clicking the row works too.
+    ...(v9
+      ? [
+          {
+            key: "open",
+            header: "Dashboard",
+            value: (r: Row) => r.code,
+            render: (r: Row) => (
+              <RouterLink
+                to={`/quicksight?m=${r.code}&from=cards`}
+                aria-label={`Open the ${gapShort(r.code)} dashboard`}
+                style={{ color: qs.color.accent, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+              >
+                Open →
+              </RouterLink>
+            ),
+            nowrap: true,
+          },
+        ]
+      : []),
   ];
+
+  // Version 9: the table is first, with an Open link on each row. QuickSight cannot click a card, but a table cell can be a link (URL action).
+  const colsV9 = [cols[0], ...cols.filter((c) => c.key === "open"), ...cols.slice(1).filter((c) => c.key !== "open")];
+  const tableTile = (
+    <QsTile
+      cols={36}
+      title={v9 ? "Measure dashboards" : "All numbers by measure"}
+      subtitle={v9 ? "Select Open on a row to go to that measure's dashboard. Eligible is the number of members the rate is out of." : `Click a row to open that measure. ${v3 ? "GSD" : "Diabetes blood sugar (GSD)"} shows its first rate here.`}
+    >
+      <QsTable
+        label="All numbers by measure"
+        cols={v9 ? colsV9 : cols}
+        rows={rows}
+        rowKey={(r) => r.code}
+        maxHeight={v9 ? 100000 : 300}
+        exportFile={`measures-${year}`}
+        onRowSelect={(r) => open(r.code)}
+      />
+    </QsTile>
+  );
 
   return (
     <PageContainer
       title={version.id >= 3 ? "Overview" : "Analytics option 2"}
       titleVariant="overview"
-      subtitle="All measures on one sheet. Click a bar or a row to open that measure's dashboard."
+      subtitle={v9 ? "All measures on one sheet. Select Open on a measure to go to its dashboard." : "All measures on one sheet. Click a bar or a row to open that measure's dashboard."}
     >
       <RunNotice />
       <NotesContext.Provider value={NO_NOTES}>
@@ -162,7 +203,7 @@ export function DashboardCardsPage() {
           }}
         >
           <QsControlsBar>
-            <QsControl>
+            <QsControl showInfo={v9} info={v9 ? `Measurement period: ${periodText(year)}. The numbers are for the whole population.` : undefined}>
               <SelectField
                 label="Measurement year"
                 value={String(year)}
@@ -192,6 +233,8 @@ export function DashboardCardsPage() {
             )}
           </QsControlsBar>
           <QsSheet>
+            {/* Version 9: no text box here. The measurement period is in the info icon of Measurement Year, and how to open a measure is in the page subtitle. */}
+            {!v9 && (
             <QsTile cols={36} bare>
               <QsText>
                 <p>
@@ -206,10 +249,12 @@ export function DashboardCardsPage() {
                   ) : (
                     "The numbers are for the whole population, with no filters."
                   )}{" "}
-                  Click a bar or a row to open that measure's dashboard.
+                  {v9 ? "Select Open on a measure below to go to its dashboard." : "Click a bar or a row to open that measure's dashboard."}
                 </p>
               </QsText>
             </QsTile>
+            )}
+            {v9 && tableTile}
             <QsKpi
               cols={9}
               label="Measures"
@@ -218,9 +263,9 @@ export function DashboardCardsPage() {
             />
             <QsKpi
               cols={9}
-              label="Members"
+              label={v9 ? "Member Population" : "Members"}
               value={pop.length.toLocaleString("en-US")}
-              tip="Everyone in the files (initial population)."
+              tip={v9 ? "All members in the population from the Measurement Start Period." : "Everyone in the files (initial population)."}
             />
             <QsKpi
               cols={9}
@@ -313,21 +358,7 @@ export function DashboardCardsPage() {
                 />
               </QsTile>
             )}
-            <QsTile
-              cols={36}
-              title="All numbers by measure"
-              subtitle={`Click a row to open that measure. ${v3 ? "GSD" : "Diabetes blood sugar (GSD)"} shows its first rate here.`}
-            >
-              <QsTable
-                label="All numbers by measure"
-                cols={cols}
-                rows={rows}
-                rowKey={(r) => r.code}
-                maxHeight={300}
-                exportFile={`measures-${year}`}
-                onRowSelect={(r) => open(r.code)}
-              />
-            </QsTile>
+            {!v9 && tableTile}
           </QsSheet>
         </QsFrame>
       </NotesContext.Provider>
