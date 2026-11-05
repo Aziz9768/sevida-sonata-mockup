@@ -501,7 +501,7 @@ function MemberDetails({ code }: { code: MeasureCode }) {
     </Link>
   );
   const cols: QsCol<Member>[] = [
-    { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), nowrap: true },
+    { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), render: (m) => link(m, tricareIdOf(m)), nowrap: true },
     { key: "first", header: "First Name", value: (m) => m.first, render: (m) => link(m, m.first), nowrap: true },
     { key: "last", header: "Last Name", value: (m) => m.last, render: (m) => link(m, m.last), nowrap: true },
     { key: "dob", header: "Date of Birth", value: (m) => m.dob.getTime(), render: (m) => fmtDate(m.dob), nowrap: true },
@@ -549,11 +549,11 @@ function MemberDetails({ code }: { code: MeasureCode }) {
             <TextField
               label="Search"
               type="search"
-              placeholder="Search by member name or Tricare ID"
+              placeholder="Search by Member Name or Tricare ID"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               slotProps={{
-                htmlInput: { "aria-label": "Search by member name or Tricare ID" },
+                htmlInput: { "aria-label": "Search by Member Name or Tricare ID" },
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
