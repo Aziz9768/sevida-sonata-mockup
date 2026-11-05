@@ -27,9 +27,11 @@ import { Box, Typography } from "@mui/material";
 import { RouterLinkAdapter } from "./components/RouterLinkAdapter";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QuickSightDashboardPage } from "./pages/QuickSightDashboardPage";
+import { MeasureLucidPage } from "./pages/MeasureLucidPage";
 import { NotFoundPageV7 } from "./pages/NotFoundPageV7";
 import { measureByCode } from "./data";
 import { DashboardCardsPage } from "./pages/DashboardCardsPage";
+import { AnalyticsOverviewV10Page } from "./pages/AnalyticsOverviewV10Page";
 import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
 import { AnalyticsOverviewPage } from "./pages/AnalyticsOverviewPage";
 import { AnalyticsMeasurePage } from "./pages/AnalyticsMeasurePage";
@@ -514,6 +516,12 @@ function Protected() {
                   <NotFoundPageV7
                     what={`There is no dashboard called "${new URLSearchParams(search).get("m")}"`}
                   />
+                ) : version.id >= 10 ? (
+                  // Version 10: every measure dashboard drawn like the Lucid BCS chart. The key restarts the filters when the measure changes.
+                  (() => {
+                    const mc = measureByCode(new URLSearchParams(search).get("m") ?? "")?.code ?? "BCS-E";
+                    return <MeasureLucidPage key={mc} code={mc} />;
+                  })()
                 ) : (
                   <QuickSightDashboardPage />
                 )}
@@ -528,7 +536,7 @@ function Protected() {
               <V5Redirect to="/analytics" />
             ) : (
               <MenuGate path="/dashboards">
-                <DashboardCardsPage />
+                {version.id >= 10 ? <AnalyticsOverviewV10Page /> : <DashboardCardsPage />}
               </MenuGate>
             )
           }

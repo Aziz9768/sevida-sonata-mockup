@@ -776,6 +776,11 @@ export function timeframeRows(code: MeasureCode, list: Member[], tf: Timeframe):
       ends.push(endOfMonth(Math.floor(mm / 12), ((mm % 12) + 12) % 12));
     }
   }
+  return rowsForEnds(code, list, tf, ends);
+}
+
+/** The rows for any list of period end days. Timeframe decides the labels and which row is "year to date". */
+function rowsForEnds(code: MeasureCode, list: Member[], tf: Timeframe, ends: Date[]): TimeframeRow[] {
   const firstYear = Math.min(...YEARS);
   const real = new Map<number, { stats: ReturnType<typeof yearStats>; k: Tally }>();
   const realOf = (y: number) => {
@@ -857,6 +862,38 @@ export function timeframeRows(code: MeasureCode, list: Member[], tf: Timeframe):
       rate: (met / den) * 100,
     };
   });
+}
+
+/**
+ * Version 10 (Lucid BCS): the same period of three years side by side, one line each: the current year to date, last year, and the year before.
+ * Quarterly gives Q1 to Q4, Monthly gives Jan to Dec. A period that has not started yet is null. The current period runs to the latest run day.
+ * Numbers come from the same rows as the Timeframe table, so both agree. The year before the first demo year is sample data.
+ */
+export function yearLines(code: MeasureCode, list: Member[], g: "quarterly" | "monthly") {
+  const today = startOfDay(DEMO_NOW);
+  const labels = g === "monthly" ? Array.from({ length: 12 }, (_, i) => monthShort(new Date(2000, i, 1))) : ["Q1", "Q2", "Q3", "Q4"];
+  const years = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
+  const series = years.map((y) => {
+    const idx: number[] = [];
+    const ends: Date[] = [];
+    labels.forEach((_, i) => {
+      const startMonth = g === "monthly" ? i : i * 3;
+      if (new Date(y, startMonth, 1) > today) return;
+      const end = endOfMonth(y, g === "monthly" ? i : i * 3 + 2);
+      idx.push(i);
+      ends.push(end > today ? today : end);
+    });
+    const rows = rowsForEnds(code, list, g, ends);
+    const values: (number | null)[] = labels.map(() => null);
+    const counts: (number | null)[] = labels.map(() => null);
+    const sample = rows.some((r) => r.sample);
+    idx.forEach((i, k) => {
+      values[i] = rows[k].rate;
+      counts[i] = rows[k].met;
+    });
+    return { year: y, name: y === CURRENT_YEAR ? `${y} YTD` : String(y), values, counts, sample };
+  });
+  return { labels, series };
 }
 
 /* ---------------------------------------------------------------- run info (FR-705) */

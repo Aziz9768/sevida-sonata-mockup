@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -195,10 +195,26 @@ export const VERSIONS: VersionInfo[] = [
       "Less space on the measure dashboard: the two note lines are one line (the sentence about the cards is in About this measure). Timeframe sits inside the trend chart tile and Top N Managers inside both Top 10 tiles, instead of their own boxes. The suggested focus is one line that opens to the full advice. Two items are questions for the QuickSight team (Ask Q35): a control inside a chart tile, and a collapsible text box.",
     ],
   },
+  {
+    id: 10,
+    name: "Version 10",
+    date: "2026-11-05",
+    summary:
+      "Version 9 with the Overview page replaced by the Sonata Analytics page as it is today: a plain list of the measures with what each one measures.",
+    changes: [
+      "Everything in Version 9 stays. Version 9 is as it was.",
+      "Overview page now matches Sonata (sonataweb.dev.leapmetrics.io/m/analytics): Home > Analytics breadcrumb, the Analytics & Dashboards heading, a tab row (Overview, BCS, CCS, COL, GSD, WCV), and one card titled Overview with a two-column list, Measure and What it measures. Each measure name is a link to that measure's dashboard, and each tab opens it too. The descriptions are Sonata's own words.",
+      "Removed from the Overview in this version: the controls (Measurement Year, Results as of Run, Gap in More Than One Measure), the numbers table, the four tiles and the two charts. The numbers stay inside each measure's dashboard. Version 9 still has them.",
+      "All five measure dashboards (Analytics > BCS, CCS, COL, GSD, WCV) are now drawn as the Lucid chart: HEDIS Care Gaps Dashboard - <measure name>. Three tabs: Overview, Member Details and Admin. BCS is the Lucid original; the other four use the same layout, with the measure's own names, numbers and definition text. That wording comes from the existing mockup text, so please review it per measure.",
+      "BCS Overview: the HEDIS version box (2026, Measurement Start and End) and the Last Updated / Next Refresh box, the collapsible About this measure, five controls (Primary Care Manager, Age Range, Race, Ethnicity, Gender), eight cards each with a Prior Month comparison, a Trend Timeframe control (Annual, Quarterly, Monthly) with the Lucid descriptions on hover, the trend chart for the timeframe (Annual: Met Count bars and Met Rate line; Quarterly and Monthly: one Met Rate line per year), Top n Open Gaps and Top n Closed Gaps by Primary Care Manager, and BCS Gaps by Age Range, Race, Ethnicity and Gender. Only the latest year is shown, so there is no Measurement Year control.",
+      "BCS Member Details: a Population control and one Search box (member name or Tricare ID, replacing the two separate Tricare ID and Member Name dropdowns), the Member Detail Table, and the Explanation and Recommendation of the member you click. BCS Admin: the Measurement Run History.",
+      "Removed from the BCS dashboard in this version because the Lucid chart does not have them: the QuickSight Reset / Export / Bookmarks / Share bar, the Controls header, Measurement Year, Results as of Run, the Population Counts table, Suggested focus, the tile descriptions under the Top n charts and the small-group notes.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 9;
+export const LATEST_VERSION: VersionId = 10;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

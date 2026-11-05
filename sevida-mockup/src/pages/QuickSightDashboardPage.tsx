@@ -164,7 +164,7 @@ const byName = (items: [string, ReactNode][]) =>
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map((i) => i[1]);
 /** Version 8 (Lucid chart): the About box text. Only BCS is on the Lucid chart; the other measures keep the existing wording. */
-const aboutFor = (code: MeasureCode): [string, string][] =>
+export const aboutFor = (code: MeasureCode): [string, string][] =>
   code === "BCS-E"
     ? [
         [
@@ -186,10 +186,10 @@ const aboutFor = (code: MeasureCode): [string, string][] =>
         ["Exclusions:", V3_EXCLUSIONS[code]],
       ];
 /** Version 8 (Lucid chart): "HEDIS Care Gaps Dashboard - Breast Cancer Screening (BCS)". */
-const lucidTitle = (code: MeasureCode) =>
+export const lucidTitle = (code: MeasureCode) =>
   `HEDIS Care Gaps Dashboard - ${V3_GAP_LABEL[code].replace(/^\w+\s[-·]\s/, "")} (${gapShort(code)})`;
 /** Version 7 (Lucid design): "1st Jan 2026". */
-const ordDate = (d: Date) => {
+export const ordDate = (d: Date) => {
   const n = d.getDate();
   const th = n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th";
   return `${n}${th} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
@@ -353,8 +353,8 @@ const tabLabel = (t: string) =>
 const tabsFor = () => (getVersion() >= 7 ? ["Overview", "Details", "Admin"] : SHEETS);
 
 /** Version 7: the populations the Member Details table can list. */
-type MemberDetailsFilter = { pop: "all" | "initial" | "eligible" | "excluded" | "met" | "gap"; tricare: string; name: string };
-const POPULATIONS: { value: MemberDetailsFilter["pop"]; label: string; states: MeasureState[] | null }[] = [
+export type MemberDetailsFilter = { pop: "all" | "initial" | "eligible" | "excluded" | "met" | "gap"; tricare: string; name: string };
+export const POPULATIONS: { value: MemberDetailsFilter["pop"]; label: string; states: MeasureState[] | null }[] = [
   { value: "all", label: "All Members Evaluated", states: null },
   { value: "initial", label: "Initial Population", states: ["Met", "Gap", "Excluded", "Review"] },
   { value: "eligible", label: "Eligible Population", states: ["Met", "Gap"] },
@@ -363,7 +363,7 @@ const POPULATIONS: { value: MemberDetailsFilter["pop"]; label: string; states: M
   { value: "gap", label: "Not Met Count", states: ["Gap"] },
 ];
 /** The tile descriptions, reused as the hover text of the Population filter (dashboard review: "same descriptions as widgets"). */
-const initialPopTip = (code: MeasureCode, v8: boolean) =>
+export const initialPopTip = (code: MeasureCode, v8: boolean) =>
   `All members meeting the measurement criteria to identify gaps in care. For ${v3Code(code)}: ${
     v8 && code === "BCS-E"
       ? "members aged 42-74"
@@ -372,16 +372,16 @@ const initialPopTip = (code: MeasureCode, v8: boolean) =>
           return x.charAt(0).toLowerCase() + x.slice(1);
         })()
   }.`;
-const eligiblePopTip = (code: MeasureCode, v8: boolean) =>
+export const eligiblePopTip = (code: MeasureCode, v8: boolean) =>
   v8 ? "All members who are not excluded from the measure." : `All members who are not excluded from the measure. ${V3_DEFINITION[code]}`;
-const excludedPopTip = (code: MeasureCode, v8: boolean) =>
+export const excludedPopTip = (code: MeasureCode, v8: boolean) =>
   v8 && code === "BCS-E"
     ? "All members who are excluded from the measure - e.g. have hospice, palliative care, frailty, had a mastectomy."
     : `All members who are excluded from the measure. For ${v3Code(code)}: ${V3_EXCLUSIONS[code].charAt(0).toLowerCase()}${V3_EXCLUSIONS[code].slice(1)}`;
-const MEMBER_POP_TIP = "All members in the population from the Measurement Start Period.";
-const NOT_MET_TIP = "Eligible members who have not met the measure yet. Each one has an open gap.";
+export const MEMBER_POP_TIP = "All members in the population from the Measurement Start Period.";
+export const NOT_MET_TIP = "Eligible members who have not met the measure yet. Each one has an open gap.";
 /** Version 8 names for the Population menu (dashboard review): Member Population, Met Population, Not Met Population. */
-const popOptionsV8 = (code: MeasureCode) =>
+export const popOptionsV8 = (code: MeasureCode) =>
   POPULATIONS.map((p) => ({
     value: p.value,
     label: { all: "Member Population", met: "Met Population", gap: "Not Met Population" }[p.value as string] ?? p.label,
@@ -2713,7 +2713,7 @@ const stepWord = (o: string) =>
   o === "pass" ? "Yes" : o === "fail" || o === "unmet" ? "No" : o === "excluded" ? "Yes, excluded" : o === "review" ? "Needs review" : "Not checked";
 
 /** Version 8 (Lucid chart): the BCS rows of the Explanation table, each one a Yes or No about this member. */
-const lucidBcsRows = (m: Member, year: number): { k: string; v: string; d: string }[] => {
+export const lucidBcsRows = (m: Member, year: number): { k: string; v: string; d: string }[] => {
   const start = new Date(year, 0, 1);
   const end = new Date(year, 11, 31);
   const yn = (b: boolean) => (b ? "Yes" : "No");
@@ -2734,7 +2734,7 @@ const lucidBcsRows = (m: Member, year: number): { k: string; v: string; d: strin
 };
 
 /** The Explanation and Recommendation of one member (Lucid design). The recommendation words are example text until the AI insights test is done. */
-function MemberInsightPanels({ member, code, year }: { member: Member | null; code: MeasureCode; year: number }) {
+export function MemberInsightPanels({ member, code, year, lucid }: { member: Member | null; code: MeasureCode; year: number; lucid?: boolean }) {
   const v8 = useVersion().version.id >= 8;
   const def = measureFor(measureByCode(code)!, year);
   if (!member)
@@ -2793,7 +2793,7 @@ function MemberInsightPanels({ member, code, year }: { member: Member | null; co
           ]}
         />
       </QsTile>
-      <QsTile cols={18} title="Recommendation" subtitle="For the member clicked in the list above. Example text: the words change when the AI insights test is done." fr="707.2">
+      <QsTile cols={18} title="Recommendation" subtitle={lucid ? "For the member clicked in the list above." : "For the member clicked in the list above. Example text: the words change when the AI insights test is done."} fr="707.2">
         <QsText>
           <p>
             <b>Status:</b> {stateWord[r.state]} · <b>Priority:</b> {priority} · <b>Confidence:</b> {confidence}

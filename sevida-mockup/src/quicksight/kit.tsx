@@ -91,12 +91,15 @@ export function QsFrame({
   active,
   onTab,
   onReset,
+  toolbar = true,
   children,
 }: {
   tabs: string[];
   active: string;
   onTab: (t: string) => void;
   onReset: () => void;
+  /** Version 10 (Lucid BCS): false leaves out the Reset / Export / Bookmarks / Share bar. The Lucid chart has only the tabs. */
+  toolbar?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -113,6 +116,7 @@ export function QsFrame({
         "& .MuiFormLabel-root": { fontWeight: 400 },
       }}
     >
+      {toolbar && (
       <Box
         sx={{
           display: "flex",
@@ -146,6 +150,7 @@ export function QsFrame({
           </Box>
         ))}
       </Box>
+      )}
       <Box
         role="tablist"
         sx={{
@@ -284,12 +289,16 @@ export function QsControlsBar({
   children,
   fr,
   ask,
+  headless,
 }: {
   children: ReactNode;
   fr?: string;
   ask?: string[];
+  /** Version 10 (Lucid BCS): no "Controls" header, the controls are simply there. */
+  headless?: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const [openState, setOpen] = useState(true);
+  const open = headless ? true : openState;
   return (
     <Box
       sx={{
@@ -302,6 +311,7 @@ export function QsControlsBar({
       }}
     >
       <Notes fr={fr} ask={ask} />
+      {!headless && (
       <Box
         component="button"
         type="button"
@@ -320,6 +330,7 @@ export function QsControlsBar({
       >
         {open ? "▾" : "▸"} Controls
       </Box>
+      )}
       {open && (
         <Box
           sx={{
@@ -1617,6 +1628,7 @@ export function QsGapBars({
   empty = "Nobody is eligible for these filters",
   noteWidth = 0,
   totals,
+  legendByFirst,
 }: {
   rows: QsGapRow[];
   first?: "open" | "closed";
@@ -1625,6 +1637,8 @@ export function QsGapBars({
   noteWidth?: number;
   /** Version 8: the Show totals label at the end of each bar (a bar chart cannot hold a text column, so the note is in the tooltip only). */
   totals?: boolean;
+  /** Version 10 (Lucid BCS): the legend lists the segment that is drawn first, first (Closed Gaps, Open Gaps on the closed chart). */
+  legendByFirst?: boolean;
 }) {
   const [ref, W] = useWidth();
   const CH = 6.4;
@@ -1649,7 +1663,13 @@ export function QsGapBars({
   const fg = { open: onOpen, closed: onClosed };
   return (
     <Box ref={ref} aria-label={label} role="group">
-      <QsLegend items={[{ label: "Open Gaps", color: QS_OPEN }, { label: "Closed Gaps", color: QS_CLOSED }]} />
+      <QsLegend
+        items={
+          legendByFirst && first === "closed"
+            ? [{ label: "Closed Gaps", color: QS_CLOSED }, { label: "Open Gaps", color: QS_OPEN }]
+            : [{ label: "Open Gaps", color: QS_OPEN }, { label: "Closed Gaps", color: QS_CLOSED }]
+        }
+      />
       {rows.length === 0 ? (
         <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
       ) : (
@@ -1840,7 +1860,8 @@ export function QsDonut({
         <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
       ) : (
         <Box sx={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap", ...(qs8 ? { flexDirection: "column", alignItems: "stretch", gap: 1 } : {}) }}>
-          <svg width={qs8 ? 240 : 180} height={qs8 ? 240 : 180} role="img" aria-label={label} style={qs8 ? { margin: "0 auto", maxWidth: "100%" } : undefined}>
+          <svg width={qs8 ? 300 : 180} height={qs8 ? 240 : 180} viewBox={qs8 ? "0 0 300 240" : undefined} role="img" aria-label={label} style={qs8 ? { margin: "0 auto", maxWidth: "100%" } : undefined}>
+            <g transform={qs8 ? "translate(30,0)" : undefined}>
             {slices.map((s, i) => (
               <path key={s.label} d={arc(s.value)} fill={steps[i % steps.length]} stroke={qs.color.primaryBackground} strokeWidth={2}>
                 <title>{`${s.label}: ${s.value} (${((s.value / total) * 100).toFixed(1)}%)${s.detail ? `, ${s.detail}` : ""}`}</title>
@@ -1864,6 +1885,7 @@ export function QsDonut({
                   </text>
                 );
               })}
+            </g>
           </svg>
           {qs8 && <QsLegend items={slices.map((s, i) => ({ label: s.label, color: steps[i % steps.length] }))} />}
           <Box sx={{ display: qs8 ? "none" : "grid", gap: 0.75, minWidth: 0 }}>
@@ -1879,6 +1901,355 @@ export function QsDonut({
           </Box>
         </Box>
       )}
+    </Box>
+  );
+}
+
+/* ============================================================ Version 10: Lucid BCS trend charts */
+
+export interface QsComboRow {
+  label: string;
+  /** The bar (a count). */
+  count: number;
+  /** The line, 0 to 100, or null. */
+  rate: number | null;
+  /** Made-up number, named in the tooltip. */
+  sample?: boolean;
+}
+
+/**
+ * Lucid "Annual Trend - BCS Met Count and Rate": one bar for the Met Count and one line for the Met Rate (right-hand axis, 0 to 100%) per year.
+ * Each bar carries its number, each point its percent. Hover a year for both figures.
+ */
+export function QsComboTrend({
+  rows,
+  countName,
+  rateName,
+  xTitle,
+  label,
+  height = 380,
+}: {
+  rows: QsComboRow[];
+  countName: string;
+  rateName: string;
+  xTitle: string;
+  label: string;
+  height?: number;
+}) {
+  const [ref, W] = useWidth();
+  const padL = 52, padR = 52, padT = 18, padB = 56;
+  const n = rows.length;
+  const slot = (W - padL - padR) / Math.max(1, n);
+  const bw = Math.min(64, slot * 0.6);
+  const ih = height - padT - padB;
+  const max = niceMax(Math.max(1, ...rows.map((r) => r.count)));
+  const y = (v: number) => padT + ih - (v / max) * ih;
+  const yr = (v: number) => padT + ih - (v / 100) * ih;
+  const line = rows
+    .map((r, i) => (r.rate === null ? null : `${padL + slot * i + slot / 2},${yr(r.rate)}`))
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <QsLegend
+        items={[
+          { label: countName, color: QS_CLOSED },
+          { label: rateName, color: qs.meaning.main, line: true },
+        ]}
+      />
+      {n === 0 ? (
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>No data</Typography>
+      ) : (
+        <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke={qs.color.border} />
+              <text x={padL - 6} y={y(max * t) + 4} textAnchor="end" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(max * t).toLocaleString("en-US")}
+              </text>
+              <text x={W - padR + 6} y={yr(100 * t) + 4} textAnchor="start" fontSize={11} fill={qs.color.mutedText}>
+                {Math.round(100 * t)}%
+              </text>
+            </g>
+          ))}
+          <text x={12} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(-90 12 ${padT + ih / 2})`} textAnchor="middle">
+            {countName}
+          </text>
+          <text x={W - 10} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(90 ${W - 10} ${padT + ih / 2})`} textAnchor="middle">
+            {rateName}
+          </text>
+          <text x={padL + (W - padL - padR) / 2} y={height - 6} fontSize={11} fill={qs.color.mutedText} textAnchor="middle">
+            {xTitle}
+          </text>
+          {rows.map((r, i) => {
+            const cx = padL + slot * i + slot / 2;
+            const h = (r.count / max) * ih;
+            const tip = `${r.label}${r.sample ? " (sample data)" : ""}: ${countName} ${r.count.toLocaleString("en-US")}, ${rateName} ${r.rate === null ? "none" : r.rate.toFixed(2) + "%"}`;
+            return (
+              <g key={`${r.label}-${i}`}>
+                <title>{tip}</title>
+                <rect x={cx - slot / 2} y={padT} width={slot} height={ih + padB} fill="transparent" />
+                {r.count > 0 && <rect x={cx - bw / 2} y={y(0) - h} width={bw} height={h} fill={QS_CLOSED} />}
+                {h >= 18 && (
+                  <text x={cx} y={y(0) - 6} textAnchor="middle" fontSize={11} fontWeight={700} fill={onClosed}>
+                    {r.count.toLocaleString("en-US")}
+                  </text>
+                )}
+                <text x={cx} y={height - 30} textAnchor="middle" fontSize={11} fill={qs.color.secondaryForeground}>
+                  {r.label}
+                </text>
+              </g>
+            );
+          })}
+          <polyline points={line} fill="none" stroke={qs.meaning.main} strokeWidth={2} />
+          {rows.map((r, i) =>
+            r.rate === null ? null : (
+              <g key={i}>
+                <circle cx={padL + slot * i + slot / 2} cy={yr(r.rate)} r={4} fill={qs.meaning.main} stroke={qs.color.primaryBackground} strokeWidth={2} />
+                <text x={padL + slot * i + slot / 2} y={yr(r.rate) - 10} textAnchor="middle" fontSize={11} fontWeight={700} fill={qs.color.primaryForeground} stroke="#fff" strokeWidth={3} paintOrder="stroke">
+                  {r.rate.toFixed(2)}%
+                </text>
+              </g>
+            ),
+          )}
+        </svg>
+      )}
+    </Box>
+  );
+}
+
+export interface QsYearLine {
+  name: string;
+  values: (number | null)[];
+  sample?: boolean;
+}
+
+/**
+ * Lucid "Quarterly / Monthly Trend - BCS Met Rate": one line per year over the same periods (Q1 to Q4, or Jan to Dec), 0 to 100%.
+ * Colour alone never tells the lines apart: each line has its own dash and marker, and the legend shows them.
+ */
+export function QsYearLines({
+  labels,
+  series,
+  xTitle,
+  yTitle,
+  label,
+  height = 380,
+}: {
+  labels: string[];
+  series: QsYearLine[];
+  xTitle: string;
+  yTitle: string;
+  label: string;
+  height?: number;
+}) {
+  const [ref, W] = useWidth();
+  const padL = 52, padR = 20, padT = 16, padB = 56;
+  const n = labels.length;
+  const slot = (W - padL - padR) / Math.max(1, n);
+  const ih = height - padT - padB;
+  const y = (v: number) => padT + ih - (v / 100) * ih;
+  const cx = (i: number) => padL + slot * i + slot / 2;
+  const colors = [qs.meaning.main, qs.color.accent, qs.meaning.gap];
+  const dashes = [undefined, "7 4", "2 4"];
+  const marks = ["circle", "square", "diamond"] as const;
+  const marker = (kind: (typeof marks)[number], x: number, yy: number, c: string, key: string) =>
+    kind === "circle" ? (
+      <circle key={key} cx={x} cy={yy} r={4} fill={c} stroke={qs.color.primaryBackground} strokeWidth={2} />
+    ) : kind === "square" ? (
+      <rect key={key} x={x - 4} y={yy - 4} width={8} height={8} fill={c} stroke={qs.color.primaryBackground} strokeWidth={2} />
+    ) : (
+      <polygon key={key} points={`${x},${yy - 5.5} ${x + 5.5},${yy} ${x},${yy + 5.5} ${x - 5.5},${yy}`} fill={c} stroke={qs.color.primaryBackground} strokeWidth={1.5} />
+    );
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 1 }} aria-label="Legend" role="group">
+        {series.map((s, k) => (
+          <Box key={s.name} sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <svg width={26} height={12} aria-hidden="true">
+              <line x1={0} x2={26} y1={6} y2={6} stroke={colors[k % 3]} strokeWidth={2.5} strokeDasharray={dashes[k % 3]} />
+              {marker(marks[k % 3], 13, 6, colors[k % 3], "m")}
+            </svg>
+            <Typography sx={{ fontSize: qs.type.subtitle.size, color: qs.color.secondaryForeground }}>{s.name}</Typography>
+          </Box>
+        ))}
+      </Box>
+      <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={W - padR} y1={y(100 * t)} y2={y(100 * t)} stroke={qs.color.border} />
+            <text x={padL - 6} y={y(100 * t) + 4} textAnchor="end" fontSize={11} fill={qs.color.mutedText}>
+              {Math.round(100 * t)}%
+            </text>
+          </g>
+        ))}
+        <text x={12} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(-90 12 ${padT + ih / 2})`} textAnchor="middle">
+          {yTitle}
+        </text>
+        <text x={padL + (W - padL - padR) / 2} y={height - 6} fontSize={11} fill={qs.color.mutedText} textAnchor="middle">
+          {xTitle}
+        </text>
+        {labels.map((l, i) => (
+          <g key={l}>
+            <title>
+              {`${l}: ${series.map((s) => `${s.name} ${s.values[i] === null ? "none" : s.values[i]!.toFixed(2) + "%"}${s.sample ? " (sample data)" : ""}`).join(", ")}`}
+            </title>
+            <rect x={cx(i) - slot / 2} y={padT} width={slot} height={ih + 30} fill="transparent" />
+            <text x={cx(i)} y={height - 30} textAnchor="middle" fontSize={11} fill={qs.color.secondaryForeground}>
+              {l}
+            </text>
+          </g>
+        ))}
+        {series.map((s, k) => {
+          const pts = s.values.map((v, i) => (v === null ? null : { x: cx(i), y: y(v), v }));
+          const pl = pts.filter(Boolean).map((p) => `${p!.x},${p!.y}`).join(" ");
+          return (
+            <g key={s.name}>
+              <polyline points={pl} fill="none" stroke={colors[k % 3]} strokeWidth={2} strokeDasharray={dashes[k % 3]} />
+              {pts.map((p, i) => (p ? marker(marks[k % 3], p.x, p.y, colors[k % 3], `${s.name}-${i}`) : null))}
+              {k === 0 &&
+                pts.map((p, i) =>
+                  p ? (
+                    <text key={`t${i}`} x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fontWeight={700} fill={qs.color.primaryForeground} stroke="#fff" strokeWidth={3} paintOrder="stroke">
+                      {p.v.toFixed(1)}%
+                    </text>
+                  ) : null,
+                )}
+            </g>
+          );
+        })}
+      </svg>
+    </Box>
+  );
+}
+
+export interface QsYearBarSeries {
+  name: string;
+  /** Met Count for each period, null when the period has not started. */
+  counts: (number | null)[];
+  /** Met Rate (0 to 100) for each period. Only the first series draws its rate as a line. */
+  rates: (number | null)[];
+  sample?: boolean;
+}
+
+/**
+ * Version 10 (Lucid BCS) Quarterly and Monthly trend: for each quarter or month, one Met Count bar per year side by side
+ * (the first series is the current year, drawn in the strongest colour), and a line for the current year's Met Rate on the right-hand axis.
+ * The rate axis is zoomed to the data so the line is easy to read. Hover a period for every figure.
+ */
+export function QsYearBars({
+  labels,
+  series,
+  xTitle,
+  countName,
+  rateName,
+  label,
+  height = 400,
+}: {
+  labels: string[];
+  series: QsYearBarSeries[];
+  xTitle: string;
+  countName: string;
+  rateName: string;
+  label: string;
+  height?: number;
+}) {
+  const [ref, W] = useWidth();
+  const padL = 52, padR = 56, padT = 22, padB = 56;
+  const n = labels.length;
+  const slot = (W - padL - padR) / Math.max(1, n);
+  const ih = height - padT - padB;
+  const S = series.length;
+  const gw = Math.min(slot * 0.84, S * 46);
+  const bw = Math.max(3, gw / S - 2);
+  // The bars use the lower half of the plot and the rate line has the band above them, so numbers never sit on each other.
+  const max = niceMax(Math.max(1, ...series.flatMap((s) => s.counts.map((c) => c ?? 0))) * 1.75);
+  const y = (v: number) => padT + ih - (v / max) * ih;
+  const colors = [qs.meaning.main, qs.color.accent, qs.meaning.gap];
+  const rates = (series[0]?.rates ?? []).filter((r): r is number => r !== null);
+  const rLo = rates.length ? Math.floor(Math.min(...rates) / 10) * 10 : 0;
+  const rHi = Math.max(rLo + 10, rates.length ? Math.ceil(Math.max(...rates) / 10) * 10 : 100);
+  const bandTop = padT + 10;
+  const bandBottom = padT + ih * 0.36;
+  const yr = (v: number) => bandBottom - ((v - rLo) / (rHi - rLo)) * (bandBottom - bandTop);
+  const cx = (i: number) => padL + slot * i + slot / 2;
+  const dec = slot >= 90 ? 1 : 0;
+  const lineColor = qs.color.primaryForeground;
+  const pts = (series[0]?.rates ?? []).map((r, i) => (r === null ? null : { x: cx(i), y: yr(r), r }));
+  return (
+    <Box ref={ref} aria-label={label} role="group">
+      <QsLegend
+        items={[
+          ...series.map((s, k) => ({ label: `${s.name} ${countName}`, color: colors[k % 3] })),
+          { label: `${series[0]?.name ?? ""} ${rateName}`, color: lineColor, line: true },
+        ]}
+      />
+      <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={W - padR} y1={y(max * t)} y2={y(max * t)} stroke={qs.color.border} />
+            <text x={padL - 6} y={y(max * t) + 4} textAnchor="end" fontSize={11} fill={qs.color.mutedText}>
+              {Math.round(max * t).toLocaleString("en-US")}
+            </text>
+          </g>
+        ))}
+        {[rLo, (rLo + rHi) / 2, rHi].map((v) => (
+          <g key={v}>
+            <line x1={W - padR} x2={W - padR + 4} y1={yr(v)} y2={yr(v)} stroke={qs.color.mutedText} />
+            <text x={W - padR + 7} y={yr(v) + 4} textAnchor="start" fontSize={11} fill={qs.color.mutedText}>
+              {Math.round(v)}%
+            </text>
+          </g>
+        ))}
+        <text x={12} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(-90 12 ${padT + ih / 2})`} textAnchor="middle">
+          {countName}
+        </text>
+        <text x={W - 10} y={padT + ih / 2} fontSize={11} fill={qs.color.mutedText} transform={`rotate(90 ${W - 10} ${padT + ih / 2})`} textAnchor="middle">
+          {rateName}
+        </text>
+        <text x={padL + (W - padL - padR) / 2} y={height - 6} fontSize={11} fill={qs.color.mutedText} textAnchor="middle">
+          {xTitle}
+        </text>
+        {labels.map((l, i) => (
+          <g key={l}>
+            <title>
+              {`${l}: ${series
+                .map((s) => `${s.name} ${s.counts[i] === null ? "none" : `${s.counts[i]} met (${s.rates[i]!.toFixed(2)}%)`}${s.sample ? " (sample data)" : ""}`)
+                .join(", ")}`}
+            </title>
+            <rect x={cx(i) - slot / 2} y={padT} width={slot} height={ih + 34} fill="transparent" />
+            {series.map((s, k) => {
+              const c = s.counts[i];
+              if (c === null) return null;
+              const x0 = cx(i) - gw / 2 + k * (gw / S) + 1;
+              return (
+                <g key={s.name}>
+                  <rect x={x0} y={y(c)} width={bw} height={Math.max(0, y(0) - y(c))} fill={colors[k % 3]} />
+                  {bw >= 16 && (
+                    <text x={x0 + bw / 2} y={y(c) - 3} textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
+                      {c}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            <text x={cx(i)} y={height - 30} textAnchor="middle" fontSize={11} fill={qs.color.secondaryForeground}>
+              {l}
+            </text>
+          </g>
+        ))}
+        <polyline points={pts.filter(Boolean).map((p) => `${p!.x},${p!.y}`).join(" ")} fill="none" stroke={lineColor} strokeWidth={2} />
+        {pts.map((p, i) =>
+          p ? (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={4} fill={lineColor} stroke="#fff" strokeWidth={2} />
+              <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={11} fontWeight={700} fill={qs.color.primaryForeground} stroke="#fff" strokeWidth={3} paintOrder="stroke">
+                {p.r.toFixed(dec)}%
+              </text>
+            </g>
+          ) : null,
+        )}
+      </svg>
     </Box>
   );
 }
