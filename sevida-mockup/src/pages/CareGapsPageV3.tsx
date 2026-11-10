@@ -18,9 +18,9 @@ import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
 import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
-import { fmtDay, useGaps } from "../careGaps";
+import { evidenceNameOf, fmtDay, parseDay, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
-import { CURRENT_YEAR, DEMO_NOW, fmtDate, measures } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, primaryCareOf, stateName, countyOf } from "../data";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -43,6 +43,9 @@ import {
   v3GapOptions,
 } from "../v3Data";
 import { memberExtras } from "../recordFields";
+import { ageGroupFor } from "../sharedFilters";
+import { ageAtYearEnd } from "../data";
+import AssignmentLateOutlinedIcon from "@mui/icons-material/AssignmentLateOutlined";
 
 /** Hover text of each measure tab (LPP-16144). */
 const V8_TAB_TIP: Record<string, string> = {
@@ -88,6 +91,8 @@ export function CareGapsPageV3() {
   const actionsName = versionNo >= 4 ? "Recommended Actions" : "Missing Evidence";
   // Version 8 follows the Jira tickets word for word (LPP-16144): see the Tickets vs Mockup sheet.
   const v8 = versionNo >= 8;
+  // Version 11: LPP-16144 as updated (11 default columns, four selector groups) and Mansi's selector standard.
+  const v11 = versionNo >= 11;
   const { gapsOf } = useGaps();
   const { visible } = useRole();
   const rows = useMemo<GapRow[]>(
@@ -448,7 +453,7 @@ export function CareGapsPageV3() {
       cols.splice(cols.findIndex((x) => x.key === "measure") + 1, 0, c);
     }
     // LPP-16144: Gap Name, Member Name, Tricare ID, Gap Status, Gap Identified Date, Gap Closed Date, Recommended Actions, Due Date.
-    if (v8) {
+    if (v8 && !v11) {
       const first = ["measure", "name", "tricare", "gapStatus", "found", "closedDate", "missing", "due"];
       const by = new Map(cols.map((c) => [c.key, c]));
       return [
@@ -456,8 +461,92 @@ export function CareGapsPageV3() {
         ...cols.filter((c) => !first.includes(c.key)),
       ];
     }
+    // Version 11 (LPP-16144 description + Application Tables): Member Name, Tricare ID, Age, Sex, Gap Name, Gap Status, Gap Identified Date,
+    // Priority, Due Date, Recommended Action, Primary Care Manager. Selector groups: Identifiers, Demographics, Care Team & Engagement, Care Gaps.
+    // Only Member Name is pinned (Application Tables). The array is in table order; the panel keeps the groups in the ticket's order.
+    if (v11) {
+      const by = new Map(cols.map((c) => [c.key, c]));
+      const g = (k: string) => by.get(k)!;
+      const sample = " Sample data: the demo members have none, so it is made up.";
+      const pcm = (r: GapRow) => {
+        const p = primaryCareOf(r.m)?.p;
+        return p ? `${p.name} - NPI: ${p.npi}` : null;
+      };
+      const lastVisit = (r: GapRow) => {
+        const d = r.m.events
+          .filter((e) => e.kind === "EHR visit" && e.date.getTime() <= DEMO_NOW.getTime())
+          .map((e) => e.date.getTime());
+        return d.length ? new Date(Math.max(...d)) : null;
+      };
+      const SOURCE: Record<string, string> = {
+        "BCS-E": "No mammogram in the prior 27 months.",
+        "CCS-E": "No cervical cytology in the prior 3 years.",
+        "COL-E": "No colonoscopy in the prior 10 years and no FIT in the measurement year.",
+        GSD: "No HbA1c result on file for the measurement year.",
+        WCV: "No well-care visit in the measurement year.",
+      };
+      const priorityOf = (r: GapRow) =>
+        r.g.status === "Closed" ? null : (["High", "Medium", "Low"] as const)[hashOf(r.g.id) % 3];
+      const base = (c: Column<GapRow>, extra: Partial<Column<GapRow>>): Column<GapRow> => ({ ...c, ...extra, searchable: c.searchable });
+      const closedEvidence = (r: GapRow) => {
+        const c = r.g.work.closed;
+        const rec = c && r.g.work.evidence.find((x) => x.id === c.evidenceId);
+        return rec ? `${evidenceNameOf(rec.kind)} on ${fmtDate(parseDay(rec.date))}` : null;
+      };
+      const none = { searchable: false } as const;
+      return [
+        base(g("name"), {
+          group: "Identifiers",
+          defaultPinned: true,
+          primary: true,
+          help: undefined,
+          // LPP-16213: a member with more than one open gap is easy to spot.
+          render: (r) => (
+            <Stack spacing={0.5} alignItems="flex-start">
+              <TableLink to={`/members/${r.m.id}?tab=gaps`}>{r.m.name}</TableLink>
+              {r.n > 1 && <StatusChip tone="warning" label={`${r.n} open gaps`} />}
+            </Stack>
+          ),
+        }),
+        { key: "dodId", header: "DoD ID", help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample, accessor: (r) => String(1000000000 + (hashOf(`${r.m.id}-dod`) % 9000000000)), sortable: true, nowrap: true, defaultHidden: true, group: "Identifiers", ...none },
+        base(g("tricare"), { group: "Identifiers", help: undefined }),
+        base(g("genesisEhr"), { header: "Genesis MRN", help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.", group: "Identifiers" }),
+        base(g("dob"), { group: "Demographics" }),
+        base(g("age"), { defaultHidden: false, help: undefined, group: "Demographics" }),
+        { key: "ageGroup", header: "Age Group", help: "Age group, from the application's standard ranges.", accessor: (r) => ageGroupFor(ageAtYearEnd(r.m.dob, CURRENT_YEAR)), sortable: true, defaultHidden: true, group: "Demographics", ...none },
+        { key: "sex", header: "Sex", accessor: (r) => (genderV3(r.m) === "Other" ? "Unknown" : genderV3(r.m)), sortable: true, group: "Demographics", filterOrder: 10, filter: { type: "select", ordered: true, options: opt(["Male", "Female", "Unknown"]) }, ...none },
+        base(g("military"), { help: "The member's military status. Madigan does not send this yet, so a dash means no data.", group: "Demographics" }),
+        base(g("race"), { group: "Demographics" }),
+        base(g("ethnicity"), { group: "Demographics" }),
+        { key: "state", header: "State", help: "The state the member lives in, from the member file.", accessor: (r) => stateName(r.m.state), sortable: true, defaultHidden: true, group: "Demographics", ...none },
+        { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOf(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
+        // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
+        base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap" }),
+        base(g("gapStatus"), { group: "Care Gaps" }),
+        base(g("found"), { group: "Care Gaps" }),
+        { key: "gapSource", header: "Gap Source", help: "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
+        { key: "priority", header: "Priority", help: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low. Tier definitions to be confirmed. Sample data.", accessor: (r) => priorityOf(r), render: (r) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", ...none },
+        base(g("due"), { group: "Care Gaps", filterOrder: 7, filter: { type: "dateRange" }, help: "Date on which the next recommended action is due to close the gap." }),
+        base(g("closedDate"), { group: "Care Gaps", defaultHidden: true, filterOrder: 8, filter: { type: "dateRange" } }),
+        { key: "evidence", header: "Evidence", help: "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
+        { key: "lastService", header: "Last Service / Result Date", help: "Date on the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Gaps", ...none },
+        base(g("missing"), { header: "Recommended Action", group: "Care Gaps", help: "Recommendation on next steps to close the gap." }),
+        // ---- Care Team & Engagement
+        { key: "pcm", header: "Primary Care Manager", accessor: (r) => pcm(r), render: (r) => pcm(r) ?? "–", sortable: true, group: "Care Team & Engagement", ...none },
+        { key: "clinic", header: "Clinic", help: "The clinic of the member's primary care manager." + sample, accessor: (r) => primaryCareOf(r.m)?.p.org ?? null, render: (r) => primaryCareOf(r.m)?.p.org ?? "–", sortable: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
+        { key: "lastVisit", header: "Last Visit", help: "Date of the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
+        { key: "nextAppt", header: "Next Appointment", help: "Date of the member's next scheduled visit. Madigan does not send appointments yet.", accessor: (r) => r.g.nextAppointment, render: (r) => (r.g.nextAppointment ? fmtDate(r.g.nextAppointment) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
+        { key: "outreachStatus", header: "Outreach Status", help: "Needs Madigan input.", accessor: () => null, render: () => "–", defaultHidden: true, group: "Care Team & Engagement", ...none },
+        { key: "lastOutreach", header: "Last Outreach", help: "Needs Madigan input.", accessor: () => null, render: () => "–", defaultHidden: true, group: "Care Team & Engagement", ...none },
+        // ---- filters with no column of their own
+        g("ageRange"),
+        g("ageMin"),
+        g("ageMax"),
+        { ...g("openCount"), filterOnly: true, group: undefined },
+      ];
+    }
     return cols;
-  }, [visible, actionsName, versionNo, v8]);
+  }, [visible, actionsName, versionNo, v8, v11]);
 
   // The page opens on the open gaps (the Open Gap column); Gap Status adds the closed ones.
   // Version 8 (LPP-16144): the table shows all the care gaps, open and closed, and the user narrows with Gap Status.
@@ -488,8 +577,9 @@ export function CareGapsPageV3() {
 
   return (
     <PageContainer
-      breadcrumbs={[{ label: "Home", href: "/" }, { label: "Care Gaps" }]}
+      breadcrumbs={v11 ? [{ label: "Care Gaps" }] : [{ label: "Home", href: "/" }, { label: "Care Gaps" }]}
       renderLink={renderCrumbLink}
+      titleIcon={v11 ? <AssignmentLateOutlinedIcon /> : undefined}
       title={
         shown === totalAll
           ? `Care Gaps List (${totalAll})`
@@ -521,15 +611,18 @@ export function CareGapsPageV3() {
           getRowId={(r) => r.id}
           defaultSort={{ key: "found", direction: v8 ? "desc" : "asc" }}
           noResultsTitle={v8 ? "No care gaps found" : undefined}
-          searchPlaceholder="Search by Member Name or Tricare ID…"
+          searchOnEnter={v11}
+          applyFirst={v11}
+          columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"] } : undefined}
+          searchPlaceholder={v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
           searchPlaceholderCompact="Member name, Tricare ID"
           search={search}
           onSearchChange={setSearch}
           filters={filters}
           onFiltersChange={setFilters}
           onResultCountChange={setShown}
-          storageKey={v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
-          savedViews={v8 ? "care-gaps-v8" : "care-gaps-v3"}
+          storageKey={v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
+          savedViews={v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader
           maxHeight="calc(100vh - 360px)"

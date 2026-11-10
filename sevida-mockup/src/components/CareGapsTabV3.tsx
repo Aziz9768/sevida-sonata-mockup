@@ -12,7 +12,7 @@ import {
   useGaps,
 } from "../careGaps";
 import type { GapStatus } from "../careGaps";
-import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, resultsFor } from "../data";
+import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, primaryCareOf, resultsFor } from "../data";
 import type { Member, MeasureCode } from "../data";
 import { RECOMMENDED_SENTENCE, V3_GAP_LABEL, v3GapOptions } from "../v3Data";
 import { getVersion } from "../version";
@@ -115,6 +115,141 @@ export function CareGapsTabV3({ m }: { m: Member }) {
   }, [m, gapsOf]);
 
   const to = (r: Row) => `/members/${m.id}/gaps/${r.code}`;
+
+  // ---- Version 11 (LPP-16155 + Application Tables): Gap Name (Measurement Year), Gap Status, Gap Identified Date, Priority,
+  // Due Date, Recommended Action, PCM, Gap Closed Date, Gap Evidence. Default columns only, so no Columns button.
+  if (getVersion() >= 11) {
+    const dash = "--";
+    const DAY = 86_400_000;
+    const dueOf = (r: Row) => new Date(r.year, 11, 31);
+    const priorityOf = (r: Row): string => {
+      if (r.status === "Closed") return dash;
+      const left = Math.round((dueOf(r).getTime() - DEMO_NOW.getTime()) / DAY);
+      return left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+    };
+    const rank: Record<string, number> = { High: 0, Medium: 1, Low: 2, [dash]: 3 };
+    const pcm = (() => {
+      const p = primaryCareOf(m)?.p;
+      return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
+    })();
+    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})`;
+    const evidenceOf = (r: Row) =>
+      r.status === "Closed" && r.closure
+        ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}`
+        : r.explanation;
+    const cols: Column<Row>[] = [
+      {
+        key: "name",
+        header: "Gap Name (Measurement Year)",
+        accessor: (r) => `${nameOf(r)} ${r.code}`,
+        sortable: true,
+        primary: true,
+        defaultPinned: true,
+        searchable: true,
+        width: 300,
+        filter: { type: "multiselect", options: v3GapOptions },
+        filterAccessor: (r) => r.code,
+        render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
+      },
+      {
+        key: "status",
+        header: "Gap Status",
+        accessor: (r) => r.status,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "multiselect", options: opt(gapStatuses) },
+        render: (r) => <GapStatusChip closed={r.status === "Closed"} />,
+      },
+      {
+        key: "found",
+        header: "Gap Identified Date",
+        accessor: (r) => r.identified,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => fmtDate(r.identified),
+      },
+      {
+        key: "priority",
+        header: "Priority",
+        help: "How soon the gap needs attention: High when it is due within 45 days, Medium within 90 days, otherwise Low.",
+        accessor: (r) => rank[priorityOf(r)],
+        filterAccessor: (r) => priorityOf(r),
+        filter: { type: "multiselect", options: opt(["High", "Medium", "Low"]) },
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        render: (r) => priorityOf(r),
+      },
+      {
+        key: "due",
+        header: "Due Date",
+        accessor: (r) => (r.status === "Closed" ? null : dueOf(r)),
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => (r.status === "Closed" ? dash : fmtDate(dueOf(r))),
+      },
+      {
+        key: "action",
+        header: "Recommended Action",
+        accessor: (r) => (r.status === "Closed" ? "" : RECOMMENDED_SENTENCE(r.code, r.year)),
+        searchable: false,
+        width: 260,
+        render: (r) => (r.status === "Closed" ? dash : <LlmText text={RECOMMENDED_SENTENCE(r.code, r.year)} />),
+      },
+      {
+        key: "pcm",
+        header: "PCM",
+        help: "The member's primary care manager. Sample data: the demo members have none, so it is made up.",
+        accessor: () => pcm,
+        searchable: false,
+        nowrap: true,
+        render: () => pcm,
+      },
+      {
+        key: "closedDate",
+        header: "Gap Closed Date",
+        accessor: (r) => r.closed,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => (r.closed ? fmtDay(r.closed.toISOString()) : dash),
+      },
+      {
+        key: "evidence",
+        header: "Gap Evidence",
+        help: "Why the gap is open, or what closed it, written by the AI.",
+        accessor: (r) => evidenceOf(r),
+        searchable: false,
+        width: 300,
+        render: (r) => <LlmText text={evidenceOf(r)} />,
+      },
+    ];
+    // Gap Name A to Z; gaps with the same name: newest identification date first (the table sort is stable).
+    const sorted = [...rows].sort((a, b) => b.identified.getTime() - a.identified.getTime());
+    return (
+      <DataTable
+        ariaLabel="Care gaps"
+        title="List of Care Gaps"
+        columns={cols}
+        rows={sorted}
+        getRowId={(r) => r.id}
+        paginated={false}
+        defaultSort={{ key: "name", direction: "asc" }}
+        searchPlaceholder="Search by Measure or Abbreviation"
+        noResultsTitle="No care gaps found"
+        storageKey="demo-member-care-gaps-v11-a"
+        toolbar={{ columns: false }}
+        onRowClick={(r) => r.year === MY && navigate(to(r))}
+        emptyState={<EmptyState title="No care gaps" description={`${m.name} has no care gaps, open or closed.`} />}
+      />
+    );
+  }
 
   // ---- Version 8 (LPP-16155)
   if (getVersion() >= 8) {

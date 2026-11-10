@@ -1538,7 +1538,11 @@ export function MemberDetailPage() {
   // Version 8 (LPP-16154): Care Gaps, Profile, then the record tabs A to Z. Visits is now Encounters; Immunizations and Medications are new.
   const v8t = version.id >= 8;
   const V8_RECORD_TABS: V8TabKey[] = ["claims", "diagnoses", "encounters", "immunizations", "labs", "medications", "observations", "procedures", "providers"];
-  const V3_TABS = v8t
+  // Version 11 (Mansi / LPP-16154): no Profile tab. Enrollment is the last tab.
+  const v11t = version.id >= 11;
+  const V3_TABS = v11t
+    ? ["gaps", ...V8_RECORD_TABS, "enrollment"]
+    : v8t
     ? ["gaps", "profile", ...V8_RECORD_TABS]
     : [
         "gaps",
@@ -1580,7 +1584,7 @@ export function MemberDetailPage() {
       count: sum.open,
       content: <CareGapsTabV3 m={m} />,
     },
-    ...(v4
+    ...(v4 && !v11t
       ? [{ key: "profile", label: "Profile", count: undefined as number | undefined, content: <ProfileTab m={m} /> }]
       : []),
     ...(v8t ? v8Items : (
@@ -1602,6 +1606,9 @@ export function MemberDetailPage() {
           : recordsOf(m).filter((e) => v3TabOf(e) === key).length,
       content: <RecordTabV3 m={m} tab={key} />,
     }))),
+    ...(v11t
+      ? [{ key: "enrollment", label: "Enrollment", count: undefined as number | undefined, content: <EnrollmentTab m={m} year={year} /> }]
+      : []),
   ].filter((t) => !role.hiddenTabs.includes(t.key));
 
   return (

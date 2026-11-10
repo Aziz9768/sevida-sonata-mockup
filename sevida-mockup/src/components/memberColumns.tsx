@@ -48,6 +48,7 @@ import {
   NO_PCP,
   memberForYear,
   v3Extra,
+  hashOf,
 } from "../data";
 import type { Member, MeasureCode } from "../data";
 import type { VersionId } from "../version";
@@ -1546,8 +1547,220 @@ export function useMemberTableColumns(
         },
       ];
     };
+
+    // ---------------------------------------------------------------- Version 11 (LPP-16069 as updated, Application Tables tab, Mansi's selector standard)
+    // Default table: Member Name, Tricare ID, Date of Birth, Age, Sex, Military Status, Primary Care Manager, # Open Gaps, Open Gaps, Earliest Gap Due Date.
+    // The array below is in table order, and the Columns panel lists the groups and the columns inside them in that same order.
+    const versionElevenColumns = (base: Column<MemberRow>[]): Column<MemberRow>[] => {
+      const by = (k: string) => base.find((c) => c.key === k)!;
+      const allBy = (k: string) => all.find((c) => c.key === k)!;
+      const dueDate = new Date(CURRENT_YEAR, 11, 31);
+      const sexOf = (m: MemberRow) => {
+        const g = genderV3(m);
+        return g === "Other" ? "Unknown" : g;
+      };
+      const pcm = (m: MemberRow) => {
+        const p = primaryCareOf(m)?.p;
+        return p ? `${p.name} - NPI: ${p.npi}` : null;
+      };
+      const lastVisit = (m: MemberRow) => {
+        const days = m.events
+          .filter((e) => e.kind === "EHR visit" && e.date.getTime() <= DEMO_NOW.getTime())
+          .map((e) => e.date.getTime());
+        return days.length ? new Date(Math.max(...days)) : null;
+      };
+      const gapLine = (g: GapView) => `${gapShort(g.def.code)} - ${V3_GAP_LABEL[g.def.code]} (${CURRENT_YEAR})`;
+      const lines = (xs: string[]) => (
+        <Stack spacing={0.5} alignItems="flex-start">
+          {xs.map((x) => (
+            <span key={x}>{x}</span>
+          ))}
+        </Stack>
+      );
+      const dodOf = (m: MemberRow) => String(1000000000 + (hashOf(`${m.id}-dod`) % 9000000000));
+      const sample = " Sample data: the demo members have none, so it is made up.";
+      const nameCol = by("name");
+      return [
+        // ---- Identifiers
+        { ...nameCol, group: "Identifiers", help: undefined },
+        {
+          key: "dodId",
+          header: "DoD ID",
+          help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample,
+          accessor: (m) => dodOf(m),
+          sortable: true,
+          nowrap: true,
+          defaultHidden: true,
+          group: "Identifiers",
+        },
+        { ...by("tricare"), group: "Identifiers", help: undefined },
+        {
+          ...by("genesisEhr"),
+          header: "Genesis MRN",
+          help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.",
+          group: "Identifiers",
+        },
+        // ---- Demographics
+        { ...by("dob"), defaultHidden: false, help: undefined, group: "Demographics" },
+        { ...by("age"), help: undefined, group: "Demographics" },
+        {
+          ...allBy("ageGroup"),
+          header: "Age Group",
+          help: "Age group, from the application's standard ranges.",
+          group: "Demographics",
+          defaultHidden: true,
+          filter: undefined,
+        },
+        {
+          key: "sex",
+          filterOrder: 10,
+          header: "Sex",
+          help: undefined,
+          accessor: (m) => sexOf(m),
+          sortable: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: { type: "select", ordered: true, options: opt(["Male", "Female", "Unknown"]) },
+        },
+        {
+          key: "military",
+          filterOrder: 12,
+          header: "Military Status",
+          help: "The member's military status, from the member file. Madigan does not send this yet, so a dash means no data.",
+          accessor: (m) => militaryV3(m),
+          render: (m) => militaryV3(m) ?? "–",
+          sortable: true,
+          nowrap: true,
+          hideBelow: "lg",
+          group: "Demographics",
+          filter: { type: "select", ordered: true, options: opt(militaryOptions()) },
+        },
+        { ...by("race"), defaultHidden: true, help: undefined, group: "Demographics" },
+        { ...by("ethnicity"), defaultHidden: true, help: undefined, group: "Demographics" },
+        { ...allBy("state"), filterOrder: 14, header: "State", help: "The state the member lives in, from the member file.", group: "Demographics", defaultHidden: true },
+        { ...allBy("county"), filterOrder: 15, header: "County", help: "The county the member lives in. Madigan does not send this yet.", group: "Demographics", defaultHidden: true },
+        // ---- Care Team & Engagement
+        {
+          key: "pcm",
+          header: "Primary Care Manager",
+          accessor: (m) => pcm(m),
+          render: (m) => pcm(m) ?? "–",
+          sortable: true,
+          hideBelow: "lg",
+          group: "Care Team & Engagement",
+        },
+        {
+          key: "clinic",
+          header: "Clinic",
+          help: "The clinic of the member's primary care manager." + sample,
+          accessor: (m) => primaryCareOf(m)?.p.org ?? null,
+          render: (m) => primaryCareOf(m)?.p.org ?? "–",
+          sortable: true,
+          defaultHidden: true,
+          group: "Care Team & Engagement",
+        },
+        {
+          key: "lastVisit",
+          header: "Last Visit",
+          help: "Date of the member's last encounter.",
+          accessor: (m) => lastVisit(m),
+          render: (m) => dateCell(lastVisit(m)),
+          sortable: true,
+          nowrap: true,
+          defaultHidden: true,
+          group: "Care Team & Engagement",
+        },
+        { ...allBy("appt"), header: "Next Appointment", help: "Date of the member's next scheduled visit. Madigan does not send appointments yet.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        { ...allBy("contactResult"), key: "outreachStatus", header: "Outreach Status", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        { ...allBy("lastContact"), key: "lastOutreach", header: "Last Outreach", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        // ---- Care Gaps
+        { ...by("openCount"), help: "Number of measures whose criteria have not been met for the member" },
+        {
+          ...by("gaps"),
+          header: "Open Gaps",
+          filterLabel: "Open Gap Name",
+          help: "The HEDIS care gap and Measurement Year",
+          defaultHidden: false,
+        },
+        {
+          key: "openGapMY",
+          header: "Open Gap (Measurement Year)",
+          help: "The HEDIS care gap and Measurement Year",
+          group: "Care Gaps",
+          defaultHidden: true,
+          accessor: (m) => {
+            const a = openOf(m).map(gapLine);
+            return a.length ? a : null;
+          },
+          render: (m) => {
+            const a = openOf(m).map(gapLine);
+            return a.length ? lines(a) : "None";
+          },
+          searchable: false,
+        },
+        {
+          key: "closedGapMY",
+          filterOrder: 2.5,
+          header: "Closed Gap (Measurement Year)",
+          filterLabel: "Closed Gap Name",
+          help: "The HEDIS care gap and Measurement Year",
+          group: "Care Gaps",
+          defaultHidden: true,
+          accessor: (m) => {
+            const a = gapsOf(m).filter((g) => g.status === "Closed").map(gapLine);
+            return a.length ? a : null;
+          },
+          render: (m) => {
+            const a = gapsOf(m).filter((g) => g.status === "Closed").map(gapLine);
+            return a.length ? lines(a) : "None";
+          },
+          filterAccessor: (m) =>
+            gapsOf(m).filter((g) => g.status === "Closed").map((g) => g.def.code),
+          filter: { type: "multiselect", options: v3GapOptions },
+          searchable: false,
+        },
+        {
+          key: "earliestDue",
+          filterOrder: 9,
+          header: "Earliest Gap Due Date",
+          help: "Date on which the next recommended action is due to close an open gap. For members with multiple gaps, the earliest date is given.",
+          group: "Care Gaps",
+          accessor: (m) => (openOf(m).length ? dueDate : null),
+          render: (m) => dateCell(openOf(m).length ? dueDate : null),
+          sortable: true,
+          nowrap: true,
+          searchable: false,
+          filter: { type: "dateRange" },
+        },
+        {
+          key: "recommendedAction",
+          header: "Recommended Action",
+          help: "Recommendation on next steps to close the earliest gap due.",
+          group: "Care Gaps",
+          defaultHidden: true,
+          width: 300,
+          accessor: (m) => {
+            const g = openOf(m)[0];
+            return g ? RECOMMENDED_SENTENCE(g.def.code, CURRENT_YEAR) : null;
+          },
+          render: (m) => {
+            const g = openOf(m)[0];
+            return g ? RECOMMENDED_SENTENCE(g.def.code, CURRENT_YEAR) : "–";
+          },
+          searchable: false,
+        },
+        // ---- filters with no column of their own
+        by("gapStatus"),
+        by("ageRange"),
+        by("ageMin"),
+        by("ageMax"),
+      ];
+    };
+
     const final =
-      version >= 3 && !only
+      version >= 11 && !only
+        ? versionElevenColumns(versionThreeColumns())
+        : version >= 3 && !only
         ? versionThreeColumns()
         : version === 2
         ? versionTwo(all, { eligible: eligibleCol, found: foundMulti })

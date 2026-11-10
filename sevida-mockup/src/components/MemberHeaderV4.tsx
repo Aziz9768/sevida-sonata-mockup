@@ -46,6 +46,8 @@ export function MemberHeaderV4({
   nameTo?: string;
 }) {
   const v8 = getVersion() >= 8;
+  // Version 11 (LPP-16072 / Mansi): the sex label replaces Gender, and the open care gaps count opens the Care Gaps tab.
+  const v11 = getVersion() >= 11;
   const [open, setOpen] = useState(false);
   const [idsOpen, setIdsOpen] = useState(false);
   const ids = memberIdsOf(m);
@@ -116,7 +118,7 @@ export function MemberHeaderV4({
                   </Link>
                 </Field>
                 <Field label="Age">{ageLabel(m.dob)}</Field>
-                <Field label="Gender">{genderV3(m)}</Field>
+                <Field label={v11 ? "Sex" : "Gender"}>{v11 ? sexV11(m) : genderV3(m)}</Field>
               </>
             ) : (
               <>
@@ -137,7 +139,15 @@ export function MemberHeaderV4({
                 <Field label="Military Status">{militaryV3(m)}</Field>
               </>
             )}
-            <Field label="Open Care Gaps">{openGaps}</Field>
+            <Field label="Open Care Gaps">
+              {v11 ? (
+                <Link component={RouterLink} to={`/members/${m.id}?tab=gaps`} underline="always" color="secondary" variant="inherit">
+                  {openGaps}
+                </Link>
+              ) : (
+                openGaps
+              )}
+            </Field>
             {v8 && <Field label="Measures Met">{measuresMet ?? "–"}</Field>}
             <Field label="Gap Data Last Updated">
               {updated ? fmtDate(updated) : "Not received"}
@@ -205,6 +215,12 @@ export function MemberHeaderV4({
   );
 }
 
+/** Version 11: the Members list shows Male / Female / Unknown, so the header does the same. */
+const sexV11 = (m: Member) => {
+  const g = genderV3(m);
+  return g === "Other" ? "Unknown" : g;
+};
+
 /** Version 8 expanded header (LPP-16072): Contact Information, Demographics and Payer Information. */
 function V8Details({
   m,
@@ -247,7 +263,7 @@ function V8Details({
           columns={4}
           items={[
             { label: "Race", value: raceV3(m) },
-            { label: "Race Data Source", value: m.raceSource },
+            { label: "Race Data Source", value: m.raceSource || "Not sent" },
             { label: "Ethnicity", value: ethnicityV3(m) },
             { label: "Ethnicity Data Source", value: m.raceSource },
             { label: "Spoken Language", value: m.spoken ? (languageNames[m.spoken] ?? m.spoken) : "Not sent" },
