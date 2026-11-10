@@ -521,7 +521,7 @@ export function CareGapsPageV3() {
         { key: "state", header: "State", help: "The state the member lives in, from the member file.", accessor: (r) => stateName(r.m.state), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOf(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
-        base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap" }),
+        base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap", nowrap: true }),
         base(g("gapStatus"), { group: "Care Gaps" }),
         base(g("found"), { group: "Care Gaps" }),
         { key: "gapSource", header: "Gap Source", help: "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
@@ -625,7 +625,8 @@ export function CareGapsPageV3() {
           savedViews={v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader
-          maxHeight="calc(100vh - 360px)"
+          // Version 11: always room for about five rows, even on a short screen (the page scrolls instead of squeezing the table).
+          maxHeight={v11 ? "max(calc(100vh - 360px), 400px)" : "calc(100vh - 360px)"}
           onRowClick={(r) => navigate(`/members/${r.m.id}?tab=gaps`)}
           rowActions={(r) => (
             <RowActions
