@@ -60,6 +60,11 @@ export interface SidebarProps {
   /** Set by the app shell when the sidebar is shown inside the phone drawer. Swaps the collapse arrow for a close button. */
   mobile?: boolean;
   onCloseMobile?: () => void;
+  /**
+   * The Sonata look: the links sit on a lighter panel with a big rounded top-right corner under the logo, and the open page is
+   * shown in orange text only (no fill, no side bar). Colours come from the theme, so they are the same as the Leap Metrics app.
+   */
+  sonataStyle?: boolean;
 }
 
 function containsKey(item: NavItem, key?: string): boolean {
@@ -88,6 +93,7 @@ export function Sidebar({
   onSignOut,
   linkComponent,
   mobile = false,
+  sonataStyle = false,
   onCloseMobile,
 }: SidebarProps) {
   const items = useMemo(() => titled(itemsProp), [itemsProp]);
@@ -112,16 +118,16 @@ export function Sidebar({
     mx: 1,
     mb: 0.25,
     borderRadius: 1,
-    minHeight: 40,
+    minHeight: sonataStyle ? 48 : 40,
     pl: nested ? 4.5 : 1.5,
     pr: 1.5,
     color: active ? 'onPrimary.accent' : 'onPrimary.text',
-    bgcolor: active ? 'onPrimary.activeFill' : 'transparent',
+    bgcolor: active && !sonataStyle ? 'onPrimary.activeFill' : 'transparent',
     position: 'relative' as const,
     justifyContent: rail ? 'center' : 'flex-start',
     '&:hover': { bgcolor: 'onPrimary.hoverFill', color: 'onPrimary.text' },
     '&.Mui-focusVisible': { outline: '2px solid #fff', outlineOffset: -2 },
-    ...(active && { '&::before': { content: '""', position: 'absolute', left: -8, top: 8, bottom: 8, width: 3, borderRadius: 2, bgcolor: 'onPrimary.accent' } }),
+    ...(active && !sonataStyle && { '&::before': { content: '""', position: 'absolute', left: -8, top: 8, bottom: 8, width: 3, borderRadius: 2, bgcolor: 'onPrimary.accent' } }),
   });
 
   const linkProps = (item: NavItem) => (item.href ? { component: linkComponent ?? 'a', href: item.href } : {});
@@ -226,6 +232,14 @@ export function Sidebar({
           )
         )}
       </Stack>
+      {/* Sonata look: everything under the logo sits on the lighter panel. Otherwise the wrapper has no box of its own. */}
+      <Box
+        sx={
+          sonataStyle && !mobile
+            ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', mt: 1, pt: rail ? 0.5 : 3, bgcolor: 'primary.main', borderTopRightRadius: rail ? 28 : 80, overflow: 'hidden' }
+            : { display: 'contents' }
+        }
+      >
       {rail && onToggleCollapsed && (
         <Tooltip title="Expand sidebar" placement="right" arrow>
           <IconButton aria-label="Expand sidebar" onClick={onToggleCollapsed} sx={{ color: 'onPrimary.textMuted', alignSelf: 'center', mt: 1 }}>
@@ -283,6 +297,8 @@ export function Sidebar({
           {poweredBy ?? <PoweredBy tone="onDark" align="left" />}
         </Box>
       )}
+
+      </Box>
 
       {/* collapsed-mode flyout for groups */}
       <Menu

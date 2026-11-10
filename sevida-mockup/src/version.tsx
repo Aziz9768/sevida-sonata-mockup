@@ -223,6 +223,7 @@ export const VERSIONS: VersionInfo[] = [
       "Care Gaps list (LPP-16205 to 16245): one selector, four groups in table order, with a search box. Member Name has a chip when a member has more than one open gap. Demographic, care-team and gap columns follow the Application Tables sheet.",
       "Member page: SEX replaces Gender in the header, and the Open Care Gaps number opens the Care Gaps tab. The Profile tab is gone and Enrollment is the last tab. The eight record tabs show their default columns only (no Columns button), in the ticket's order and names, and Last Updated is a default column.",
       "Member page, Care Gaps tab: Gap Name (Measurement Year), Gap Status, Gap Identified Date, Priority, Due Date, Recommended Action, PCM, Gap Closed Date, Gap Evidence; sorted by gap name, then newest identification date.",
+      "Sidebar: takes the Sonata look (same colours as the Leap Metrics app): links on the lighter indigo panel with a rounded top-right corner, and the open page in orange text only. Collapse, expand and all menu options are unchanged.",
       "Care Gap page: the first breadcrumb reads Care Gaps List. The summary adds Priority, Primary Care Manager and Gap Evidence. Time left reads 'X Days (MM/DD/YYYY)'. The placeholder text is gone, and a closed gap reads 'Why the Gap Is Closed'. The GSD wording is a draft to confirm.",
     ],
   },

@@ -388,6 +388,8 @@ function Protected() {
   return (
     <AppShell
       defaultCollapsed
+      // Version 11: the sidebar takes the Sonata look (lighter panel with a rounded corner, orange text for the open page).
+      sonataStyle={version.id >= 11}
       items={isRedesign(version.id) ? v5Nav(role.menus) : version.id >= 3 ? v3Nav(role.menus) : baseNav
         .filter(
           (i) =>
