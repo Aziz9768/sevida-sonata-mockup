@@ -23,6 +23,8 @@ export function RowActions({
   const navigate = useNavigate();
   const v3 = useVersion().version.id >= 3;
   const v4 = useVersion().version.id >= 4;
+  // Version 11 (LPP-16069 / LPP-16174): View first, then the tabs in the order of the member page. No Profile, and Encounters instead of Visits.
+  const v11 = useVersion().version.id >= 11;
   const [el, setEl] = useState<HTMLElement | null>(null);
   const go = (tab?: string, print?: boolean) => {
     setEl(null);
@@ -62,7 +64,25 @@ export function RowActions({
             Open this care gap ({v3 ? gapCode.replace(/-E$/, "") : gapCode})
           </MenuItem>
         )}
-        {v3 ? (
+        {v11 ? (
+          [
+            [undefined, "View"],
+            ["gaps", "Care Gaps"],
+            ["claims", "Claims"],
+            ["diagnoses", "Diagnoses"],
+            ["encounters", "Encounters"],
+            ["immunizations", "Immunizations"],
+            ["labs", "Labs"],
+            ["medications", "Medications"],
+            ["observations", "Observations"],
+            ["procedures", "Procedures"],
+            ["providers", "Providers"],
+          ].map(([tab, label]) => (
+            <MenuItem key={label} onClick={() => go(tab)}>
+              {label}
+            </MenuItem>
+          ))
+        ) : v3 ? (
           [
             ["gaps", "Care Gaps"],
             ...(v4 ? [["profile", "Profile"]] : []),

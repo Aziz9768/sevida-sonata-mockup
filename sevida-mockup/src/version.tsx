@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -211,10 +211,26 @@ export const VERSIONS: VersionInfo[] = [
       "Removed from the BCS dashboard in this version because the Lucid chart does not have them: the QuickSight Reset / Export / Bookmarks / Share bar, the Controls header, Measurement Year, Results as of Run, the Population Counts table, Suggested focus, the tile descriptions under the Top n charts and the small-group notes.",
     ],
   },
+  {
+    id: 11,
+    name: "Version 11",
+    date: "2026-11-10",
+    summary:
+      "Version 10 with the application screens brought in line with the requirement tickets and Mansi's new column-selector standard. The measure dashboards are untouched.",
+    changes: [
+      "Everything in Version 10 stays. Version 10 is as it was. The five measure dashboards are not changed.",
+      "Members list (LPP-16069, 16070, 16306, 16307): default columns are Member Name, Tricare ID, Date of Birth, Age, Sex, Military Status, Primary Care Manager, # Open Gaps, Open Gaps and Earliest Gap Due Date. The Columns panel has four groups in table order (Identifiers, Demographics, Care Team & Engagement, Care Gaps), the columns inside each group follow the table order, and there is a search box at the top. Search runs when you press Enter. In the Filters panel Apply comes first, then Clear Filters.",
+      "Care Gaps list (LPP-16205 to 16245): one selector, four groups in table order, with a search box. Member Name has a chip when a member has more than one open gap. Demographic, care-team and gap columns follow the Application Tables sheet.",
+      "Member page: SEX replaces Gender in the header, and the Open Care Gaps number opens the Care Gaps tab. The Profile tab is gone and Enrollment is the last tab. The record tabs show their default columns only (no Columns button), in the ticket's order and names. Last Updated is a default column on Claims only. Immunizations searches by Vaccination, Labs show reference ranges with an en dash and the LOINC code with its description, Medications show the NDC with hyphens, and Providers show Entity Type as I or O and Related Records as a comma-separated list. The expanded header follows LPP-16072: Contact (Phone Number, Address, Parent/Guardian/Caretaker), Demographics (with Hospice, Long-Term Institutional Status and Low Income Subsidy) and Payer Information.",
+      "Member page, Care Gaps tab: Gap Name (Measurement Year), Gap Status, Gap Identified Date, Priority, Due Date, Recommended Action, Primary Care Manager, Gap Closed Date, Gap Evidence; sorted by gap name, then newest identification date.",
+      "Sidebar: takes the Sonata look (same colours as the Leap Metrics app): links on the lighter indigo panel with a rounded top-right corner, and the open page in orange text only. Collapse, expand and all menu options are unchanged.",
+      "Care Gap page: the first breadcrumb reads Care Gaps List. The summary adds Priority, Primary Care Manager and Gap Evidence. Time left reads 'X Days (MM/DD/YYYY)'. The placeholder text is gone, and a closed gap reads 'Why the Gap Is Closed'. The GSD wording is a draft to confirm. Summary and Overview use the ticket's labels (Recommended Action, Time Left with Due Date). Evidence lists Service Date, Gap Name and Evidence, and History adds Priority and Primary Care Manager (LPP-16227 to 16229).",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 10;
+export const LATEST_VERSION: VersionId = 11;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

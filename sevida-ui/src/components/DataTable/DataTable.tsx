@@ -98,6 +98,16 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string;
   /** Shorter text for the search box on a phone, where the full text would be cut off. */
   searchPlaceholderCompact?: string;
+  /** Search runs when the user presses Enter (and when the box is cleared), not on every key. Default false. */
+  searchOnEnter?: boolean;
+  /**
+   * The Columns panel. `tableOrder`: list the groups, and the columns inside each group, in the order they have in the table (default is each group's columns A to Z).
+   * `search`: add a search box at the top of the panel to find a column by name.
+   * `groups`: show the groups in exactly this order (groups not named follow, in table order).
+   */
+  columnsPanel?: { tableOrder?: boolean; search?: boolean; groups?: string[] };
+  /** Filters panel: Apply first, then Clear Filters (default is Clear Filters, then Apply). */
+  applyFirst?: boolean;
   /** Remembers which columns the user showed / hid / reordered, in this browser, under this name. Leave out to not remember. */
   storageKey?: string;
   /** Heading of the message shown when the search or filters match nothing. Default "No results match". */
@@ -211,6 +221,9 @@ export function DataTable<T>({
   maxPinned = 3,
   searchPlaceholder,
   searchPlaceholderCompact,
+  searchOnEnter,
+  columnsPanel,
+  applyFirst,
   storageKey,
   noResultsTitle = "No results match",
   search: searchProp,
@@ -674,6 +687,7 @@ export function DataTable<T>({
         searchDebounceMs={serverMode ? 300 : 0}
         searchPlaceholder={searchPlaceholder}
         searchPlaceholderCompact={searchPlaceholderCompact}
+        searchOnEnter={searchOnEnter}
         columns={allColumnDefs}
         filters={filters}
         activeFilterKeys={activeKeys}
@@ -1360,7 +1374,7 @@ export function DataTable<T>({
             subheader={
               railTab === "filters" ? (
                 <Stack
-                  direction="row"
+                  direction={applyFirst ? "row-reverse" : "row"}
                   alignItems="center"
                   justifyContent="space-between"
                 >
@@ -1397,6 +1411,9 @@ export function DataTable<T>({
           >
             {railTab === "columns" ? (
               <ColumnsPanel
+                tableOrder={columnsPanel?.tableOrder}
+                searchable={columnsPanel?.search}
+                groupOrder={columnsPanel?.groups}
                 columns={config.all}
                 hiddenKeys={config.hiddenKeys}
                 pinnedKeys={config.pinnedKeys}

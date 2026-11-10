@@ -15,6 +15,7 @@ import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import CloseIcon from "@mui/icons-material/Close";
 import { IconButton } from "../Button/Button";
+import { TextField } from "../Form/fields";
 import type { Column } from "./types";
 import { isLocked } from "./useColumnConfig";
 
@@ -279,6 +280,9 @@ export function RailPanel({
 /* ------------------------------------------------------------------ Columns panel body */
 
 export function ColumnsPanel<T>({
+  tableOrder,
+  searchable,
+  groupOrder,
   columns,
   hiddenKeys,
   pinnedKeys,
@@ -287,6 +291,12 @@ export function ColumnsPanel<T>({
   onTogglePin,
   onReset,
 }: {
+  /** List each group's columns in table order (default: A to Z inside each group). */
+  tableOrder?: boolean;
+  /** A search box at the top to find a column by name. */
+  searchable?: boolean;
+  /** Show the groups in this order (default: the order each group's first column has in the table). */
+  groupOrder?: string[];
   columns: Column<T>[];
   hiddenKeys: Set<string>;
   pinnedKeys: string[];
@@ -295,25 +305,59 @@ export function ColumnsPanel<T>({
   onTogglePin: (key: string) => void;
   onReset: () => void;
 }) {
-  // Columns without a group first (in table order), then each group, with its columns A to Z.
+  const [find, setFind] = useState("");
+  const q = find.trim().toLowerCase();
+  // Columns without a group first (in table order), then each group in the order its first column appears in the table.
+  // Inside a group the columns are A to Z, unless `tableOrder` keeps the table's own order.
   const sections: { name: string; columns: Column<T>[] }[] = [];
   const loose = columns.filter((c) => !c.group);
   if (loose.length) sections.push({ name: "", columns: loose });
-  for (const g of [...new Set(columns.filter((c) => c.group).map((c) => c.group!))])
+  const groupNames = [...new Set(columns.filter((c) => c.group).map((c) => c.group!))];
+  if (groupOrder)
+    groupNames.sort((a, b) => {
+      const ia = groupOrder.indexOf(a);
+      const ib = groupOrder.indexOf(b);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
+  for (const g of groupNames) {
+    const inGroup = columns.filter((c) => c.group === g);
     sections.push({
       name: g,
-      columns: columns
-        .filter((c) => c.group === g)
-        .sort((a, b) => a.header.localeCompare(b.header)),
+      columns: tableOrder
+        ? inGroup
+        : [...inGroup].sort((a, b) => a.header.localeCompare(b.header)),
     });
+  }
+  const shown = q
+    ? sections
+        .map((sec) => ({
+          ...sec,
+          columns: sec.columns.filter((c) => c.header.toLowerCase().includes(q)),
+        }))
+        .filter((sec) => sec.columns.length)
+    : sections;
   return (
     <Stack spacing={1}>
+      {searchable && (
+        <TextField
+          size="small"
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          placeholder="Search columns"
+          slotProps={{ htmlInput: { "aria-label": "Search columns", type: "search" } }}
+        />
+      )}
       <Typography sx={{ fontSize: ".75rem", color: "ink.500" }}>
         Drag a column heading in the table to reorder it. Pin up to {maxPinned}{" "}
         to keep them visible while scrolling.
       </Typography>
       <Stack spacing={0.25}>
-        {sections.map((sec) => (
+        {shown.length === 0 && (
+          <Typography sx={{ fontSize: ".8125rem", color: "ink.500", py: 1 }}>
+            No column matches.
+          </Typography>
+        )}
+        {shown.map((sec) => (
           <Fragment key={sec.name || "_"}>
             {sec.name && (
               <Typography

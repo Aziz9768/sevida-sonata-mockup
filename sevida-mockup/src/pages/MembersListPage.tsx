@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import { DataTable, PageContainer } from "sevida-ui";
 import { RowActions } from "../components/RowActions";
 import {
@@ -25,6 +26,8 @@ export function MembersListPage() {
   const v2 = version.id === 2;
   const v3 = version.id >= 3;
   const v8 = version.id >= 8;
+  // Version 11: LPP-16069 as updated and Mansi's selector standard (table order, search box), search on Enter, Apply before Clear.
+  const v11 = version.id >= 11;
   const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
   const { visible: members, canSee } = useRole();
@@ -45,6 +48,8 @@ export function MembersListPage() {
 
   return (
     <PageContainer
+      breadcrumbs={v11 ? [{ label: "Members" }] : undefined}
+      titleIcon={v11 ? <PeopleAltOutlinedIcon /> : undefined}
       // LPP-16069: the title is "Members" and the number of members.
       title={
         shown === total
@@ -63,8 +68,13 @@ export function MembersListPage() {
         rows={rows}
         getRowId={getMemberRowId}
         defaultSort={{ key: v3 ? "name" : "id", direction: "asc" }}
+        searchOnEnter={v11}
+        applyFirst={v11}
+        columnsPanel={v11 ? { tableOrder: true, search: true } : undefined}
         searchPlaceholder={
-          v3
+          v11
+            ? "Search by Member Name or Tricare ID"
+            : v3
             ? "Search by Member Name or Tricare ID…"
             : v2
             ? "Search by member name, member ID or subscriber ID…"
@@ -78,7 +88,9 @@ export function MembersListPage() {
         onResultCountChange={setShown}
         noResultsTitle={v8 ? "No members found" : undefined}
         storageKey={
-          v8
+          v11
+            ? "demo-members-v30-ver11-a"
+            : v8
             ? "demo-members-v30-ver8-a"
             : v3
             ? "demo-members-v30-ver3-a"
@@ -86,7 +98,7 @@ export function MembersListPage() {
               ? "demo-members-v30-ver2-d"
               : "demo-members-v30"
         }
-        savedViews={v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
+        savedViews={v11 ? "members-v11" : v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
         stickyHeader

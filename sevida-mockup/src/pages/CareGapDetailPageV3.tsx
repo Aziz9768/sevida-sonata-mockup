@@ -34,6 +34,7 @@ import {
   fmtDate,
   measureByCode,
   memberById,
+  primaryCareOf,
   providerName,
 } from "../data";
 import type { Evt, MeasureCode } from "../data";
@@ -88,8 +89,16 @@ const V8_DATA_USED: Record<MeasureCode, string> = {
   WCV: "Member (age, gender), Coverage, Visits, Diagnoses, Procedures, Providers, Claims.",
 };
 
+/** Version 11: the measure texts the sheet leaves blank for GSD. Draft wording, to be confirmed (see the requirements trace, GD-11). */
+const V11_WHO_GSD = "Members aged 18–75 years with diabetes (type 1 or type 2).";
+const V11_LEFT_GSD = ["A glycemic status assessment (HbA1c) during the measurement period."];
+
+/** "47 Days (12/31/2026)": time left to the due date (LPP-16153 / Mansi). */
+const timeLeft = () => `${daysToDue()} Days (${fmtDate(DUE)})`;
+
 function Overview({ g }: { g: GapView }) {
   const v8 = useVersion().version.id >= 8;
+  const v11 = useVersion().version.id >= 11;
   const { def, result } = g;
   const code = def.code as MeasureCode;
   const last = lastRelevant(g);
@@ -118,18 +127,28 @@ function Overview({ g }: { g: GapView }) {
   );
   const missing = (
     <Typography sx={{ color: "text.secondary" }}>
-      Not written in the requirements sheet yet.
+      {v11 ? "Not available for this measure yet." : "Not written in the requirements sheet yet."}
     </Typography>
   );
+  const closedWork = g.work.closed;
+  const closedRec = closedWork && g.work.evidence.find((x) => x.id === closedWork.evidenceId);
+  const closedSentence =
+    v11 && g.status === "Closed" && closedWork
+      ? closedRec
+        ? `The gap was closed on ${fmtDay(closedWork.on)} by a ${closedRec.kind.toLowerCase()} record dated ${fmtDate(parseDayLocal(closedRec.date))} (${closedRec.source}).`
+        : `The gap was closed on ${fmtDay(closedWork.on)}: ${closedWork.reason}`
+      : null;
+  const who = v11 && code === "GSD" ? V11_WHO_GSD : V3_WHO[code];
+  const left = v11 && code === "GSD" ? V11_LEFT_GSD : V3_LEFT[code];
   return (
-    <Card title="Why the Gap Is Open">
+    <Card title={v11 && g.status === "Closed" ? "Why the Gap Is Closed" : "Why the Gap Is Open"}>
       <Stack spacing={2.5}>
-        <Typography>{sentence}</Typography>
+        <Typography>{closedSentence ?? sentence}</Typography>
         <Stack spacing={0.5}>
           {sub(v8 ? "Gap Considerations" : "Who is Considered")}
-          {V3_WHO[code] ? (
+          {who ? (
             <Typography>
-              <b>{gapShort(code)}:</b> {V3_WHO[code]}
+              <b>{gapShort(code)}:</b> {who}
             </Typography>
           ) : (
             missing
@@ -142,8 +161,10 @@ function Overview({ g }: { g: GapView }) {
         </Stack>
         <Stack spacing={0.5}>
           {sub(v8 ? "How To Close The Gap" : "What is Left to Close the Gap")}
-          {V3_LEFT[code].length ? (
-            V3_LEFT[code].map((t, i) => (
+          {v11 && g.status === "Closed" ? (
+            <Typography>None. The gap is closed.</Typography>
+          ) : left.length ? (
+            left.map((t, i) => (
               <Typography key={i}>
                 {i === 0 && <b>{gapShort(code)}: </b>}
                 {t}
@@ -153,14 +174,14 @@ function Overview({ g }: { g: GapView }) {
             missing
           )}
         </Stack>
-        <Field label="Due Date">
+        <Field label={v11 ? "Time Left with Due Date" : "Due Date"}>
           {g.status === "Closed"
             ? v8
               ? "N/A"
               : "Closed"
-            : v8
+            : v8 && !v11
               ? fmtDate(DUE)
-              : `${daysToDue()} Days (${fmtDate(DUE)})`}
+              : timeLeft()}
         </Field>
       </Stack>
     </Card>
@@ -179,6 +200,7 @@ interface EvRow {
 
 function Evidence({ g }: { g: GapView }) {
   const v8 = useVersion().version.id >= 8;
+  const v11 = useVersion().version.id >= 11;
   const code = g.def.code;
   const rows = useMemo<EvRow[]>(
     () =>
@@ -195,6 +217,7 @@ function Evidence({ g }: { g: GapView }) {
       ),
     [g.m, code],
   );
+  const gapLabel = V3_GAP_LABEL[code as MeasureCode];
   const cols: Column<EvRow>[] = [
     {
       key: "date",
@@ -206,18 +229,33 @@ function Evidence({ g }: { g: GapView }) {
       nowrap: true,
       primary: true,
     },
+    // Version 11 (LPP-16228 and the Application Tables sheet): Service Date, Gap Name, Evidence. The kind of record, the provider and
+    // the feed stay as optional columns.
+    ...(v11
+      ? [
+          {
+            key: "gapName",
+            header: "Gap Name",
+            help: "The care gap this evidence is for.",
+            accessor: () => gapLabel,
+            sortable: true,
+            width: 260,
+          } as Column<EvRow>,
+        ]
+      : []),
     {
       key: "type",
       // LPP-16228: "Source" is the kind of record (Claims, Labs ...). The file it came in on is the optional Feed column.
-      header: v8 ? "Source" : "Record Type",
+      header: v11 ? "Record Type" : v8 ? "Source" : "Record Type",
       help: v8 ? "The kind of record this evidence comes from: Claims, Labs, Diagnoses, Procedures, Observations or Visits." : undefined,
       accessor: (r) => r.type,
       sortable: true,
       width: 130,
+      defaultHidden: v11,
     },
     {
       key: "detail",
-      header: v8 ? "Details" : "Detail",
+      header: v11 ? "Evidence" : v8 ? "Details" : "Detail",
       accessor: (r) => r.detail,
       width: 320,
       render: (r) => (
@@ -260,8 +298,8 @@ function Evidence({ g }: { g: GapView }) {
       <DataTable
         ariaLabel="Evidence"
         title="Evidence"
-        searchPlaceholder={v8 ? "Search by Source or Details…" : "Search by Record Type or Detail…"}
-        storageKey={v8 ? "demo-gap-evidence-ver8-a" : undefined}
+        searchPlaceholder={v11 ? "Search by Gap Name or Evidence…" : v8 ? "Search by Source or Details…" : "Search by Record Type or Detail…"}
+        storageKey={v11 ? "demo-gap-evidence-v11-a" : v8 ? "demo-gap-evidence-ver8-a" : undefined}
         columns={cols}
         rows={rows}
         getRowId={(r) => r.key}
@@ -286,6 +324,8 @@ interface HistRow {
   closed: Date | null;
   updated: Date;
   action: string;
+  priority: string;
+  pcm: string;
 }
 
 /**
@@ -294,7 +334,13 @@ interface HistRow {
  */
 function History({ g }: { g: GapView }) {
   const code = g.def.code as MeasureCode;
+  const v11 = useVersion().version.id >= 11;
   const rows = useMemo<HistRow[]>(() => {
+    // Version 11 (LPP-16229): Priority only for an open gap, and the Primary Care Manager on every row.
+    const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
+    const openPriority = left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+    const pcmP = primaryCareOf(g.m)?.p;
+    const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
       gap: V3_GAP_LABEL[code],
@@ -303,6 +349,8 @@ function History({ g }: { g: GapView }) {
       closed: null,
       updated: g.identified,
       action: RECOMMENDED_SENTENCE(code, CURRENT_YEAR),
+      priority: openPriority,
+      pcm,
     };
     if (g.status === "Closed") {
       const on = g.work.closed ? parseDayLocal(g.work.closed.on) : g.lastUpdated;
@@ -315,12 +363,31 @@ function History({ g }: { g: GapView }) {
           closed: on,
           updated: on,
           action: "N/A",
+          priority: "N/A",
+          pcm,
         },
         open,
       ];
     }
     return [{ ...open, updated: g.lastUpdated }];
   }, [g, code]);
+  // LPP-16229 order: Gap Name, Identified Date, Due Date (if open), Priority (if open), Recommended Action, Primary Care Manager,
+  // Closed Date (if closed), Last Updated.
+  const priorityCol: Column<HistRow> = {
+    key: "priority",
+    header: "Priority",
+    help: "Only for a gap that is open.",
+    accessor: (r) => r.priority,
+    sortable: true,
+    nowrap: true,
+  };
+  const pcmCol: Column<HistRow> = {
+    key: "pcm",
+    header: "Primary Care Manager",
+    accessor: (r) => r.pcm,
+    sortable: true,
+    width: 220,
+  };
   const cols: Column<HistRow>[] = [
     {
       key: "gap",
@@ -366,22 +433,33 @@ function History({ g }: { g: GapView }) {
     },
     {
       key: "action",
-      header: "Recommended Actions",
+      header: v11 ? "Recommended Action" : "Recommended Actions",
       accessor: (r) => r.action,
       render: (r) => (r.action === "N/A" ? "N/A" : <LlmText text={r.action} />),
       width: 300,
     },
   ];
+  const by = new Map(cols.map((c) => [c.key, c]));
+  const colsV11: Column<HistRow>[] = [
+    by.get("gap")!,
+    by.get("identified")!,
+    by.get("due")!,
+    priorityCol,
+    by.get("action")!,
+    pcmCol,
+    by.get("closed")!,
+    by.get("updated")!,
+  ];
   return (
     <DataTable
       ariaLabel="History"
       title="History"
-      columns={cols}
+      columns={v11 ? colsV11 : cols}
       rows={rows}
       getRowId={(r) => r.key}
       paginated={false}
       defaultSort={{ key: "updated", direction: "desc" }}
-      storageKey="demo-gap-history-ver8-a"
+      storageKey={v11 ? "demo-gap-history-v11-a" : "demo-gap-history-ver8-a"}
     />
   );
 }
@@ -400,6 +478,7 @@ export function CareGapDetailPageV3() {
   const { version } = useVersion();
   const [search, setSearch] = useSearchParams();
   const v8 = version.id >= 8;
+  const v11 = version.id >= 11;
   const tab =
     search.get("tab") === "evidence"
       ? "evidence"
@@ -412,7 +491,7 @@ export function CareGapDetailPageV3() {
   // Version 8 (LPP-16153): Care Gaps > BCS > Member Name. Earlier versions: Care Gaps > Member Name > Gap Name.
   const crumbs = v8
     ? [
-        { label: "Care Gaps", href: "/care-gaps" },
+        { label: v11 ? "Care Gaps List" : "Care Gaps", href: "/care-gaps" },
         { label: def ? gapShort(def.code) : "Not found", href: "/care-gaps" },
         ...(m ? [{ label: m.name }] : []),
       ]
@@ -446,6 +525,16 @@ export function CareGapDetailPageV3() {
   const missingText =
     g.status === "Closed" ? "None" : MISSING_SHORT[def.code as MeasureCode];
   const closed = g.status === "Closed";
+  // Version 11 summary (LPP-16153 and the Application Tables sheet): Priority, Primary Care Manager and Gap Evidence are new.
+  const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
+  const priority = closed ? "--" : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+  const pcmP = primaryCareOf(m)?.p;
+  const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
+  const closeRec = g.work.closed && g.work.evidence.find((x) => x.id === g.work.closed!.evidenceId);
+  const evidence =
+    closed && closeRec
+      ? `${closeRec.kind}, ${fmtDate(parseDayLocal(closeRec.date))}. ${closeRec.source}`
+      : g.result.reason;
   return (
     <PageContainer
       title={v8 ? undefined : `${m.name}: ${label}`}
@@ -476,7 +565,8 @@ export function CareGapDetailPageV3() {
           >
             <Field label={v8 ? "Gap Name" : "Measure"}>{label}</Field>
             {!v8 && <Field label="For">{m.name}</Field>}
-            <Field label="Identified Date">{fmtDate(g.identified)}</Field>
+            <Field label={v11 ? "Gap Identified Date" : "Identified Date"}>{fmtDate(g.identified)}</Field>
+            {v11 && <Field label="Priority">{priority}</Field>}
             {v8 &&
               (closed ? (
                 <Field label="Closed Date">
@@ -485,7 +575,7 @@ export function CareGapDetailPageV3() {
               ) : (
                 <Field label="Due Date">{fmtDate(DUE)}</Field>
               ))}
-            <Field label={version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
+            <Field label={v11 ? "Recommended Action" : version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
               {v8 ? (
                 closed ? (
                   "N/A"
@@ -496,6 +586,12 @@ export function CareGapDetailPageV3() {
                 missingText
               )}
             </Field>
+            {v11 && <Field label="Primary Care Manager">{pcm}</Field>}
+            {v11 && (
+              <Field label="Gap Evidence">
+                <LlmText text={evidence} />
+              </Field>
+            )}
             <Field label="Last Updated">
               {fmtWhen(g.lastUpdated.toISOString())}
             </Field>

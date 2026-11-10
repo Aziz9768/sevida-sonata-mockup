@@ -22,6 +22,7 @@ import {
 } from "../v8Records";
 import type { RecordTabKey } from "../v8Records";
 import { TableLink } from "./TableLink";
+import { getVersion } from "../version";
 
 /**
  * Version 8 member sub-tabs (LPP-16154 to LPP-16163): Claims, Diagnoses, Encounters, Immunizations, Labs, Medications,
@@ -123,6 +124,26 @@ const source = <T extends { source: string }>(): Column<T> =>
 const NOTE =
   "Sample data: IDs, created and updated dates, amounts and places of service are made up from each record in this demo.";
 
+/**
+ * Version 11 (Mansi: "sub-tabs show default columns only, no column selector"; Application Tables sheet + LPP-16154 to 16163):
+ * each tab keeps one fixed set of columns in the order and with the names the ticket gives. Last Updated is a default column.
+ * `spec` lists the columns in order: a key keeps a column, [key, name] renames it, and a column object adds a new one.
+ */
+const v11 = () => getVersion() >= 11;
+function pick<T>(all: Column<T>[], spec: Array<string | [string, string] | Column<T>>): Column<T>[] {
+  return spec.map((s) => {
+    if (typeof s !== "string" && !Array.isArray(s)) return { ...s, group: undefined, defaultHidden: false };
+    const [key, name] = typeof s === "string" ? [s, undefined] : s;
+    const c = all.find((x) => x.key === key);
+    if (!c) throw new Error(`Missing column ${key}`);
+    return { ...c, header: name ?? c.header, group: undefined, defaultHidden: false };
+  });
+}
+/** A code with its description beside it: "CPT: 77067 - Screening mammography". */
+/** An NDC with hyphens, 5-4-2: 00093733956 becomes 00093-7339-56. */
+const ndcFmt = (code: string) => code.replace(/^(NDC: )?(\d{5})-?(\d{4})-?(\d{2})$/, "$1$2-$3-$4");
+const withText = (code: string, text: string) => (code === DASH || !text ? code : `${code} - ${text}`);
+
 interface TableProps<T> {
   tab: V8TabKey;
   m: Member;
@@ -167,7 +188,8 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
         pageSize={10}
         searchPlaceholder={search}
         noResultsTitle={`No ${NOUN[tab].toLowerCase()} found`}
-        storageKey={`demo-member-${tab}-v8-a`}
+        storageKey={v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
+        toolbar={v11() ? { columns: false } : undefined}
       />
       <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
         {NOTE}
@@ -235,8 +257,35 @@ function ClaimsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
+  const v = v11();
+  const cols = v
+    ? pick(columns, [
+        "id",
+        ["from", "Service Date From"],
+        col<R>("to", "Service Date To", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
+        col<R>("type", "Type", (r) => r.type, {
+          sortable: true,
+          nowrap: true,
+          render: (r) => (
+            <Tooltip title={CLAIM_TYPE_NAME[r.type]} arrow>
+              <span>{r.type}</span>
+            </Tooltip>
+          ),
+        }),
+        col<R>("services", "Service", (r) => r.lines.map((l) => l.text), { s: true, width: 300, render: (r) => lines(r.lines.map((l) => l.text)) }),
+        col<R>("scode", "Service Code", (r) => r.lines.map((l) => l.code), { s: true, width: 160, render: (r) => lines(r.lines.map((l) => `${l.system}: ${l.code}`)) }),
+        ["payment", "Payment Type"],
+        "provider",
+        col<R>("dx", "ICD-10 Diagnosis Code", (r) => r.diagnoses.map((d) => d.code), {
+          width: 240,
+          render: (r) => lines(r.diagnoses.map((d) => `${d.code} - ${d.text}`)),
+        }),
+        "updated",
+        ["measure", "Care Gap"],
+      ])
+    : columns;
   return (
-    <RecordTable tab="claims" m={m} rows={rows} columns={columns} getRowId={(r) => r.id + r.from.getTime()} sort={{ key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
+    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={{ key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
   );
 }
 
@@ -257,7 +306,10 @@ function DiagnosesV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, [["name", "Diagnosis Name"], "code", "ctype", ["start", "Start Date"], ["end", "End Date"], "status", "provider", ["measure", "Care Gap"]])
+    : columns;
+  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ encounters */
@@ -278,7 +330,18 @@ function EncountersV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="encounters" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, [
+        "type",
+        "date",
+        "status",
+        col<R>("dx", "Diagnosis Code", (r) => r.diagnoses.map((d) => d.code), { width: 240, render: (r) => lines(r.diagnoses.map((d) => `${d.code}: ${d.text}`)) }),
+        "provider",
+        "place",
+        ["measure", "Care Gap"],
+      ])
+    : columns;
+  return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ immunizations */
@@ -296,7 +359,19 @@ function ImmunizationsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="immunizations" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Vaccine…" providerOf={(r) => r.provider} />;
+  // Care Gap is hidden by default on this tab (LPP-16365), and there is no column selector, so it is not shown.
+  const cols = v11()
+    ? pick(columns, [
+        ["vaccine", "Vaccination"],
+        ["date", "Vaccination Date"],
+        col<R>("qty", "Quantity", (r) => r.vaccine, { nowrap: true, render: (r) => (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
+        "status",
+        "code",
+        "provider",
+        col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true }),
+      ])
+    : columns;
+  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ labs */
@@ -337,7 +412,25 @@ function LabsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="labs" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, [
+        "test",
+        col<R>("result", "Result", (r) => r.result, { nowrap: true }),
+        ["date", "Collection Date"],
+        ["resulted", "Resulting Date"],
+        col<R>("range", "Reference Range", (r) => r.range, { nowrap: true, render: (r) => r.range.replace(" to ", "–") }),
+        col<R>("flag", "Flag", (r) => r.flag, { nowrap: true, sortable: true }),
+        "panel",
+        col<R>("loinc", "LOINC Code", (r) => r.loinc, {
+          s: true,
+          width: 220,
+          render: (r) => withText(r.loinc, r.test),
+        }),
+        "provider",
+        ["measure", "Care Gap"],
+      ])
+    : columns;
+  return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ medications */
@@ -364,7 +457,10 @@ function MedicationsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="medications" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, ["name", "status", "date", ["qty", "Quantity"], "days", col<R>("code", "Code", (r) => r.code, { nowrap: true, render: (r) => ndcFmt(r.code) }), "provider", ["measure", "Care Gap"]])
+    : columns;
+  return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ observations */
@@ -401,7 +497,22 @@ function ObservationsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="observations" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Service Type or Service…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, [
+        "service",
+        "type",
+        "date",
+        "value",
+        col<R>("code", "Test Code", (r) => r.code, {
+          s: true,
+          width: 260,
+          render: (r) => (r.code.startsWith("L: ") ? `LOINC: ${withText(r.code.slice(3), r.service)}` : withText(r.code, r.service)),
+        }),
+        "provider",
+        ["measure", "Care Gap"],
+      ])
+    : columns;
+  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Service Type or Service…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ procedures */
@@ -429,7 +540,18 @@ function ProceduresV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="procedures" m={m} rows={rows} columns={columns} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
+  const cols = v11()
+    ? pick(columns, [
+        "name",
+        "value",
+        ["status", "Service Status"],
+        "date",
+        col<R>("code", "Code", (r) => r.code, { width: 260, render: (r) => withText(r.code, r.name) }),
+        "provider",
+        ["measure", "Care Gap"],
+      ])
+    : columns;
+  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ providers */
@@ -468,5 +590,40 @@ function ProvidersV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  return <RecordTable tab="providers" m={m} rows={rows} columns={columns} getRowId={(r) => r.npi} sort={{ key: "name", direction: "asc" }} search="Search by Provider, Provider ID, Specialty or Organization…" />;
+  const cols = v11()
+    ? pick(columns, [
+        "name",
+        "npi",
+        "specialty",
+        "last",
+        col<R>("related", "Related Records", (r) => r.related.map((x) => `${x.label} (${x.n})`), {
+          width: 240,
+          help: "The records this provider is on. Select one to open that tab with only this provider's records.",
+          render: (r) => (
+            <>
+              {r.related.map((x, i) => (
+                <span key={x.tab}>
+                  {i > 0 && ", "}
+                  <TableLink to={`/members/${m.id}?tab=${x.tab}&provider=${encodeURIComponent(r.name)}`}>
+                    {x.label} ({x.n})
+                  </TableLink>
+                </span>
+              ))}
+            </>
+          ),
+        }),
+        "org",
+        ["active", "Active?"],
+        col<R>("entity", "Entity Type", (r) => r.entity, {
+          nowrap: true,
+          help: "I = Individual, O = Organization.",
+          render: (r) => (
+            <Tooltip title={r.entity === "I" ? "Individual" : "Organization"} arrow>
+              <span>{r.entity}</span>
+            </Tooltip>
+          ),
+        }),
+      ])
+    : columns;
+  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={{ key: "name", direction: "asc" }} search="Search by Provider, Provider ID, Specialty or Organization…" />;
 }

@@ -31,6 +31,8 @@ export interface TableToolbarProps<T> {
   searchPlaceholder?: string;
   /** Shorter text for the search box on a phone, where the full text would be cut off. */
   searchPlaceholderCompact?: string;
+  /** Run the search when Enter is pressed (and when the box is cleared), not while typing. */
+  searchOnEnter?: boolean;
 
   columns: Column<T>[];
   filters: FilterState;
@@ -62,6 +64,7 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
   // apply typing after the (optional) delay
   const { onSearchChange, searchDebounceMs = 0 } = p;
   useEffect(() => {
+    if (p.searchOnEnter) return;
     if (text === p.search) return;
     const t = setTimeout(() => onSearchChange(text), searchDebounceMs);
     return () => clearTimeout(t);
@@ -179,7 +182,14 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
                 <TextField
                   size="small"
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    // Emptying the box shows every row again at once.
+                    if (p.searchOnEnter && e.target.value === "") onSearchChange("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (p.searchOnEnter && e.key === "Enter") onSearchChange(text);
+                  }}
                   placeholder={(phone && p.searchPlaceholderCompact) || (p.searchPlaceholder ?? "Search…")}
                   slotProps={{
                     htmlInput: {
