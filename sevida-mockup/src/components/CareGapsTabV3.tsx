@@ -203,7 +203,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       },
       {
         key: "pcm",
-        header: "PCM",
+        header: getVersion() >= 11 ? "Primary Care Manager" : "PCM",
         help: "The member's primary care manager. Sample data: the demo members have none, so it is made up.",
         accessor: () => pcm,
         searchable: false,

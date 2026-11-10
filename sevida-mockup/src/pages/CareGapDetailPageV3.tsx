@@ -174,7 +174,7 @@ function Overview({ g }: { g: GapView }) {
             missing
           )}
         </Stack>
-        <Field label="Due Date">
+        <Field label={v11 ? "Time Left with Due Date" : "Due Date"}>
           {g.status === "Closed"
             ? v8
               ? "N/A"
@@ -200,6 +200,7 @@ interface EvRow {
 
 function Evidence({ g }: { g: GapView }) {
   const v8 = useVersion().version.id >= 8;
+  const v11 = useVersion().version.id >= 11;
   const code = g.def.code;
   const rows = useMemo<EvRow[]>(
     () =>
@@ -216,6 +217,7 @@ function Evidence({ g }: { g: GapView }) {
       ),
     [g.m, code],
   );
+  const gapLabel = V3_GAP_LABEL[code as MeasureCode];
   const cols: Column<EvRow>[] = [
     {
       key: "date",
@@ -227,18 +229,33 @@ function Evidence({ g }: { g: GapView }) {
       nowrap: true,
       primary: true,
     },
+    // Version 11 (LPP-16228 and the Application Tables sheet): Service Date, Gap Name, Evidence. The kind of record, the provider and
+    // the feed stay as optional columns.
+    ...(v11
+      ? [
+          {
+            key: "gapName",
+            header: "Gap Name",
+            help: "The care gap this evidence is for.",
+            accessor: () => gapLabel,
+            sortable: true,
+            width: 260,
+          } as Column<EvRow>,
+        ]
+      : []),
     {
       key: "type",
       // LPP-16228: "Source" is the kind of record (Claims, Labs ...). The file it came in on is the optional Feed column.
-      header: v8 ? "Source" : "Record Type",
+      header: v11 ? "Record Type" : v8 ? "Source" : "Record Type",
       help: v8 ? "The kind of record this evidence comes from: Claims, Labs, Diagnoses, Procedures, Observations or Visits." : undefined,
       accessor: (r) => r.type,
       sortable: true,
       width: 130,
+      defaultHidden: v11,
     },
     {
       key: "detail",
-      header: v8 ? "Details" : "Detail",
+      header: v11 ? "Evidence" : v8 ? "Details" : "Detail",
       accessor: (r) => r.detail,
       width: 320,
       render: (r) => (
@@ -281,8 +298,8 @@ function Evidence({ g }: { g: GapView }) {
       <DataTable
         ariaLabel="Evidence"
         title="Evidence"
-        searchPlaceholder={v8 ? "Search by Source or Details…" : "Search by Record Type or Detail…"}
-        storageKey={v8 ? "demo-gap-evidence-ver8-a" : undefined}
+        searchPlaceholder={v11 ? "Search by Gap Name or Evidence…" : v8 ? "Search by Source or Details…" : "Search by Record Type or Detail…"}
+        storageKey={v11 ? "demo-gap-evidence-v11-a" : v8 ? "demo-gap-evidence-ver8-a" : undefined}
         columns={cols}
         rows={rows}
         getRowId={(r) => r.key}
@@ -307,6 +324,8 @@ interface HistRow {
   closed: Date | null;
   updated: Date;
   action: string;
+  priority: string;
+  pcm: string;
 }
 
 /**
@@ -315,7 +334,13 @@ interface HistRow {
  */
 function History({ g }: { g: GapView }) {
   const code = g.def.code as MeasureCode;
+  const v11 = useVersion().version.id >= 11;
   const rows = useMemo<HistRow[]>(() => {
+    // Version 11 (LPP-16229): Priority only for an open gap, and the Primary Care Manager on every row.
+    const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
+    const openPriority = left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+    const pcmP = primaryCareOf(g.m)?.p;
+    const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
       gap: V3_GAP_LABEL[code],
@@ -324,6 +349,8 @@ function History({ g }: { g: GapView }) {
       closed: null,
       updated: g.identified,
       action: RECOMMENDED_SENTENCE(code, CURRENT_YEAR),
+      priority: openPriority,
+      pcm,
     };
     if (g.status === "Closed") {
       const on = g.work.closed ? parseDayLocal(g.work.closed.on) : g.lastUpdated;
@@ -336,12 +363,31 @@ function History({ g }: { g: GapView }) {
           closed: on,
           updated: on,
           action: "N/A",
+          priority: "N/A",
+          pcm,
         },
         open,
       ];
     }
     return [{ ...open, updated: g.lastUpdated }];
   }, [g, code]);
+  // LPP-16229 order: Gap Name, Identified Date, Due Date (if open), Priority (if open), Recommended Action, Primary Care Manager,
+  // Closed Date (if closed), Last Updated.
+  const priorityCol: Column<HistRow> = {
+    key: "priority",
+    header: "Priority",
+    help: "Only for a gap that is open.",
+    accessor: (r) => r.priority,
+    sortable: true,
+    nowrap: true,
+  };
+  const pcmCol: Column<HistRow> = {
+    key: "pcm",
+    header: "Primary Care Manager",
+    accessor: (r) => r.pcm,
+    sortable: true,
+    width: 220,
+  };
   const cols: Column<HistRow>[] = [
     {
       key: "gap",
@@ -387,22 +433,33 @@ function History({ g }: { g: GapView }) {
     },
     {
       key: "action",
-      header: "Recommended Actions",
+      header: v11 ? "Recommended Action" : "Recommended Actions",
       accessor: (r) => r.action,
       render: (r) => (r.action === "N/A" ? "N/A" : <LlmText text={r.action} />),
       width: 300,
     },
   ];
+  const by = new Map(cols.map((c) => [c.key, c]));
+  const colsV11: Column<HistRow>[] = [
+    by.get("gap")!,
+    by.get("identified")!,
+    by.get("due")!,
+    priorityCol,
+    by.get("action")!,
+    pcmCol,
+    by.get("closed")!,
+    by.get("updated")!,
+  ];
   return (
     <DataTable
       ariaLabel="History"
       title="History"
-      columns={cols}
+      columns={v11 ? colsV11 : cols}
       rows={rows}
       getRowId={(r) => r.key}
       paginated={false}
       defaultSort={{ key: "updated", direction: "desc" }}
-      storageKey="demo-gap-history-ver8-a"
+      storageKey={v11 ? "demo-gap-history-v11-a" : "demo-gap-history-ver8-a"}
     />
   );
 }
@@ -518,7 +575,7 @@ export function CareGapDetailPageV3() {
               ) : (
                 <Field label="Due Date">{fmtDate(DUE)}</Field>
               ))}
-            <Field label={version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
+            <Field label={v11 ? "Recommended Action" : version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
               {v8 ? (
                 closed ? (
                   "N/A"

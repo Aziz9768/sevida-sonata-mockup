@@ -203,7 +203,9 @@ export function MemberHeaderV4({
             />
             )}
             <Typography variant="caption" sx={{ color: "text.secondary" }}>
-              {v8
+              {getVersion() >= 11
+                ? "Sample data: the demo members have no phone number or address on file, so some of these are made up the same way every time."
+                : v8
                 ? "Sample data: the demo members have no marital status, posting location, email or payer extras, so some of these are made up the same way every time."
                 : "Sample data: the demo members have no email, marital status or posting location, so these are made up the same way every time."}
             </Typography>
@@ -239,6 +241,56 @@ function V8Details({
     </Typography>
   );
   const dis = m.disability === "Disabled" ? "Disabled" : m.disability === "Not Disabled" ? "Not disabled" : "Not sent";
+  if (getVersion() >= 11) {
+    // LPP-16072: Contact, Demographics and Payer, with exactly the fields the ticket lists.
+    return (
+      <Stack spacing={2}>
+        <Stack spacing={1}>
+          {sub("Contact Information")}
+          <DetailGrid
+            columns={4}
+            items={[
+              { label: "Phone Number", value: p.phone },
+              { label: "Address", value: p.residential },
+              { label: "Parent/Guardian/Caretaker", value: m.caretaker ?? (adult ? "–" : "Not sent") },
+            ]}
+          />
+        </Stack>
+        <Stack spacing={1}>
+          {sub("Demographics")}
+          <DetailGrid
+            columns={4}
+            items={[
+              { label: "Race", value: raceV3(m) },
+              { label: "Race Data Source", value: m.raceSource || "Not sent" },
+              { label: "Ethnicity", value: ethnicityV3(m) },
+              { label: "Ethnicity Data Source", value: m.raceSource },
+              { label: "Spoken Language", value: m.spoken ? (languageNames[m.spoken] ?? m.spoken) : "Not sent" },
+              { label: "Disability Status", value: dis },
+              { label: "Military Status", value: militaryV3(m) },
+              { label: "Hospice", value: med ? yn(med.hospice) : "–" },
+              { label: "Long-Term Institutional Status", value: med ? yn(med.lti) : "–" },
+              { label: "Low Income Subsidy", value: med ? yn(med.lis) : "–" },
+            ]}
+          />
+        </Stack>
+        <Stack spacing={1}>
+          {sub("Payer Information")}
+          <DetailGrid
+            columns={4}
+            items={[
+              { label: "Start Date", value: seg ? fmtDate(seg.start) : "Not sent" },
+              { label: "End Date", value: seg ? fmtEnd(seg.end) : "Not sent" },
+              { label: "Subscriber or Family ID", value: memberExtras(m).subscriberId },
+              { label: "Payer", value: seg?.payer ?? "Not sent" },
+              { label: "Drug Benefit", value: yn(seg?.drug) },
+              { label: "Medical Benefit", value: yn(seg?.medical) },
+            ]}
+          />
+        </Stack>
+      </Stack>
+    );
+  }
   return (
     <Stack spacing={2}>
       <Stack spacing={1}>

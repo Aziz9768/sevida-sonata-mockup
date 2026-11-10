@@ -140,6 +140,8 @@ function pick<T>(all: Column<T>[], spec: Array<string | [string, string] | Colum
   });
 }
 /** A code with its description beside it: "CPT: 77067 - Screening mammography". */
+/** An NDC with hyphens, 5-4-2: 00093733956 becomes 00093-7339-56. */
+const ndcFmt = (code: string) => code.replace(/^(NDC: )?(\d{5})-?(\d{4})-?(\d{2})$/, "$1$2-$3-$4");
 const withText = (code: string, text: string) => (code === DASH || !text ? code : `${code} - ${text}`);
 
 interface TableProps<T> {
@@ -305,7 +307,7 @@ function DiagnosesV8({ m }: { m: Member }) {
     source<R>(),
   ];
   const cols = v11()
-    ? pick(columns, [["name", "Diagnosis Name"], "code", "ctype", ["start", "Start Date"], ["end", "End Date"], "status", "provider", "updated", ["measure", "Care Gap"]])
+    ? pick(columns, [["name", "Diagnosis Name"], "code", "ctype", ["start", "Start Date"], ["end", "End Date"], "status", "provider", ["measure", "Care Gap"]])
     : columns;
   return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
 }
@@ -336,7 +338,6 @@ function EncountersV8({ m }: { m: Member }) {
         col<R>("dx", "Diagnosis Code", (r) => r.diagnoses.map((d) => d.code), { width: 240, render: (r) => lines(r.diagnoses.map((d) => `${d.code}: ${d.text}`)) }),
         "provider",
         "place",
-        "updated",
         ["measure", "Care Gap"],
       ])
     : columns;
@@ -368,10 +369,9 @@ function ImmunizationsV8({ m }: { m: Member }) {
         "code",
         "provider",
         col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true }),
-        "updated",
       ])
     : columns;
-  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Vaccine…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ labs */
@@ -418,23 +418,15 @@ function LabsV8({ m }: { m: Member }) {
         col<R>("result", "Result", (r) => r.result, { nowrap: true }),
         ["date", "Collection Date"],
         ["resulted", "Resulting Date"],
-        "range",
+        col<R>("range", "Reference Range", (r) => r.range, { nowrap: true, render: (r) => r.range.replace(" to ", "–") }),
         col<R>("flag", "Flag", (r) => r.flag, { nowrap: true, sortable: true }),
         "panel",
         col<R>("loinc", "LOINC Code", (r) => r.loinc, {
           s: true,
           width: 220,
-          render: (r) => (
-            <>
-              {r.loinc}
-              <Typography variant="caption" component="div" sx={{ color: "text.secondary" }}>
-                {r.test}
-              </Typography>
-            </>
-          ),
+          render: (r) => withText(r.loinc, r.test),
         }),
         "provider",
-        "updated",
         ["measure", "Care Gap"],
       ])
     : columns;
@@ -466,7 +458,7 @@ function MedicationsV8({ m }: { m: Member }) {
     source<R>(),
   ];
   const cols = v11()
-    ? pick(columns, ["name", "status", "date", ["qty", "Quantity"], "days", "code", "provider", "updated", ["measure", "Care Gap"]])
+    ? pick(columns, ["name", "status", "date", ["qty", "Quantity"], "days", col<R>("code", "Code", (r) => r.code, { nowrap: true, render: (r) => ndcFmt(r.code) }), "provider", ["measure", "Care Gap"]])
     : columns;
   return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
 }
@@ -517,7 +509,6 @@ function ObservationsV8({ m }: { m: Member }) {
           render: (r) => (r.code.startsWith("L: ") ? `LOINC: ${withText(r.code.slice(3), r.service)}` : withText(r.code, r.service)),
         }),
         "provider",
-        "updated",
         ["measure", "Care Gap"],
       ])
     : columns;
@@ -557,7 +548,6 @@ function ProceduresV8({ m }: { m: Member }) {
         "date",
         col<R>("code", "Code", (r) => r.code, { width: 260, render: (r) => withText(r.code, r.name) }),
         "provider",
-        "updated",
         ["measure", "Care Gap"],
       ])
     : columns;
@@ -601,7 +591,39 @@ function ProvidersV8({ m }: { m: Member }) {
     source<R>(),
   ];
   const cols = v11()
-    ? pick(columns, ["name", "npi", "specialty", "last", "related", "org", ["active", "Active?"], "entity", "updated"])
+    ? pick(columns, [
+        "name",
+        "npi",
+        "specialty",
+        "last",
+        col<R>("related", "Related Records", (r) => r.related.map((x) => `${x.label} (${x.n})`), {
+          width: 240,
+          help: "The records this provider is on. Select one to open that tab with only this provider's records.",
+          render: (r) => (
+            <>
+              {r.related.map((x, i) => (
+                <span key={x.tab}>
+                  {i > 0 && ", "}
+                  <TableLink to={`/members/${m.id}?tab=${x.tab}&provider=${encodeURIComponent(r.name)}`}>
+                    {x.label} ({x.n})
+                  </TableLink>
+                </span>
+              ))}
+            </>
+          ),
+        }),
+        "org",
+        ["active", "Active?"],
+        col<R>("entity", "Entity Type", (r) => r.entity, {
+          nowrap: true,
+          help: "I = Individual, O = Organization.",
+          render: (r) => (
+            <Tooltip title={r.entity === "I" ? "Individual" : "Organization"} arrow>
+              <span>{r.entity}</span>
+            </Tooltip>
+          ),
+        }),
+      ])
     : columns;
   return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={{ key: "name", direction: "asc" }} search="Search by Provider, Provider ID, Specialty or Organization…" />;
 }
