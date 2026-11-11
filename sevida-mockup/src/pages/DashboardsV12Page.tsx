@@ -35,7 +35,7 @@ function Inputs() {
     <QsSheet>
       <QsTile cols={36} title="Inputs">
         <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mb: 1 }}>
-          The files each measure reads. The board names this tab but does not draw it yet, so this is a first draft.
+          To confirm: the board names this tab but does not draw it yet. This is a first draft of the files each measure reads.
         </Typography>
         <QsTable
           label="Input files"
