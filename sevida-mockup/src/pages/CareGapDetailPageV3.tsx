@@ -24,8 +24,10 @@ import {
   arrivedOn,
   fmtDay,
   fmtWhen,
+  evidenceRoles,
   gapPriority,
   gapStatusTone,
+  recordRole,
   impactsOf,
   lastRelevant,
   serviceName,
@@ -321,6 +323,8 @@ interface EvRow12 {
   received: Date | null;
   valueSet: string;
   clinic: string;
+  role: string;
+  reason: string;
   rank: number;
 }
 
@@ -355,6 +359,8 @@ function EvidenceV12({ g }: { g: GapView }) {
             received: arrivedOn(e) ?? null,
             valueSet: `${gapShort(code as MeasureCode)} ${e.tag}`,
             clinic: org ?? "–",
+            role: recordRole(g, e).role,
+            reason: recordRole(g, e).reason,
             rank: e === g.result.evidence || (imp && (imp.outcome === "decided" || imp.outcome === "counted")) ? 0 : 1,
           };
         })
@@ -371,6 +377,8 @@ function EvidenceV12({ g }: { g: GapView }) {
     { key: "result", header: "Result / Value", accessor: (r) => r.result, sortable: true, nowrap: true },
     { key: "prov", header: "Provider", accessor: (r) => r.provider, sortable: true, width: 180 },
     { key: "src", header: "Source", help: "Where the record came from: claims, or the EHR / lab feed.", accessor: (r) => r.source, sortable: true, width: 150 },
+    { key: "role", header: "Evidence Role", help: "How this record relates to the gap: Closes gap, Exclusion or Doesn't qualify.", accessor: (r) => r.role, sortable: true, nowrap: true, filter: { type: "multiselect", options: evidenceRoles.map((v) => ({ value: v, label: v })) } },
+    { key: "reason", header: "Reason", help: "Explains a Doesn't qualify row, for example dated outside the lookback window or code not in the measure's value set.", accessor: (r) => r.reason, render: (r) => r.reason || "–", width: 320 },
     { key: "recordId", header: "Record ID / Claim ID", help: "Sample data.", accessor: (r) => r.recordId, nowrap: true, ...optional },
     { key: "received", header: "Received Date", help: "The day the file with this record was received.", accessor: (r) => r.received, render: (r) => (r.received ? fmtDate(r.received) : "–"), sortable: true, nowrap: true, ...optional },
     { key: "valueSet", header: "Value Set", help: "The measure's list of codes this record matched. Sample data.", accessor: (r) => r.valueSet, width: 180, ...optional },

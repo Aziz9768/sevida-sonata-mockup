@@ -1333,6 +1333,40 @@ export function lastRelevant(g: GapView): LastRecord | undefined {
   return undefined;
 }
 
+/**
+ * Version 12 (Application Tables, Evidence Role and Reason): how a record relates to a care gap. Closes gap (the record that closed it),
+ * Exclusion (the record that excluded the member) or Doesn't qualify, with the reason it did not count.
+ */
+export type EvidenceRole = "Closes gap" | "Exclusion" | "Doesn't qualify";
+export const evidenceRoles: EvidenceRole[] = ["Closes gap", "Exclusion", "Doesn't qualify"];
+const reasonText = (t: string) => t.replace(/^Did not count: /, "").replace(/^./, (c) => c.toUpperCase());
+
+/** The role of one record for a gap, and why it does not count when it does not. */
+export function recordRole(g: GapView, e: Evt): { role: EvidenceRole; reason: string } {
+  const code = g.def.code;
+  if (g.status === "Excluded" && e === g.result.evidence) return { role: "Exclusion", reason: "" };
+  const imp = impactsOf(g.m, e).find((i) => i.code === code);
+  if (g.status === "Closed" && imp && (imp.outcome === "decided" || imp.outcome === "counted")) return { role: "Closes gap", reason: "" };
+  if (unmappedEvents(g.m, code).includes(e))
+    return { role: "Doesn't qualify", reason: `Code ${e.code} (${e.system}) is not in the measure's value set.` };
+  return { role: "Doesn't qualify", reason: imp ? reasonText(imp.text) : "Not a record this measure uses." };
+}
+
+/** The role of a whole gap: what closed it, what excluded the member, or why the newest related record does not qualify. */
+export function gapRole(g: GapView): { role: EvidenceRole; reason: string } {
+  if (g.status === "Closed") return { role: "Closes gap", reason: "" };
+  if (g.status === "Excluded") return { role: "Exclusion", reason: g.exclusionReason ?? g.result.reason };
+  const last = lastRelevant(g);
+  if (last?.origin === "file") {
+    const r = recordRole(g, last.e);
+    return { role: "Doesn't qualify", reason: r.reason };
+  }
+  if (last) return { role: "Doesn't qualify", reason: "Evidence recorded in Sonata is waiting for review." };
+  // No record of the kind the measure counts: say why the nearest related record does not qualify (one with a code outside the value set first).
+  const near = unmappedEvents(g.m, g.def.code)[0] ?? supportingEvents(g.m, g.def.code)[0];
+  return near ? { role: "Doesn't qualify", reason: recordRole(g, near).reason } : { role: "Doesn't qualify", reason: "No related record is on file." };
+}
+
 /** When the file a record arrived in was last received. */
 export const arrivedOn = (e: Evt): Date | undefined =>
   dataFiles.find((f) => f.id === e.file)?.receivedOn;
