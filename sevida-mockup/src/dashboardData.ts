@@ -2,6 +2,8 @@
 import { getVersion } from "./version";
 import {
   AGE_RANGES,
+  ETHNICITY_V12,
+  RACE_V12,
   GENDER_V3,
   militaryOptions,
   ageParts,
@@ -23,9 +25,8 @@ import {
   ageAtYearEnd,
   ageBandsOf,
   countyOf,
-  ethnicityGroupOf,
-  raceGroupOf,
   dataFiles,
+  fileRows,
   fmtDate,
   groupings,
   hashOf,
@@ -130,24 +131,6 @@ const v3 = () => getVersion() >= 3;
 export const v3Code = (s: string) => (v3() ? s.replace(/\b(BCS|CCS|COL)-E\b/g, "$1") : s);
 /** Version 12 (Balsamiq): Sex has Male, Female and Unknown; Race and Ethnicity have the FHIR values plus Unknown and Declined, and no "None". */
 const v12 = () => getVersion() >= 12;
-const raceV12 = (m: Member) => {
-  if (m.raceCodes.length === 0) return "Unknown";
-  const g = raceGroupOf(m);
-  return g === "Unknown" && m.raceCodes.includes("ASKU") ? "Declined" : (g ?? "Unknown");
-};
-const ethnicityV12 = (m: Member) => (m.ethnicityCode === "ASKU" ? "Declined" : ethnicityGroupOf(m));
-export const RACE_V12 = [
-  "American Indian or Alaska Native",
-  "Asian",
-  "Black or African American",
-  "Native Hawaiian or Other Pacific Islander",
-  "White",
-  "Other race",
-  "Two or more races",
-  "Unknown",
-  "Declined",
-];
-export const ETHNICITY_V12 = ["Hispanic or Latino", "Not Hispanic or Latino", "Unknown", "Declined"];
 export const SEX_V12 = ["Male", "Female", "Unknown"];
 export const sexOf = (m: Member) => {
   if (v12()) {
@@ -183,9 +166,9 @@ export const ageGroupOf = (m: Member, year: number, code?: MeasureCode) => {
 };
 
 const groupOf = (key: string) => groupings.find((g) => g.key === key)!.of;
-export const raceOf = (m: Member) => (v12() ? raceV12(m) : v3() ? raceV3(m) : groupOf("race")(m));
+export const raceOf = (m: Member) => (v3() ? raceV3(m) : groupOf("race")(m));
 export const ethnicityOf = (m: Member) =>
-  v12() ? ethnicityV12(m) : v3() ? ethnicityV3(m) : groupOf("ethnicity")(m);
+  v3() ? ethnicityV3(m) : groupOf("ethnicity")(m);
 export const providerOf = (m: Member) =>
   getVersion() >= 7 ? pcmOf(m) : groupOf("provider")(m);
 
@@ -395,7 +378,7 @@ export function a1cCounts(list: Member[], year: number) {
 
 /* ---------------------------------------------------------------- groups (disparity charts, FR-703) */
 
-export type Dimension = "race" | "ethnicity" | "ageGroup" | "sex" | "provider" | "military";
+export type Dimension = "race" | "ethnicity" | "ageGroup" | "sex" | "provider" | "military" | "ageBand";
 export const dimensionLabel: Record<Dimension, string> = {
   race: "race",
   ethnicity: "ethnicity",
@@ -407,6 +390,7 @@ export const dimensionLabel: Record<Dimension, string> = {
   },
   provider: "primary care provider",
   military: "military status",
+  ageBand: "age band",
 };
 const keyOf = (dim: Dimension, year: number, code?: MeasureCode): ((m: Member) => string) =>
   dim === "race"
@@ -419,7 +403,13 @@ const keyOf = (dim: Dimension, year: number, code?: MeasureCode): ((m: Member) =
           ? providerOf
           : dim === "military"
             ? (m) => militaryV3(m)
-            : (m) => ageGroupOf(m, year, code);
+            : dim === "ageBand"
+              ? // Version 12: ten-year bands (40-49, 50-59 ...) for the Gaps By Age chart, as the Balsamiq board draws them.
+                (m) => {
+                  const age = ageAtYearEnd(m.dob, year);
+                  return bandsFor(code ?? "BCS-E", year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";
+                }
+              : (m) => ageGroupOf(m, year, code);
 
 export interface GroupRate {
   group: string;
@@ -445,6 +435,10 @@ export function groupRates(
   let rows: GroupRate[] = [...by.entries()]
     .map(([group, ms]) => ({ group, t: tally(ms, code, year) }))
     .filter((r) => r.t.denominator > 0);
+  if (dim === "ageBand") {
+    const order = bandsFor(code, year).map((b) => b.label);
+    return rows.filter((r) => order.includes(r.group)).sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+  }
   if (dim === "ageGroup") {
     // Version 7: the age ranges of the Members list (version 3 and later) come in age order, youngest first.
     const order = v12() ? AGE_RANGES.map((r) => r.label) : (getVersion() >= 7 ? bandsFor(code, year) : ageBands).map((b) => b.label);
@@ -1004,7 +998,7 @@ export function inputsFor(code: MeasureCode): InputRow[] {
       rowsUsed:
         file.status === "Failed" || file.status === "Not received"
           ? 0
-          : file.rows,
+          : fileRows(id),
       rejected,
     };
   });

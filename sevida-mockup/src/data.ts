@@ -793,14 +793,14 @@ const raceSources = ['Health Plan Collected', 'CMS/State Databases (Enrollment F
 
 const ageCycle = [8, 15, 52, 48, 61, 19, 67, 44, 58, 70, 29, 36, 72, 55, 63, 50, 12, 41, 66, 33, 59, 45, 17, 69, 38, 56, 73, 47, 5, 62];
 
-function generate(count: number): Member[] {
-  const r = rng(2026);
+function generate(count: number, seed = 2026, firstId = 1011): Member[] {
+  const r = rng(seed);
   const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
   const chance = (p: number) => r() < p;
   const out: Member[] = [];
 
   for (let i = 0; i < count; i++) {
-    const n = 1011 + i;
+    const n = firstId + i;
     const gender: Gender = i % 2 === 0 ? 'female' : 'male';
     const age = ageCycle[i % ageCycle.length] + ((i * 7) % 3);
     const dob = d(MY - age, 1 + ((i * 5) % 12), 1 + ((i * 11) % 27));
@@ -1279,9 +1279,19 @@ export const v3Extra: Member[] = [
   young('M1303', 'Lucas', 'Rivera', 'female', new Date(2025, 6, 16)),
   young('M1304', 'Mia', 'Alvarez', 'female', new Date(2022, 2, 14)),
 ];
-/** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3. */
-export const allMembers = (): Member[] => (getVersion() >= 3 ? [...members, ...v3Extra] : members);
-export const memberById = (id: string | undefined) => members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id);
+/**
+ * Version 12 only: 1,536 more made-up members (M2001 and up), so the demo has 1,840 members like the Balsamiq board and a primary care manager
+ * can have 100 or more of them. Built the first time a Version 12 screen asks, so older versions never pay for it and never see them.
+ */
+let v12Cache: Member[] | null = null;
+export const v12Members = (): Member[] => (v12Cache ??= withRecordFields(withLocations(withSeveralGaps(generate(1536, 4242, 2001)))));
+/** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3, plus the 1,536 more of Version 12. */
+export const allMembers = (): Member[] => {
+  const v = getVersion();
+  return v >= 12 ? [...members, ...v3Extra, ...v12Members()] : v >= 3 ? [...members, ...v3Extra] : members;
+};
+export const memberById = (id: string | undefined) =>
+  members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id) ?? (getVersion() >= 12 ? v12Members().find((m) => m.id === id) : undefined);
 
 /* ------------------------------------------------------------------ enrollment checks */
 
@@ -2516,25 +2526,33 @@ export interface DataFile {
   usedBy: MeasureCode[];
 }
 
-const countEv = (f: Evt['file']) => members.reduce((n, m) => n + m.events.filter((e) => e.file === f).reduce((a, e) => a + (e.lines ?? 1), 0), 0);
-const rowCounts: Record<FileId, number> = {
-  'member-gm': members.length,
-  'member-en': members.reduce((n, m) => n + m.segments.length, 0),
-  'member-RES': members.length,
-  claim: Math.max(1, Math.round(countEv('claim-line') * 0.8)),
-  'claim-line': countEv('claim-line'),
-  'pharmacy-claim': countEv('pharmacy-claim-line'),
-  'pharmacy-claim-line': countEv('pharmacy-claim-line'),
-  pharm: countEv('pharm'),
-  'pharm-c': countEv('pharm-c'),
-  provider: providers.length,
-  'medicare-status': members.reduce((n, m) => n + m.medicare.length, 0),
-  'visit-e': countEv('visit-e'),
-  diag: countEv('diag'),
-  proc: countEv('proc'),
-  obs: countEv('obs'),
-  lab: countEv('lab'),
+/** How many rows each file holds for a list of members. */
+const rowsFor = (list: Member[]): Record<FileId, number> => {
+  const countEv = (f: Evt['file']) => list.reduce((n, m) => n + m.events.filter((e) => e.file === f).reduce((a, e) => a + (e.lines ?? 1), 0), 0);
+  return {
+    'member-gm': list.length,
+    'member-en': list.reduce((n, m) => n + m.segments.length, 0),
+    'member-RES': list.length,
+    claim: Math.max(1, Math.round(countEv('claim-line') * 0.8)),
+    'claim-line': countEv('claim-line'),
+    'pharmacy-claim': countEv('pharmacy-claim-line'),
+    'pharmacy-claim-line': countEv('pharmacy-claim-line'),
+    pharm: countEv('pharm'),
+    'pharm-c': countEv('pharm-c'),
+    provider: providers.length,
+    'medicare-status': list.reduce((n, m) => n + m.medicare.length, 0),
+    'visit-e': countEv('visit-e'),
+    diag: countEv('diag'),
+    proc: countEv('proc'),
+    obs: countEv('obs'),
+    lab: countEv('lab'),
+  };
 };
+const rowCounts = rowsFor(members);
+let rowsV12: Record<FileId, number> | null = null;
+/** Rows in a file for the members of the version being shown (Version 12 has more members, so its files are longer). */
+export const fileRows = (id: FileId): number =>
+  getVersion() >= 12 ? (rowsV12 ??= rowsFor([...members, ...v12Members()]))[id] : rowCounts[id];
 
 const usedBy = (id: FileId) => measures.filter((m) => m.files.includes(id)).map((m) => m.code);
 const f = (id: FileId, status: FileStatus, note: string, errors = 0, warnings = 0, day = 12): DataFile => ({

@@ -31,6 +31,7 @@ export function MembersListPage() {
   const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
   const { visible: members, canSee } = useRole();
+  // `members` already holds the Version 12 extra members (see roles.tsx).
   const total = v3 ? members.length + v3Extra.filter(canSee).length : members.length;
   const [shown, setShown] = useState(total);
   // One row per member per measurement year. The Measurement year filter always has a value and starts at the current year.

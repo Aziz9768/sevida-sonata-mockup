@@ -14,6 +14,7 @@ import { emptyFilters, ethnicityOf, filterMembers, providerOf, raceOf, runInfo, 
 import type { DashFilters } from "../dashboardData";
 import { ageRangeOf, gapShort, militaryOptions, militaryV3, tricareIdOf } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
+import { useGaps } from "../careGaps";
 import { useRun } from "../runs";
 import { useRole } from "../roles";
 import { GROUP, KpiTile, boxSx, changeOf, controlsBox, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
@@ -49,6 +50,7 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
   const { run: selectedRun } = useRun();
   const run = runInfo();
   const { memberLists } = useRole();
+  const { gapsOf, openOf } = useGaps();
   const set = <K extends keyof OverviewState>(key: K, value: OverviewState[K]) => setS({ ...s, [key]: value });
 
   /* ---- who is counted: the Primary Care Manager and Military Status filters, then the Population filter ---- */
@@ -142,7 +144,10 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
       {text}
     </Link>
   );
-  const gapNames = (m: Member) => codes.filter((c) => resultsFor(m, YEAR)[c].state === "Gap").map((c) => gapShort(c));
+  // The three gap columns follow the Members list: an open gap is one that care staff have not closed yet, and a closed gap is a measure
+  // that is met or a gap that staff closed. (The tiles above count what the measure run found, as their descriptions say.)
+  const gapNames = (m: Member) => openOf(m).map((g) => gapShort(g.def.code));
+  const closedCount = (m: Member) => statesOf(m).filter((x) => x === "Met").length + gapsOf(m).filter((g) => g.status === "Closed").length;
   const cols: QsCol<Member>[] = [
     { key: "name", header: "Member Name", value: (m) => m.name, render: (m) => link(m, m.name), nowrap: true },
     { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), nowrap: true },
@@ -152,7 +157,7 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
     { key: "mil", header: "Military Status", value: (m) => militaryV3(m), nowrap: true },
     { key: "pcm", header: "Primary Care Manager", value: (m) => pcmText(providerOf(m)), nowrap: true },
     { key: "open", header: "# Open Gaps", value: (m) => gapNames(m).length, align: "right" },
-    { key: "closed", header: "# Closed Gaps (Measure Year)", value: (m) => statesOf(m).filter((x) => x === "Met").length, align: "right" },
+    { key: "closed", header: "# Closed Gaps (Measure Year)", value: closedCount, align: "right" },
     { key: "gaps", header: "Gaps", value: (m) => gapNames(m).join(", "), render: (m) => gapNames(m).join(", ") || "–", nowrap: true },
     { key: "race", header: "Race", value: raceOf, nowrap: true },
     { key: "eth", header: "Ethnicity", value: ethnicityOf, nowrap: true },

@@ -7,7 +7,7 @@ import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
 import { CURRENT_YEAR, fmtDate, resultsFor } from "../data";
 import type { MeasureCode, MeasureState } from "../data";
-import { emptyFilters, facetOptions, filterMembers, gapsByManager, groupRates, inputsFor, kpisFor, providerOf, runInfo, timeframeOptions, timeframeRows, yearLines } from "../dashboardData";
+import { bandsFor, emptyFilters, facetOptions, filterMembers, gapsByManager, groupRates, inputsFor, kpisFor, providerOf, runInfo, timeframeOptions, timeframeRows, yearLines } from "../dashboardData";
 import type { DashFilters, Dimension, Timeframe } from "../dashboardData";
 import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, gapShort, militaryOptions } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
@@ -37,8 +37,8 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
   { value: "open", label: "Open Gaps", states: ["Gap"] },
 ];
 
-/** Demo only: the production rule is 100 members. The demo files hold about 300 members, so no manager would pass that. */
-const MIN_PCM_MEMBERS = 20;
+/** The board's rule: only managers with 100 or more members are ranked, so a manager with few members does not skew the rate. */
+const MIN_PCM_MEMBERS = 100;
 
 /** The three Trend Timeframe descriptions (the same wording as Version 11; the board's wording is still to be confirmed). */
 const TIMEFRAME_TIPS: Record<Timeframe, string> = {
@@ -66,10 +66,15 @@ function aboutBullets(code: MeasureCode): string[] {
     ];
   return [`Who's Included: ${V3_DEFINITION[code]}`, `Met when: ${V3_MET[code]}`, `Excluded: ${V3_EXCLUSIONS[code]}`];
 }
+/** BCS lists every file received in the last run (the board's 14 files, newest first). The other measures list the files they read. */
 const sourceFiles = (code: MeasureCode) =>
-  inputsFor(code)
-    .filter((r) => r.file.receivedOn)
-    .map((r) => `${r.title} ${fmtDate(r.file.receivedOn!)}`)
+  (code === "BCS-E"
+    ? runInfo().sources.map((s) => ({ title: s.title, on: s.receivedOn }))
+    : inputsFor(code)
+        .filter((r) => r.file.receivedOn)
+        .map((r) => ({ title: r.title, on: r.file.receivedOn! }))
+  )
+    .map((r) => `${r.title} ${fmtDate(r.on)}`)
     .join(" · ");
 
 export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12State; setS: (s: MeasureV12State) => void }) {
@@ -151,7 +156,11 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const nLabel = viewAll ? "All" : `Top ${topN}`;
 
   /* ---- Gaps By ---- */
-  const gapRows = (dim: Dimension) => groupRates(code, list, YEAR, dim).map((r) => ({ label: r.group, closed: r.t.met, open: r.t.gap }));
+  const gapRows = (dim: Dimension) => {
+    const rows = groupRates(code, list, YEAR, dim).map((r) => ({ label: r.group, closed: r.t.met, open: r.t.gap }));
+    // The board lists every ten-year band of the measure's ages (40-49, 50-59 ...), also one nobody is in.
+    return dim === "ageBand" ? bandsFor(code, YEAR).map((b) => rows.find((r) => r.label === b.label) ?? { label: b.label, closed: 0, open: 0 }) : rows;
+  };
 
   const clear = () => setS(emptyMeasure());
   const filtered = JSON.stringify(f) !== JSON.stringify(emptyFilters()) || s.pop !== "eligible";
@@ -342,14 +351,11 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 1 }}>
             Counts and %s are based on the members that the Primary Care Manager is responsible for. Only PCMs with 100+ members are included so that PCMs with few members do not skew metrics.
           </Typography>
-          <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 0.5, fontStyle: "italic" }}>
-            Sample data: the demo holds only about 300 members, so here the cut-off is {MIN_PCM_MEMBERS} members.
-          </Typography>
         </QsTile>
 
         {(
           [
-            ["ageGroup", "Gaps By Age", "Age"],
+            ["ageBand", "Gaps By Age", "Age"],
             ["race", "Gaps By Race", "Race"],
             ["ethnicity", "Gaps By Ethnicity", "Ethnicity"],
             ["sex", "Gaps By Sex", "Sex"],

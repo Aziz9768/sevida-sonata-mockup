@@ -113,10 +113,29 @@ export const militaryV3 = (m: Member, year = DEMO_NOW.getFullYear()): string => 
 };
 
 export const NONE = "None";
+/** Version 12 (Balsamiq board): Race and Ethnicity use the FHIR values plus Unknown and Declined, and never "None". */
+export const RACE_V12 = [
+  "American Indian or Alaska Native",
+  "Asian",
+  "Black or African American",
+  "Native Hawaiian or Other Pacific Islander",
+  "White",
+  "Other race",
+  "Two or more races",
+  "Unknown",
+  "Declined",
+];
+export const ETHNICITY_V12 = ["Hispanic or Latino", "Not Hispanic or Latino", "Unknown", "Declined"];
+const raceV12 = (m: Member) => {
+  if (m.raceCodes.length === 0) return "Unknown";
+  const g = raceGroupOf(m);
+  return g === "Unknown" && m.raceCodes.includes("ASKU") ? "Declined" : (g ?? "Unknown");
+};
+const ethnicityV12 = (m: Member) => (m.ethnicityCode === "ASKU" ? "Declined" : ethnicityGroupOf(m));
 export const raceV3 = (m: Member) =>
-  m.raceCodes.length === 0 ? NONE : (raceGroupOf(m) ?? NONE);
+  getVersion() >= 12 ? raceV12(m) : m.raceCodes.length === 0 ? NONE : (raceGroupOf(m) ?? NONE);
 export const ethnicityV3 = (m: Member) =>
-  m.ethnicityCode === "" ? NONE : ethnicityGroupOf(m);
+  getVersion() >= 12 ? ethnicityV12(m) : m.ethnicityCode === "" ? NONE : ethnicityGroupOf(m);
 
 
 /* ------------------------------------------------------------------ member header (sheet wireframe, Member Details Page tab) */
