@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Box, Typography } from "@mui/material";
-import { QS_CLOSED, QS_OPEN, QsLegend, niceMax } from "./kit";
+import { QsLegend, niceMax } from "./kit";
 import { qs } from "./qsTheme";
 
 /**
@@ -26,8 +26,11 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
 
 const n0 = (n: number) => n.toLocaleString("en-US");
 const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0.00%");
-const onOpen = qs.color.primaryForeground;
-const onClosed = qs.color.accentForeground;
+/** Version 12: Closed is the app's green and Open is its red, the same as the Closed and Open tags everywhere else (Versions 1 to 11 keep blue and orange). */
+export const V12_CLOSED: string = qs.meaning.met;
+export const V12_OPEN: string = qs.tone.danger.border;
+const onOpen = "#FFFFFF";
+const onClosed = "#FFFFFF";
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
 export const OPEN_LEGEND = "Open Gaps Count & %";
@@ -66,8 +69,8 @@ export function QsRateColumns({
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend
         items={[
-          { label: CLOSED_LEGEND, color: QS_CLOSED },
-          { label: OPEN_LEGEND, color: QS_OPEN },
+          { label: CLOSED_LEGEND, color: V12_CLOSED },
+          { label: OPEN_LEGEND, color: V12_OPEN },
         ]}
       />
       {n === 0 ? (
@@ -115,8 +118,8 @@ export function QsRateColumns({
               <g key={r.label}>
                 <title>{tip}</title>
                 <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
-                {seg(hC, r.closed, y(0) - hC, onClosed, QS_CLOSED)}
-                {seg(hO, r.open, y(0) - hC - hO, onOpen, QS_OPEN)}
+                {seg(hC, r.closed, y(0) - hC, onClosed, V12_CLOSED)}
+                {seg(hO, r.open, y(0) - hC - hO, onOpen, V12_OPEN)}
                 <text
                   x={cx}
                   y={y(0) + 16}
@@ -264,9 +267,9 @@ export function QsRateBars({
   const max = niceMax(Math.max(1, ...rows.map((r) => r.open + r.closed)));
   const x = (v: number) => padL + (v / (max || 1)) * (W - padL - padR);
   const order: ("open" | "closed")[] = first === "open" ? ["open", "closed"] : ["closed", "open"];
-  const color = { open: QS_OPEN, closed: QS_CLOSED };
+  const color = { open: V12_OPEN, closed: V12_CLOSED };
   const fg = { open: onOpen, closed: onClosed };
-  const legend = { open: { label: OPEN_LEGEND, color: QS_OPEN }, closed: { label: CLOSED_LEGEND, color: QS_CLOSED } };
+  const legend = { open: { label: OPEN_LEGEND, color: V12_OPEN }, closed: { label: CLOSED_LEGEND, color: V12_CLOSED } };
   return (
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend items={order.map((k) => legend[k])} />

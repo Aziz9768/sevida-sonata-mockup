@@ -150,7 +150,7 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
   const closedCount = (m: Member) => statesOf(m).filter((x) => x === "Met").length + gapsOf(m).filter((g) => g.status === "Closed").length;
   const cols: QsCol<Member>[] = [
     { key: "name", header: "Member Name", value: (m) => m.name, render: (m) => link(m, m.name), nowrap: true },
-    { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), nowrap: true },
+    { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), render: (m) => link(m, tricareIdOf(m)), nowrap: true },
     { key: "dob", header: "Date of Birth", value: (m) => m.dob.getTime(), render: (m) => fmtDate(m.dob), nowrap: true },
     { key: "age", header: "Age", value: (m) => ageAtYearEnd(m.dob, YEAR), align: "right" },
     { key: "sex", header: "Sex", value: sexOf },

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { AutocompleteField, Button, SelectField, TextField } from "sevida-ui";
-import { QS_CLOSED, QsSheet, QsText, QsTile } from "../quicksight/kit";
-import { QsRateBars, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
+import { QsSheet, QsText, QsTile } from "../quicksight/kit";
+import { V12_CLOSED, QsRateBars, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
 import { CURRENT_YEAR, fmtDate, resultsFor } from "../data";
@@ -322,7 +322,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
                 labels={lines.labels}
                 series={[...lines.series].reverse().map((x, i) => ({
                   name: x.name,
-                  color: i === 0 ? qs.meaning.neutral : QS_CLOSED,
+                  color: i === 0 ? qs.meaning.neutral : V12_CLOSED,
                   dashed: i === 0,
                   counts: x.counts,
                   rates: x.values,

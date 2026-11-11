@@ -90,7 +90,7 @@ export const GROUP = {
   population: { color: qs.meaning.main, text: qs.meaning.main },
   excluded: { color: qs.meaning.neutral, text: qs.color.secondaryForeground },
   met: { color: qs.meaning.met, text: qs.meaning.met },
-  notMet: { color: qs.meaning.gap, text: qs.meaning.gapText },
+  notMet: { color: qs.tone.danger.border, text: qs.tone.danger.border },
 } as const;
 export type Group = keyof typeof GROUP;
 
