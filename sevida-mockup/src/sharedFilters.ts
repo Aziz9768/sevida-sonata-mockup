@@ -38,7 +38,7 @@ export const LABEL = {
   get provider() { return v3L("Primary Care Provider", "Primary care provider"); },
   get excluded() { return v3L("Excluded From", "Excluded from"); },
   get evDate() { return v3L("Evidence Date", "Evidence date"); },
-  get a1c() { return v3L("Lowest HbA1c", "Latest HbA1c"); },
+  get a1c() { return getVersion() >= 12 ? "Latest HbA1c" : v3L("Lowest HbA1c", "Latest HbA1c"); },
   get openGaps() { return v3L("# Open Gaps", "Open care gaps"); },
   state: "State",
   county: "County",

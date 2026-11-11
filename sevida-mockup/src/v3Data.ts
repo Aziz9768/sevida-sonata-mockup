@@ -305,7 +305,9 @@ export const V3_DEFINITION: Record<Code, string> = {
   },
   "CCS-E": "Women aged 24–64 on Dec 31 who were recommended routine cervical cancer screening.",
   "COL-E": "Members aged 46–75 on Dec 31 who were recommended colorectal cancer screening.",
-  GSD: "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.",
+  get GSD() {
+    return getVersion() >= 12 ? "Members aged 18–75 with diabetes. The result is the most recent final HbA1c (or GMI) of the measurement period." : "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.";
+  },
   WCV: "Members aged 3–21 enrolled with at most one 45-day gap.",
 };
 export const V3_EXCLUSIONS: Record<Code, string> = {
@@ -319,6 +321,8 @@ export const V3_MET: Record<Code, string> = {
   "BCS-E": "At least one mammogram from Oct 1 two years before the period through the end of the period.",
   "CCS-E": "Cervical cytology (age 24–64) in the period or the two years before, or a high-risk HPV test (age 30–64) in the period or the four years before.",
   "COL-E": "Stool test (FIT) this year, sDNA-FIT in the last 3 years, CT colonography or sigmoidoscopy in the last 5, colonoscopy in the last 10.",
-  GSD: "Lowest final HbA1c of the period is below 8%.",
+  get GSD() {
+    return getVersion() >= 12 ? "Most recent final HbA1c of the period is below 8%." : "Lowest final HbA1c of the period is below 8%.";
+  },
   WCV: "A well-care visit with a PCP or OB/GYN (video and phone visits do not count).",
 };

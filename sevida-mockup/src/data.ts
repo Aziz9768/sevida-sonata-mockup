@@ -1696,13 +1696,15 @@ function v3Def(def: MeasureDef): MeasureDef {
   } else if (def.code === 'WCV' && getVersion() >= 12) {
     // NCQA removed telehealth well-care visits from the measure for MY 2025; MY 2026 keeps that.
     r.rules = add(def.rules, 'Met when a well-care visit', { text: 'A well-care visit held by telehealth (video or phone) does not count. NCQA removed telehealth visits from this measure for MY 2025.', from: 'ncqa', where: 'NCQA MY 2025 and MY 2026 documents' });
+  } else if (def.code === 'GSD' && getVersion() >= 12) {
+    // NCQA: the most recent final HbA1c (or GMI) of the year decides.
+    r.rules = add(def.rules, 'Excluded: hospice', institution);
   } else if (def.code === 'GSD') {
     r.needs = 'The lowest final HbA1c of the year is below 8%.';
     r.evidenceLabel = 'Lowest HbA1c';
     let rules = swap(def.rules, 'Uses the most recent HbA1c', 'Uses the lowest final HbA1c (or GMI) in the measurement year. Only final, amended and corrected results count.');
     rules = swap(rules, 'The spec names two thresholds', 'The dashboard shows the total, the members above 8% and the members above 9%. The result column is the lowest HbA1c.');
     rules = swap(rules, 'Gap when there is no final HbA1c', 'Gap when there is no final HbA1c this year, or the lowest one is 8% or higher.');
-    if (getVersion() >= 12) rules = add(rules, 'Excluded: hospice', institution);
     r.rules = rules;
   }
   v3Defs.set(defKey, r);
@@ -2128,7 +2130,8 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         return finish('Gap', 'No final HbA1c this year');
       }
       const withValue = tests.filter((e) => e.value !== undefined);
-      const lowest = getVersion() >= 3 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
+      // Version 12 follows NCQA: the most recent final HbA1c of the year. Version 3 to 11 use the lowest (Leap's final requirements sheet).
+      const lowest = getVersion() >= 3 && getVersion() < 12 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
       const t = lowest ?? tests[0];
       if (t.value === undefined) {
         const r = `Final HbA1c lab on ${fmtDate(t.date)} has no result value`;
@@ -2474,7 +2477,7 @@ export function latestA1c(member: Member, year: number = MY): { value?: number; 
   const all = m.events.filter((e) => e.tag === 'hba1c' && e.status === 'final' && e.date.getFullYear() === year).sort((a, b) => b.date.getTime() - a.date.getTime());
   /** Version 3: the measure uses the lowest result of the period. */
   const withValue = all.filter((e) => e.value !== undefined);
-  const t = getVersion() >= 3 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
+  const t = getVersion() >= 3 && getVersion() < 12 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
   return t ? { value: t.value, date: t.date } : null;
 }
 export type A1cBand = 'Above 9%' | '8% to 9%' | 'Below 8%' | 'No result';
