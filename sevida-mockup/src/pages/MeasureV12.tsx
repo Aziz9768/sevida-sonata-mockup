@@ -40,8 +40,20 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
 /** The board's rule: only managers with 100 or more members are ranked, so a manager with few members does not skew the rate. */
 const MIN_PCM_MEMBERS = 100;
 
-/** The lines of a header box side by side on one row. The two boxes stay side by side. Each line is kept whole, so a box wraps to a second line only when its box is too narrow for all of it. */
-const oneLine = { display: "flex", flexWrap: "wrap", columnGap: 3, rowGap: 0.5, "& p": { m: 0, whiteSpace: "nowrap" } } as const;
+/** A header box shows its facts side by side: the label on top, the value below, a thin line between facts. A fact moves to the next row only when the box is too narrow. */
+const facts = {
+  display: "flex",
+  flexWrap: "wrap",
+  rowGap: 1,
+  "& > div": { whiteSpace: "nowrap", pr: 3 },
+  "& > div + div": { borderLeft: qs.tile.border, pl: 3 },
+} as const;
+const Fact = ({ label, value }: { label: string; value: string }) => (
+  <div>
+    <b style={{ display: "block" }}>{label}</b>
+    {value}
+  </div>
+);
 
 /** The three Trend Timeframe descriptions (the same wording as Version 11; the board's wording is still to be confirmed). */
 const TIMEFRAME_TIPS: Record<Timeframe, string> = {
@@ -177,31 +189,21 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
 
   return (
     <>
-      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" }, "@media (min-width: 1640px)": { gridTemplateColumns: "auto minmax(0, 1fr)" } }}>
+      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" } }}>
         <Box sx={boxSx}>
           <QsText>
-            <Box sx={oneLine}>
-              <p>
-                <b>MEASUREMENT YEAR:</b> {YEAR}
-              </p>
-              <p>
-                <b>Measurement Start:</b> {ordDate(new Date(YEAR, 0, 1))}
-              </p>
-              <p>
-                <b>Measurement End:</b> {ordDate(new Date(YEAR, 11, 31))}
-              </p>
+            <Box sx={facts}>
+              <Fact label="MEASUREMENT YEAR" value={String(YEAR)} />
+              <Fact label="Measurement Start" value={ordDate(new Date(YEAR, 0, 1))} />
+              <Fact label="Measurement End" value={ordDate(new Date(YEAR, 11, 31))} />
             </Box>
           </QsText>
         </Box>
         <Box sx={boxSx}>
           <QsText>
-            <Box sx={oneLine}>
-              <p>
-                <b>Data as Of (Run Date):</b> {runStamp(selectedRun.at)}
-              </p>
-              <p>
-                <b>Dashboard Next Update:</b> {runStamp(run.next)}
-              </p>
+            <Box sx={facts}>
+              <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />
+              <Fact label="Dashboard Next Update" value={runStamp(run.next)} />
             </Box>
           </QsText>
         </Box>
