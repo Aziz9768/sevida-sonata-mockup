@@ -40,7 +40,7 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
 /** The board's rule: only managers with 100 or more members are ranked, so a manager with few members does not skew the rate. */
 const MIN_PCM_MEMBERS = 100;
 
-/** The lines of a header box side by side on one row. Side by side on a wide screen, one above the other on a narrower one. They wrap only on a very small screen. */
+/** The lines of a header box side by side on one row. The two boxes stay side by side. Each line is kept whole, so a box wraps to a second line only when its box is too narrow for all of it. */
 const oneLine = { display: "flex", flexWrap: "wrap", columnGap: 3, rowGap: 0.5, "& p": { m: 0, whiteSpace: "nowrap" } } as const;
 
 /** The three Trend Timeframe descriptions (the same wording as Version 11; the board's wording is still to be confirmed). */
@@ -177,7 +177,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
 
   return (
     <>
-      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: "1fr", "@media (min-width: 1640px)": { gridTemplateColumns: "auto minmax(0, 1fr)" } }}>
+      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" }, "@media (min-width: 1640px)": { gridTemplateColumns: "auto minmax(0, 1fr)" } }}>
         <Box sx={boxSx}>
           <QsText>
             <Box sx={oneLine}>
