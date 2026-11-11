@@ -40,6 +40,9 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
 /** The board's rule: only managers with 100 or more members are ranked, so a manager with few members does not skew the rate. */
 const MIN_PCM_MEMBERS = 100;
 
+/** The lines of a header box side by side on one row. Side by side on a wide screen, one above the other on a narrower one. They wrap only on a very small screen. */
+const oneLine = { display: "flex", flexWrap: "wrap", columnGap: 3, rowGap: 0.5, "& p": { m: 0, whiteSpace: "nowrap" } } as const;
+
 /** The three Trend Timeframe descriptions (the same wording as Version 11; the board's wording is still to be confirmed). */
 const TIMEFRAME_TIPS: Record<Timeframe, string> = {
   annual:
@@ -174,28 +177,32 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
 
   return (
     <>
-      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: "1fr", "@media (min-width: 1640px)": { gridTemplateColumns: "auto minmax(0, 1fr)" } }}>
         <Box sx={boxSx}>
           <QsText>
-            <p>
-              <b>MEASUREMENT YEAR:</b> {YEAR}
-            </p>
-            <p>
-              <b>Measurement Start:</b> {ordDate(new Date(YEAR, 0, 1))}
-            </p>
-            <p>
-              <b>Measurement End:</b> {ordDate(new Date(YEAR, 11, 31))}
-            </p>
+            <Box sx={oneLine}>
+              <p>
+                <b>MEASUREMENT YEAR:</b> {YEAR}
+              </p>
+              <p>
+                <b>Measurement Start:</b> {ordDate(new Date(YEAR, 0, 1))}
+              </p>
+              <p>
+                <b>Measurement End:</b> {ordDate(new Date(YEAR, 11, 31))}
+              </p>
+            </Box>
           </QsText>
         </Box>
         <Box sx={boxSx}>
           <QsText>
-            <p>
-              <b>Data as Of (Run Date):</b> {runStamp(selectedRun.at)}
-            </p>
-            <p>
-              <b>Dashboard Next Update:</b> {runStamp(run.next)}
-            </p>
+            <Box sx={oneLine}>
+              <p>
+                <b>Data as Of (Run Date):</b> {runStamp(selectedRun.at)}
+              </p>
+              <p>
+                <b>Dashboard Next Update:</b> {runStamp(run.next)}
+              </p>
+            </Box>
           </QsText>
         </Box>
       </Box>
@@ -222,7 +229,15 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </Box>
       </Box>
 
-      <Box sx={{ ...controlsBox(4), mt: `${qs.gap}px`, borderTop: qs.tile.border }}>
+      <Box
+        sx={{
+          ...controlsBox(4),
+          mt: `${qs.gap}px`,
+          borderTop: qs.tile.border,
+          // All seven filters and Clear All Filters on one row on a wide screen, as the board draws them.
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))", xl: "1.4fr 1fr 1.1fr 2.3fr 0.8fr 1fr 1fr auto" },
+        }}
+      >
         {multi("provider", "Primary Care Manager", pcmOptionsV12())}
         <Box sx={whiteAll}>
           <SelectField
@@ -235,18 +250,21 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         <Box sx={whiteAll}>
           <SelectField label="Population" value={s.pop} onChange={(v) => setS({ ...s, pop: v as MeasurePop })} options={POP_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} />
         </Box>
-        <Box sx={{ display: "grid", gap: 1 }}>
-          {multi("ageGroup", "Age Range", optionsOf(options.ageGroup))}
-          <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr 1fr", ...whiteAll }}>
+        {/* The board's note under Age Range: "User can select range or enter min / max". Min and Max sit beside the range list, not under it. */}
+        <Box sx={{ display: "flex", gap: 1, alignItems: "start", minWidth: 0 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>{multi("ageGroup", "Age Range", optionsOf(options.ageGroup))}</Box>
+          <Box sx={{ width: 68, flex: "none", ...whiteAll }}>
             <TextField
-              label="Min age"
+              label="Min"
               type="number"
               value={f.ageFrom}
               onChange={(e) => set("ageFrom", e.target.value)}
               slotProps={{ htmlInput: { min: 0, max: 120, "aria-label": "Minimum age in years" } }}
             />
+          </Box>
+          <Box sx={{ width: 68, flex: "none", ...whiteAll }}>
             <TextField
-              label="Max age"
+              label="Max"
               type="number"
               value={f.ageTo}
               onChange={(e) => set("ageTo", e.target.value)}
