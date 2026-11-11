@@ -1421,7 +1421,7 @@ function wrapWords(text: string, maxChars: number, lines = 3): string[] {
 }
 
 /** The top of an axis that has four equal steps of a round size (for example 0, 20, 40, 60, 80). */
-const niceMax = (v: number) => {
+export const niceMax = (v: number) => {
   const need = Math.max(1, v) / 4;
   const pow = Math.pow(10, Math.floor(Math.log10(need)));
   for (const m of [1, 2, 3, 4, 5, 6, 8, 10]) if (m * pow >= need) return Math.max(4, 4 * m * pow);

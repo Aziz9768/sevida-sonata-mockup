@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -227,10 +227,29 @@ export const VERSIONS: VersionInfo[] = [
       "Care Gap page: the first breadcrumb reads Care Gaps List. The summary adds Priority, Primary Care Manager and Gap Evidence. Time left reads 'X Days (MM/DD/YYYY)'. The placeholder text is gone, and a closed gap reads 'Why the Gap Is Closed'. The GSD wording is a draft to confirm. Summary and Overview use the ticket's labels (Recommended Action, Time Left with Due Date). Evidence lists Service Date, Gap Name and Evidence, and History adds Priority and Primary Care Manager (LPP-16227 to 16229).",
     ],
   },
+  {
+    id: 12,
+    name: "Version 12",
+    date: "2026-11-11",
+    summary:
+      "Version 11 with the dashboards matched to the new Balsamiq board (Analytics - Quality Measures): one tab bar, a real Overview dashboard, and the BCS layout on every measure.",
+    changes: [
+      "Everything in Version 11 stays. Version 11 and older are as they were. Only the Analytics dashboards change.",
+      "One tab bar on every dashboard page: Overview, BCS, CCS, COL, GSD, WCV, Inputs, Admin. Member Details is gone as a tab: the members table is now on the Overview. Inputs is a new tab (the board has the label but no screen yet, so it lists the files each measure reads). Admin is unchanged.",
+      "Overview is now a dashboard, not a measure list: header boxes (Measure Year, run dates), filters (Primary Care Manager, Military Status, Population, Clear All Filters), four tiles (Member Population, Members With Open Gaps, Total Open Gaps, Total Gaps Closed) each with its prior month, Closed Gap Rate and Open Gaps By Measure charts, and the Members table (16 columns, search by name or Tricare ID).",
+      "Measure page (BCS, and the same layout for CCS, COL, GSD and WCV): title 'HEDIS Care Gaps - ...' without 'Dashboard'; MEASUREMENT YEAR; Data as Of (Run Date) and Dashboard Next Update; About This Measure open on the page with a Source files line and a date for each file.",
+      "Measure page filters: Primary Care Manager (search by name or NPI, with Unassigned), Military Status, Population (Initial, Excluded, Eligible by default, Closed Gaps, Open Gaps), Age Range (pick ranges or type min / max), Sex, Race and Ethnicity (with Unknown and Declined, no None), and Clear All Filters.",
+      "Measure page tiles: six, in two rows of three (Initial Population, Excluded Population, Eligible Population / Closed Gaps Count, Measure Rate, Open Gaps Count) with the board's descriptions. The rate tile shows its change in points. Member Population and Not Met Rate are gone from this page.",
+      "Trend: Annual is stacked Closed and Open bars with count and % (2022 to 2026 YTD). Quarterly and Monthly show only two lines, last year and this year to date.",
+      "Top n: starts at 5 with a View All button. Open gaps by Primary Care Manager shows count and % and includes Unassigned. Highest Closed Gap Rate is ranked by rate, only for managers with 100 or more members, with the board's note. Names have no 'Dr.' and show the NPI.",
+      "Gaps By Age, Race, Ethnicity, Sex and Military Status: stacked Closed / Open bars on a Rate axis with count and % (Military Status is new).",
+      "Left as in Version 11 until the board owner confirms: BCS age 42-74 (the board says 52-74), the trend description wording, 'Disabled' as a military status, and the Admin and Inputs content. The board's typos are not copied.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 11;
+export const LATEST_VERSION: VersionId = 12;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

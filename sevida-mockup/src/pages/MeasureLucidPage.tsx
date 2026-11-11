@@ -601,7 +601,7 @@ interface RunRow {
   closedChange: number | null;
 }
 
-function Admin({ code }: { code: MeasureCode }) {
+export function Admin({ code }: { code: MeasureCode }) {
   const short = gapShort(code);
   const { choices } = useRun();
   const rows = useMemo<RunRow[]>(() => {
