@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
 import { PageContainer, SelectField } from "sevida-ui";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
@@ -13,14 +13,16 @@ import { useRole } from "../roles";
 import { useDocumentTitle } from "../components/analytics/AnalyticsBits";
 import { lucidTitle } from "./QuickSightDashboardPage";
 import { Admin } from "./MeasureLucidPage";
+import { OverviewV12, emptyOverview } from "./OverviewV12";
+import type { OverviewState } from "./OverviewV12";
 import { MeasureV12, emptyMeasure } from "./MeasureV12";
 import type { MeasureV12State } from "./MeasureV12";
 import { n0, whiteAll } from "./dashboardV12Bits";
 
 /**
  * Version 12 Analytics dashboards (Balsamiq board, Analytics - Quality Measures).
- * One tab bar on every measure page: Overview on the left, one tab for each measure, then Inputs and Admin.
- * The Overview tab opens the Version 11 Overview page (/dashboards), kept as it was. The five measures follow the board. Inputs has a label on the board but no screen, so it lists the files each measure reads.
+ * One tab bar on every page: the Overview on the left, one tab for each measure, then Inputs and Admin.
+ * Overview and the five measures follow the board. Inputs has a label on the board but no screen, so it lists the files each measure reads.
  */
 const OVERVIEW = "Overview";
 const MEASURE_TABS = ["BCS", "CCS", "COL", "GSD", "WCV"];
@@ -72,14 +74,12 @@ export function DashboardsV12Page() {
   const [params] = useSearchParams();
   const first = params.get("m")?.toUpperCase() ?? "";
   const { role } = useRole();
-  const nav = useNavigate();
   const [tab, setTab] = useState(MEASURE_TABS.includes(first) ? first : OVERVIEW);
+  const [ov, setOv] = useState<OverviewState>(emptyOverview());
   const [ms, setMs] = useState<Record<string, MeasureV12State>>({});
   const tabs = [OVERVIEW, ...MEASURE_TABS, "Inputs", ...(role.dataQuality ? ["Admin"] : [])];
   const code = codeOf(tab);
   useDocumentTitle(`${tab}, Analytics`);
-  // No measure in the link: the Overview is the Version 11 page.
-  if (tab === OVERVIEW) return <Navigate to="/dashboards" replace />;
 
   const title = code ? lucidTitle(code).replace("Care Gaps Dashboard", "Care Gaps") : "HEDIS Care Gaps - Overview";
   const crumbs = code
@@ -88,8 +88,10 @@ export function DashboardsV12Page() {
   return (
     <PageContainer title={title} titleVariant="overview" breadcrumbs={crumbs} renderLink={renderCrumbLink}>
       <NotesContext.Provider value={{ fr: false, ask: false }}>
-        <QsFrame tabs={tabs} active={tab} onTab={(t) => (t === OVERVIEW ? nav("/dashboards") : setTab(t))} onReset={() => undefined} toolbar={false}>
-          {code ? (
+        <QsFrame tabs={tabs} active={tab} onTab={setTab} onReset={() => undefined} toolbar={false}>
+          {tab === OVERVIEW ? (
+            <OverviewV12 s={ov} setS={setOv} />
+          ) : code ? (
             <MeasureV12 key={code} code={code} s={ms[tab] ?? emptyMeasure()} setS={(s) => setMs({ ...ms, [tab]: s })} />
           ) : tab === "Inputs" ? (
             <Inputs />
