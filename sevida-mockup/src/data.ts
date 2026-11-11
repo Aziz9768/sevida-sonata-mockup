@@ -793,16 +793,17 @@ const raceSources = ['Health Plan Collected', 'CMS/State Databases (Enrollment F
 
 const ageCycle = [8, 15, 52, 48, 61, 19, 67, 44, 58, 70, 29, 36, 72, 55, 63, 50, 12, 41, 66, 33, 59, 45, 17, 69, 38, 56, 73, 47, 5, 62];
 
-function generate(count: number): Member[] {
-  const r = rng(2026);
+/** wideAges: ages 3 to 80 spread evenly for both sexes (Version 12 extra members), so every measure has members at both ends of its age range. */
+function generate(count: number, seed = 2026, firstId = 1011, wideAges = false): Member[] {
+  const r = rng(seed);
   const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
   const chance = (p: number) => r() < p;
   const out: Member[] = [];
 
   for (let i = 0; i < count; i++) {
-    const n = 1011 + i;
+    const n = firstId + i;
     const gender: Gender = i % 2 === 0 ? 'female' : 'male';
-    const age = ageCycle[i % ageCycle.length] + ((i * 7) % 3);
+    const age = wideAges ? 3 + ((i * 37 + 11 * (i >> 1)) % 78) : ageCycle[i % ageCycle.length] + ((i * 7) % 3);
     const dob = d(MY - age, 1 + ((i * 5) % 12), 1 + ((i * 11) % 27));
     const first = pick(gender === 'female' ? firstF : firstM);
     const last = pick(lastN);
@@ -867,7 +868,7 @@ function generate(count: number): Member[] {
       else ev.push(obs(rdate(2026, 1, 11), '29771-3', 'Fecal immunochemical test: negative', 'fit'));
     }
 
-    const diabetic = age >= 30 && chance(0.26);
+    const diabetic = age >= (wideAges ? 18 : 30) && chance(age >= 30 ? 0.26 : 0.05);
     if (diabetic) {
       ev.push(claim(rdate(2026, 1, 6), 'E11.9', 'ICD-10', 'Type 2 diabetes without complications', 'diabetes', { provider: prov }));
       if (chance(0.9)) {
@@ -1279,9 +1280,19 @@ export const v3Extra: Member[] = [
   young('M1303', 'Lucas', 'Rivera', 'female', new Date(2025, 6, 16)),
   young('M1304', 'Mia', 'Alvarez', 'female', new Date(2022, 2, 14)),
 ];
-/** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3. */
-export const allMembers = (): Member[] => (getVersion() >= 3 ? [...members, ...v3Extra] : members);
-export const memberById = (id: string | undefined) => members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id);
+/**
+ * Version 12 only: 1,536 more made-up members (M2001 and up), so the demo has 1,840 members like the Balsamiq board and a primary care manager
+ * can have 100 or more of them. Built the first time a Version 12 screen asks, so older versions never pay for it and never see them.
+ */
+let v12Cache: Member[] | null = null;
+export const v12Members = (): Member[] => (v12Cache ??= withRecordFields(withLocations(withSeveralGaps(generate(1536, 4242, 2001, true)))));
+/** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3, plus the 1,536 more of Version 12. */
+export const allMembers = (): Member[] => {
+  const v = getVersion();
+  return v >= 12 ? [...members, ...v3Extra, ...v12Members()] : v >= 3 ? [...members, ...v3Extra] : members;
+};
+export const memberById = (id: string | undefined) =>
+  members.find((m) => m.id === id) ?? v3Extra.find((m) => m.id === id) ?? (getVersion() >= 12 ? v12Members().find((m) => m.id === id) : undefined);
 
 /* ------------------------------------------------------------------ enrollment checks */
 
@@ -1653,7 +1664,7 @@ export const measureByCode = (c: string | undefined) =>
 const v3Defs = new Map<string, MeasureDef>();
 /** Version 3 wording of the current-year measure, from the final requirements sheet (HED-001 to HED-005). */
 function v3Def(def: MeasureDef): MeasureDef {
-  const defKey = `${getVersion() >= 7 ? 7 : 3}:${def.code}`;
+  const defKey = `${getVersion() >= 12 ? 12 : getVersion() >= 7 ? 7 : 3}:${def.code}`;
   let r = v3Defs.get(defKey);
   if (r) return r;
   const swap = (rules: Rule[], prefix: string, text: string): Rule[] => rules.map((x) => (x.text.startsWith(prefix) ? { ...x, text } : x));
@@ -1682,6 +1693,12 @@ function v3Def(def: MeasureDef): MeasureDef {
     r.rules = rules;
   } else if (def.code === 'COL-E') {
     r.rules = add(def.rules, 'Excluded: frailty', institution);
+  } else if (def.code === 'WCV' && getVersion() >= 12) {
+    // NCQA removed telehealth well-care visits from the measure for MY 2025; MY 2026 keeps that.
+    r.rules = add(def.rules, 'Met when a well-care visit', { text: 'A well-care visit held by telehealth (video or phone) does not count. NCQA removed telehealth visits from this measure for MY 2025.', from: 'ncqa', where: 'NCQA MY 2025 and MY 2026 documents' });
+  } else if (def.code === 'GSD' && getVersion() >= 12) {
+    // NCQA: the most recent final HbA1c (or GMI) of the year decides.
+    r.rules = add(def.rules, 'Excluded: hospice', institution);
   } else if (def.code === 'GSD') {
     r.needs = 'The lowest final HbA1c of the year is below 8%.';
     r.evidenceLabel = 'Lowest HbA1c';
@@ -1812,9 +1829,11 @@ export const rulesOfYear = (year: number): YearRules => {
   const base = yearRules[year] ?? yearRules[MY];
   if (getVersion() < 3) return base;
   const v7 = getVersion() >= 7;
-  const key = `${v7 ? 7 : 3}:${base.year}`;
+  const v12 = getVersion() >= 12;
+  const key = `${v12 ? 12 : v7 ? 7 : 3}:${base.year}`;
   let r = v3Cache.get(key);
-  if (!r) v3Cache.set(key, (r = v7 ? v7Rules(base) : v3Rules(base)));
+  // Version 12: telehealth well-care visits do not count in any year (NCQA removed them from WCV for MY 2025, and MY 2026 keeps that).
+  if (!r) v3Cache.set(key, (r = v12 ? { ...v7Rules(base), telehealthCounts: false } : v7 ? v7Rules(base) : v3Rules(base)));
   return r;
 };
 /** Age range of each measure on Dec 31 of the current year (from the measure rules). */
@@ -1970,7 +1989,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
     add(3, 'excluded', 'Age 66+ with frailty and advanced illness');
     return finish('Excluded', 'Age 66+ with frailty and advanced illness');
   }
-  if (getVersion() >= 3 && (code === 'BCS-E' || code === 'COL-E') && age >= 66) {
+  if (getVersion() >= 3 && (code === 'BCS-E' || code === 'COL-E' || (code === 'GSD' && getVersion() >= 12)) && age >= 66) {
     const isnp = m.segments.find((x) => x.payer === 'SN2' && x.start <= Y_END && x.end >= Y_START);
     if (isnp) {
       const r = 'Age 66+ and enrolled in an institutional special needs plan (I-SNP)';
@@ -2111,7 +2130,8 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         return finish('Gap', 'No final HbA1c this year');
       }
       const withValue = tests.filter((e) => e.value !== undefined);
-      const lowest = getVersion() >= 3 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
+      // Version 12 follows NCQA: the most recent final HbA1c of the year. Version 3 to 11 use the lowest (Leap's final requirements sheet).
+      const lowest = getVersion() >= 3 && getVersion() < 12 && withValue.length > 0 ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : undefined;
       const t = lowest ?? tests[0];
       if (t.value === undefined) {
         const r = `Final HbA1c lab on ${fmtDate(t.date)} has no result value`;
@@ -2457,7 +2477,7 @@ export function latestA1c(member: Member, year: number = MY): { value?: number; 
   const all = m.events.filter((e) => e.tag === 'hba1c' && e.status === 'final' && e.date.getFullYear() === year).sort((a, b) => b.date.getTime() - a.date.getTime());
   /** Version 3: the measure uses the lowest result of the period. */
   const withValue = all.filter((e) => e.value !== undefined);
-  const t = getVersion() >= 3 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
+  const t = getVersion() >= 3 && getVersion() < 12 && withValue.length ? withValue.reduce((a, b) => (b.value! < a.value! ? b : a)) : all[0];
   return t ? { value: t.value, date: t.date } : null;
 }
 export type A1cBand = 'Above 9%' | '8% to 9%' | 'Below 8%' | 'No result';
@@ -2516,25 +2536,33 @@ export interface DataFile {
   usedBy: MeasureCode[];
 }
 
-const countEv = (f: Evt['file']) => members.reduce((n, m) => n + m.events.filter((e) => e.file === f).reduce((a, e) => a + (e.lines ?? 1), 0), 0);
-const rowCounts: Record<FileId, number> = {
-  'member-gm': members.length,
-  'member-en': members.reduce((n, m) => n + m.segments.length, 0),
-  'member-RES': members.length,
-  claim: Math.max(1, Math.round(countEv('claim-line') * 0.8)),
-  'claim-line': countEv('claim-line'),
-  'pharmacy-claim': countEv('pharmacy-claim-line'),
-  'pharmacy-claim-line': countEv('pharmacy-claim-line'),
-  pharm: countEv('pharm'),
-  'pharm-c': countEv('pharm-c'),
-  provider: providers.length,
-  'medicare-status': members.reduce((n, m) => n + m.medicare.length, 0),
-  'visit-e': countEv('visit-e'),
-  diag: countEv('diag'),
-  proc: countEv('proc'),
-  obs: countEv('obs'),
-  lab: countEv('lab'),
+/** How many rows each file holds for a list of members. */
+const rowsFor = (list: Member[]): Record<FileId, number> => {
+  const countEv = (f: Evt['file']) => list.reduce((n, m) => n + m.events.filter((e) => e.file === f).reduce((a, e) => a + (e.lines ?? 1), 0), 0);
+  return {
+    'member-gm': list.length,
+    'member-en': list.reduce((n, m) => n + m.segments.length, 0),
+    'member-RES': list.length,
+    claim: Math.max(1, Math.round(countEv('claim-line') * 0.8)),
+    'claim-line': countEv('claim-line'),
+    'pharmacy-claim': countEv('pharmacy-claim-line'),
+    'pharmacy-claim-line': countEv('pharmacy-claim-line'),
+    pharm: countEv('pharm'),
+    'pharm-c': countEv('pharm-c'),
+    provider: providers.length,
+    'medicare-status': list.reduce((n, m) => n + m.medicare.length, 0),
+    'visit-e': countEv('visit-e'),
+    diag: countEv('diag'),
+    proc: countEv('proc'),
+    obs: countEv('obs'),
+    lab: countEv('lab'),
+  };
 };
+const rowCounts = rowsFor(members);
+let rowsV12: Record<FileId, number> | null = null;
+/** Rows in a file for the members of the version being shown (Version 12 has more members, so its files are longer). */
+export const fileRows = (id: FileId): number =>
+  getVersion() >= 12 ? (rowsV12 ??= rowsFor([...members, ...v12Members()]))[id] : rowCounts[id];
 
 const usedBy = (id: FileId) => measures.filter((m) => m.files.includes(id)).map((m) => m.code);
 const f = (id: FileId, status: FileStatus, note: string, errors = 0, warnings = 0, day = 12): DataFile => ({

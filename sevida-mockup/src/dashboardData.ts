@@ -2,6 +2,8 @@
 import { getVersion } from "./version";
 import {
   AGE_RANGES,
+  ETHNICITY_V12,
+  RACE_V12,
   GENDER_V3,
   militaryOptions,
   ageParts,
@@ -24,6 +26,7 @@ import {
   ageBandsOf,
   countyOf,
   dataFiles,
+  fileRows,
   fmtDate,
   groupings,
   hashOf,
@@ -126,8 +129,16 @@ export const emptyFilters = (year: number = CURRENT_YEAR): DashFilters => ({
 const v3 = () => getVersion() >= 3;
 /** Version 3 writes BCS, CCS and COL (the sheet's names), not BCS-E, CCS-E and COL-E. */
 export const v3Code = (s: string) => (v3() ? s.replace(/\b(BCS|CCS|COL)-E\b/g, "$1") : s);
-export const sexOf = (m: Member) =>
-  v3() ? genderV3(m) : m.gender === "female" ? "Female" : "Male";
+/** Version 12 (Balsamiq): Sex has Male, Female and Unknown; Race and Ethnicity have the FHIR values plus Unknown and Declined, and no "None". */
+const v12 = () => getVersion() >= 12;
+export const SEX_V12 = ["Male", "Female", "Unknown"];
+export const sexOf = (m: Member) => {
+  if (v12()) {
+    const g = genderV3(m);
+    return g === "Other" ? "Unknown" : g;
+  }
+  return v3() ? genderV3(m) : m.gender === "female" ? "Female" : "Male";
+};
 
 /** Age groups (the same list as on the Members list). Age is taken on Dec 31 of the measurement year, like the measures do. */
 export const ageBands = AGE_GROUPS;
@@ -145,6 +156,8 @@ export const bandsFor = (code: MeasureCode, year: number): { label: string; lo: 
   return out;
 };
 export const ageGroupOf = (m: Member, year: number, code?: MeasureCode) => {
+  // Version 12: the age ranges of the Members list, for every measure.
+  if (v12()) return ageRangeOf(m.dob);
   if (getVersion() >= 7 && code) {
     const age = ageAtYearEnd(m.dob, year);
     return bandsFor(code, year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";
@@ -300,11 +313,11 @@ const sortedSet = (xs: string[]) =>
 /** Choices for the filters. Age group, Sex and Military status are fixed lists shared with the Members list; the rest come from the members. */
 export function facetOptions(): FacetOptions {
   return {
-    sex: v3() ? GENDER_V3 : SEX_VALUES,
+    sex: v12() ? SEX_V12 : v3() ? GENDER_V3 : SEX_VALUES,
     ageGroup: v3() ? AGE_RANGES.map((r) => r.label) : AGE_GROUPS.map((b) => b.label),
     provider: sortedSet(allMembers().map(providerOf)),
-    race: sortedSet([...allMembers().map(raceOf), ...(v3() ? [NONE] : [])]),
-    ethnicity: sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
+    race: v12() ? RACE_V12 : sortedSet([...allMembers().map(raceOf), ...(v3() ? [NONE] : [])]),
+    ethnicity: v12() ? ETHNICITY_V12 : sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
     state: memberStates,
     county: memberCounties,
     military: v3() ? militaryOptions() : MILITARY_VALUES,
@@ -365,7 +378,7 @@ export function a1cCounts(list: Member[], year: number) {
 
 /* ---------------------------------------------------------------- groups (disparity charts, FR-703) */
 
-export type Dimension = "race" | "ethnicity" | "ageGroup" | "sex" | "provider";
+export type Dimension = "race" | "ethnicity" | "ageGroup" | "sex" | "provider" | "military" | "ageBand";
 export const dimensionLabel: Record<Dimension, string> = {
   race: "race",
   ethnicity: "ethnicity",
@@ -376,6 +389,8 @@ export const dimensionLabel: Record<Dimension, string> = {
     return v3() ? "gender" : "sex";
   },
   provider: "primary care provider",
+  military: "military status",
+  ageBand: "age band",
 };
 const keyOf = (dim: Dimension, year: number, code?: MeasureCode): ((m: Member) => string) =>
   dim === "race"
@@ -386,7 +401,15 @@ const keyOf = (dim: Dimension, year: number, code?: MeasureCode): ((m: Member) =
         ? sexOf
         : dim === "provider"
           ? providerOf
-          : (m) => ageGroupOf(m, year, code);
+          : dim === "military"
+            ? (m) => militaryV3(m)
+            : dim === "ageBand"
+              ? // Version 12: ten-year bands (40-49, 50-59 ...) for the Gaps By Age chart, as the Balsamiq board draws them.
+                (m) => {
+                  const age = ageAtYearEnd(m.dob, year);
+                  return bandsFor(code ?? "BCS-E", year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";
+                }
+              : (m) => ageGroupOf(m, year, code);
 
 export interface GroupRate {
   group: string;
@@ -412,12 +435,21 @@ export function groupRates(
   let rows: GroupRate[] = [...by.entries()]
     .map(([group, ms]) => ({ group, t: tally(ms, code, year) }))
     .filter((r) => r.t.denominator > 0);
+  if (dim === "ageBand") {
+    const order = bandsFor(code, year).map((b) => b.label);
+    return rows.filter((r) => order.includes(r.group)).sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+  }
   if (dim === "ageGroup") {
     // Version 7: the age ranges of the Members list (version 3 and later) come in age order, youngest first.
-    const order = (getVersion() >= 7 ? bandsFor(code, year) : ageBands).map((b) => b.label);
+    const order = v12() ? AGE_RANGES.map((r) => r.label) : (getVersion() >= 7 ? bandsFor(code, year) : ageBands).map((b) => b.label);
     return rows.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
   }
   if (dim === "sex") return rows.sort((a, b) => a.group.localeCompare(b.group));
+  if (dim === "military" || (v12() && (dim === "race" || dim === "ethnicity"))) {
+    // Version 12: the order of the filter list, the same on every chart and the filter.
+    const order = dim === "military" ? militaryOptions() : dim === "race" ? RACE_V12 : ETHNICITY_V12;
+    return rows.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+  }
   rows = rows.sort((a, b) => b.t.denominator - a.t.denominator);
   if (dim === "provider" && rows.length > 8) {
     const head = rows.slice(0, 7);
@@ -675,13 +707,13 @@ export const evaluatedIn = (list: Member[], year: number) =>
   list.filter((m) => m.dob.getFullYear() <= year).length;
 
 /** Version 7 (Lucid design): open and closed gaps for each primary care manager, for the members that pass the filters. Members without a manager are left out. */
-export function gapsByManager(code: MeasureCode, list: Member[], year: number) {
+export function gapsByManager(code: MeasureCode, list: Member[], year: number, withUnassigned = false) {
   const by = new Map<string, { name: string; open: number; closed: number }>();
   for (const m of list) {
     const state = resultsFor(m, year)[code].state;
     if (state !== "Met" && state !== "Gap") continue;
     const name = providerOf(m);
-    if (name === NO_PCP) continue;
+    if (name === NO_PCP && !withUnassigned) continue;
     const row = by.get(name) ?? { name, open: 0, closed: 0 };
     if (state === "Met") row.closed++;
     else row.open++;
@@ -828,7 +860,8 @@ function rowsForEnds(code: MeasureCode, list: Member[], tf: Timeframe, ends: Dat
         ...common,
         sample: false,
         evaluated: everyone,
-        initial: k.eligible,
+        // Version 12: members whose result needs review are in neither Eligible nor Excluded, so Initial = Eligible + Excluded stays true.
+        initial: v12() ? k.denominator + k.excluded : k.eligible,
         eligible: k.denominator,
         excluded: k.excluded,
         met,
@@ -869,10 +902,10 @@ function rowsForEnds(code: MeasureCode, list: Member[], tf: Timeframe, ends: Dat
  * Quarterly gives Q1 to Q4, Monthly gives Jan to Dec. A period that has not started yet is null. The current period runs to the latest run day.
  * Numbers come from the same rows as the Timeframe table, so both agree. The year before the first demo year is sample data.
  */
-export function yearLines(code: MeasureCode, list: Member[], g: "quarterly" | "monthly") {
+export function yearLines(code: MeasureCode, list: Member[], g: "quarterly" | "monthly", yearCount = 3) {
   const today = startOfDay(DEMO_NOW);
   const labels = g === "monthly" ? Array.from({ length: 12 }, (_, i) => monthShort(new Date(2000, i, 1))) : ["Q1", "Q2", "Q3", "Q4"];
-  const years = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2];
+  const years = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].slice(0, yearCount);
   const series = years.map((y) => {
     const idx: number[] = [];
     const ends: Date[] = [];
@@ -955,9 +988,17 @@ export interface InputRow {
   rejected: number;
 }
 /** What went into a measure: each file it reads, how many rows came in, how many were rejected, and the newest file date. */
+const V12_MORE_FILES: Partial<Record<MeasureCode, FileId[]>> = {
+  "CCS-E": ["lab", "medicare-status"],
+  "COL-E": ["visit-e", "pharm"],
+  GSD: ["medicare-status", "visit-e"],
+  WCV: ["medicare-status"],
+};
 export function inputsFor(code: MeasureCode): InputRow[] {
   const def = measures.find((x) => x.code === code)!;
-  return def.files.map((id) => {
+  // Version 12: the files that carry the hospice, long-term-institution, frailty and lab evidence these measures also read.
+  const more = v12() ? (V12_MORE_FILES[code] ?? []).filter((id) => !def.files.includes(id)) : [];
+  return [...def.files, ...more].map((id) => {
     const file = dataFiles.find((f) => f.id === id)!;
     const rejected = file.status === "Failed" ? file.rows : 0;
     return {
@@ -966,7 +1007,7 @@ export function inputsFor(code: MeasureCode): InputRow[] {
       rowsUsed:
         file.status === "Failed" || file.status === "Not received"
           ? 0
-          : file.rows,
+          : fileRows(id),
       rejected,
     };
   });

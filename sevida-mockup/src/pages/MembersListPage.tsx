@@ -28,9 +28,11 @@ export function MembersListPage() {
   const v8 = version.id >= 8;
   // Version 11: LPP-16069 as updated and Mansi's selector standard (table order, search box), search on Enter, Apply before Clear.
   const v11 = version.id >= 11;
+  const v12 = version.id >= 12;
   const columns = useMemberTableColumns(undefined, true, version.id);
   // How many members match the search and filters, shown at the top so nobody has to scroll to the paging bar.
   const { visible: members, canSee } = useRole();
+  // `members` already holds the Version 12 extra members (see roles.tsx).
   const total = v3 ? members.length + v3Extra.filter(canSee).length : members.length;
   const [shown, setShown] = useState(total);
   // One row per member per measurement year. The Measurement year filter always has a value and starts at the current year.
@@ -88,7 +90,9 @@ export function MembersListPage() {
         onResultCountChange={setShown}
         noResultsTitle={v8 ? "No members found" : undefined}
         storageKey={
-          v11
+          v12
+            ? "demo-members-v30-ver12-a"
+            : v11
             ? "demo-members-v30-ver11-a"
             : v8
             ? "demo-members-v30-ver8-a"
@@ -98,7 +102,7 @@ export function MembersListPage() {
               ? "demo-members-v30-ver2-d"
               : "demo-members-v30"
         }
-        savedViews={v11 ? "members-v11" : v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
+        savedViews={v12 ? "members-v12" : v11 ? "members-v11" : v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
         stickyHeader

@@ -51,6 +51,7 @@ import {
   hashOf,
 } from "../data";
 import type { Member, MeasureCode } from "../data";
+import { getVersion } from "../version";
 import type { VersionId } from "../version";
 import {
   AGE_RANGES,
@@ -66,6 +67,8 @@ import {
   militaryV3,
   RECOMMENDED_SENTENCE,
   raceV3,
+  RACE_V12,
+  ETHNICITY_V12,
   tricareIdOf,
   v3GapOptions,
   V3_GAP_LABEL,
@@ -1389,7 +1392,10 @@ export function useMemberTableColumns(
           key: "ethnicity",
           filterOrder: 7,
           header: "Ethnicity",
-          help: "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file. None means the file has no ethnicity for the member.",
+          help:
+            getVersion() >= 12
+              ? "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file. Declined means the member was asked and did not answer."
+              : "Hispanic or Latino, Not Hispanic or Latino, or Unknown, from the member file. None means the file has no ethnicity for the member.",
           accessor: (m) => ethnicityV3(m),
           sortable: true,
           defaultHidden: true,
@@ -1397,7 +1403,7 @@ export function useMemberTableColumns(
           group: "Demographics",
           filter: {
             type: "multiselect",
-            options: opt(valuesOf(ethnicityV3)),
+            options: opt(getVersion() >= 12 ? ETHNICITY_V12 : valuesOf(ethnicityV3)),
           },
         },
         sourceCol("Ethnicity Source", "ethnicitySource", "ethnicity"),
@@ -1423,13 +1429,16 @@ export function useMemberTableColumns(
           key: "race",
           filterOrder: 13,
           header: "Race",
-          help: "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races. None means the file has no race for the member.",
+          help:
+            getVersion() >= 12
+              ? "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races. Unknown means the file has no race for the member. Declined means the member was asked and did not answer."
+              : "The member's race, grouped, from the member file. A member with more than one race is shown as Two or more races. None means the file has no race for the member.",
           accessor: (m) => raceV3(m),
           sortable: true,
           defaultHidden: true,
           hideBelow: "lg",
           group: "Demographics",
-          filter: { type: "multiselect", options: opt(valuesOf(raceV3)) },
+          filter: { type: "multiselect", options: opt(getVersion() >= 12 ? RACE_V12 : valuesOf(raceV3)) },
         },
         sourceCol("Race Source", "raceSource", "race"),
         ...(v8
@@ -1680,7 +1689,8 @@ export function useMemberTableColumns(
           header: "Open Gaps",
           filterLabel: "Open Gap Name",
           help: "The HEDIS care gap and Measurement Year",
-          defaultHidden: false,
+          // Version 12 (Application Tables): the default table has no gap name or due date column; they stay in the Columns panel.
+          defaultHidden: getVersion() >= 12,
         },
         {
           key: "openGapMY",
@@ -1725,6 +1735,7 @@ export function useMemberTableColumns(
           header: "Earliest Gap Due Date",
           help: "Date on which the next recommended action is due to close an open gap. For members with multiple gaps, the earliest date is given.",
           group: "Care Gaps",
+          defaultHidden: getVersion() >= 12 ? true : undefined,
           accessor: (m) => (openOf(m).length ? dueDate : null),
           render: (m) => dateCell(openOf(m).length ? dueDate : null),
           sortable: true,

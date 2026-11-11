@@ -33,6 +33,7 @@ import { NotFoundPageV7 } from "./pages/NotFoundPageV7";
 import { measureByCode } from "./data";
 import { DashboardCardsPage } from "./pages/DashboardCardsPage";
 import { AnalyticsOverviewV10Page } from "./pages/AnalyticsOverviewV10Page";
+import { DashboardsV12Page } from "./pages/DashboardsV12Page";
 import { MeasureDashboardPage } from "./pages/MeasureDashboardPage";
 import { AnalyticsOverviewPage } from "./pages/AnalyticsOverviewPage";
 import { AnalyticsMeasurePage } from "./pages/AnalyticsMeasurePage";
@@ -528,6 +529,9 @@ function Protected() {
                   <NotFoundPageV7
                     what={`There is no dashboard called "${new URLSearchParams(search).get("m")}"`}
                   />
+                ) : version.id >= 12 ? (
+                  // Version 12: one page for the Overview and every measure, one tab bar (Balsamiq board).
+                  <DashboardsV12Page key={new URLSearchParams(search).get("m") ?? ""} />
                 ) : version.id >= 10 ? (
                   // Version 10: every measure dashboard drawn like the Lucid BCS chart. The key restarts the filters when the measure changes.
                   (() => {
@@ -548,7 +552,7 @@ function Protected() {
               <V5Redirect to="/analytics" />
             ) : (
               <MenuGate path="/dashboards">
-                {version.id >= 10 ? <AnalyticsOverviewV10Page /> : <DashboardCardsPage />}
+                {version.id >= 12 ? <DashboardsV12Page /> : version.id >= 10 ? <AnalyticsOverviewV10Page /> : <DashboardCardsPage />}
               </MenuGate>
             )
           }

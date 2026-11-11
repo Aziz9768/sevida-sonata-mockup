@@ -113,10 +113,29 @@ export const militaryV3 = (m: Member, year = DEMO_NOW.getFullYear()): string => 
 };
 
 export const NONE = "None";
+/** Version 12 (Balsamiq board): Race and Ethnicity use the FHIR values plus Unknown and Declined, and never "None". */
+export const RACE_V12 = [
+  "American Indian or Alaska Native",
+  "Asian",
+  "Black or African American",
+  "Native Hawaiian or Other Pacific Islander",
+  "White",
+  "Other race",
+  "Two or more races",
+  "Unknown",
+  "Declined",
+];
+export const ETHNICITY_V12 = ["Hispanic or Latino", "Not Hispanic or Latino", "Unknown", "Declined"];
+const raceV12 = (m: Member) => {
+  if (m.raceCodes.length === 0) return "Unknown";
+  const g = raceGroupOf(m);
+  return g === "Unknown" && m.raceCodes.includes("ASKU") ? "Declined" : (g ?? "Unknown");
+};
+const ethnicityV12 = (m: Member) => (m.ethnicityCode === "ASKU" ? "Declined" : ethnicityGroupOf(m));
 export const raceV3 = (m: Member) =>
-  m.raceCodes.length === 0 ? NONE : (raceGroupOf(m) ?? NONE);
+  getVersion() >= 12 ? raceV12(m) : m.raceCodes.length === 0 ? NONE : (raceGroupOf(m) ?? NONE);
 export const ethnicityV3 = (m: Member) =>
-  m.ethnicityCode === "" ? NONE : ethnicityGroupOf(m);
+  getVersion() >= 12 ? ethnicityV12(m) : m.ethnicityCode === "" ? NONE : ethnicityGroupOf(m);
 
 
 /* ------------------------------------------------------------------ member header (sheet wireframe, Member Details Page tab) */
@@ -286,7 +305,9 @@ export const V3_DEFINITION: Record<Code, string> = {
   },
   "CCS-E": "Women aged 24–64 on Dec 31 who were recommended routine cervical cancer screening.",
   "COL-E": "Members aged 46–75 on Dec 31 who were recommended colorectal cancer screening.",
-  GSD: "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.",
+  get GSD() {
+    return getVersion() >= 12 ? "Members aged 18–75 with diabetes. The result is the most recent final HbA1c (or GMI) of the measurement period." : "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.";
+  },
   WCV: "Members aged 3–21 enrolled with at most one 45-day gap.",
 };
 export const V3_EXCLUSIONS: Record<Code, string> = {
@@ -300,6 +321,8 @@ export const V3_MET: Record<Code, string> = {
   "BCS-E": "At least one mammogram from Oct 1 two years before the period through the end of the period.",
   "CCS-E": "Cervical cytology (age 24–64) in the period or the two years before, or a high-risk HPV test (age 30–64) in the period or the four years before.",
   "COL-E": "Stool test (FIT) this year, sDNA-FIT in the last 3 years, CT colonography or sigmoidoscopy in the last 5, colonoscopy in the last 10.",
-  GSD: "Lowest final HbA1c of the period is below 8%.",
+  get GSD() {
+    return getVersion() >= 12 ? "Most recent final HbA1c of the period is below 8%." : "Lowest final HbA1c of the period is below 8%.";
+  },
   WCV: "A well-care visit with a PCP or OB/GYN (video and phone visits do not count).",
 };

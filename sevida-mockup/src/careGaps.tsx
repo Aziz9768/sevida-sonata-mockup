@@ -51,12 +51,23 @@ import type {
 
 /* ------------------------------------------------------------------ statuses */
 
-export type GapStatus = "Open" | "Closed";
+export type GapStatus = "Open" | "Closed" | "Excluded";
 export const gapStatuses: GapStatus[] = ["Open", "Closed"];
+/** Version 12 (Application Tables): the member is excluded from the measure, so there is no gap to work. Sample data. */
+export const gapStatusesV12: GapStatus[] = ["Open", "Closed", "Excluded"];
 export const gapStatusTone: Record<GapStatus, StatusTone> = {
   Open: "danger",
   Closed: "success",
+  Excluded: "neutral",
 };
+
+/**
+ * Version 12: ONE sample priority for a gap, used by the Care Gaps list, the member's Care Gaps tab and the Care Gap Details page
+ * (before, the list and the other two disagreed for the same gap). Open gaps only; the tier rules are still to be confirmed.
+ */
+export const gapPriority = (g: { id: string; status: GapStatus }): "High" | "Medium" | "Low" | null =>
+  g.status === "Open" ? (["High", "Medium", "Low"] as const)[hashOf(g.id) % 3] : null;
+export const priorityRank = (p: string | null) => (p === "High" ? 0 : p === "Medium" ? 1 : p === "Low" ? 2 : 3);
 
 export type EvidenceStatus =
   "Not requested" | "Requested" | "Received" | "Validated" | "Rejected";
@@ -884,6 +895,8 @@ export interface GapView {
   next: { title: string; due: Date; visitId: string } | null;
   nextAppointment: Date | null;
   lastUpdated: Date;
+  /** Version 12: why the member is excluded (status Excluded only). */
+  exclusionReason?: string;
 }
 
 /** Evidence status, from the records and requests (it is about the proof, not the work). */
@@ -1387,6 +1400,8 @@ interface GapsValue {
   /** Not met measures whose gap is not closed. */
   openOf: (m: Member) => GapView[];
   get: (m: Member, code: MeasureCode) => GapView | null;
+  /** Version 12: measures the member is excluded from, as gaps with status Excluded (sample data). */
+  excludedOf: (m: Member) => GapView[];
   assign: (id: string, who: string, reason?: string) => void;
   addTask: (id: string, t: NewTask) => void;
   completeTask: (id: string, taskId: string) => void;
@@ -1409,6 +1424,34 @@ interface GapsValue {
   reset: () => void;
 }
 const Ctx = createContext<GapsValue | null>(null);
+
+/** Version 12: a gap for a measure the member is excluded from (sample data: the date is made up, the reason is the engine's). */
+function excludedView(m: Member, code: MeasureCode): GapView {
+  const h = hashOf(`${m.id}${code}x`);
+  const when = iso(addDays(NEWEST_FILE, -(3 + (h % 60))));
+  const reason = resultsFor(m)[code].reason;
+  const w: Work = {
+    status: "Excluded",
+    careManager: careManagers[hashOf(m.id) % careManagers.length],
+    identified: when,
+    tasks: [],
+    outreach: [],
+    visits: [],
+    docRequests: [],
+    evidence: [],
+    activity: [
+      {
+        id: `${m.id}-${code}-x1`,
+        when: at(parseDay(when), 6),
+        by: SYSTEM,
+        kind: "Found",
+        text: `Excluded from ${code} when it was calculated: ${reason}.`,
+        reason: "The measure result was Excluded.",
+      },
+    ],
+  };
+  return { ...view(m, code, w), exclusionReason: reason };
+}
 
 const seeds = new Map<string, Work>();
 const seedOf = (m: Member, code: MeasureCode) => {
@@ -1454,6 +1497,15 @@ export function GapsProvider({ children }: { children: ReactNode }) {
     (m: Member) => gapsOf(m).filter((g) => g.status !== "Closed"),
     [gapsOf],
   );
+  const excludedOf = useCallback(
+    (m: Member): GapView[] =>
+      getVersion() < 12
+        ? []
+        : measures
+            .filter((x) => resultsFor(m)[x.code].state === "Excluded")
+            .map((x) => excludedView(m, x.code)),
+    [],
+  );
 
   /** Change one gap: `fn` gets the current work and returns the new work. */
   const change = useCallback((id: string, fn: (w: Work) => Work) => {
@@ -1492,6 +1544,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
       gapsOf,
       openOf,
       get,
+      excludedOf,
       assign: (id, name, reason) =>
         change(id, (w) =>
           w.careManager === name
@@ -1725,7 +1778,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
     }),
     // `log` and `who` are read from the latest render; the actions only need to refresh when the data or the person changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gapsOf, openOf, get, change, who],
+    [gapsOf, openOf, get, excludedOf, change, who],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

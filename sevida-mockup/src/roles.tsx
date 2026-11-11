@@ -10,7 +10,8 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { careTeamOf, members, primaryCareOf } from "./data";
+import { careTeamOf, members, primaryCareOf, v12Members } from "./data";
+import { useVersion } from "./version";
 import type { Member } from "./data";
 
 export type RoleId =
@@ -178,6 +179,7 @@ export function RoleProvider({
   initial?: RoleId;
 }) {
   const [id, setId] = useState<RoleId>(() => initial ?? readRole());
+  const versionId = useVersion().version.id;
   const setRole = useCallback((next: RoleId) => {
     setId(next);
     try {
@@ -188,10 +190,12 @@ export function RoleProvider({
   }, []);
   const value = useMemo<RoleValue>(() => {
     const role = roleById(id);
+    // Version 12 has 1,536 more made-up members (1,840 in all, like the Balsamiq board).
+    const pool = versionId >= 12 ? [...members, ...v12Members()] : members;
     const visible =
       role.scope === "all"
-        ? members
-        : members.filter((m) => canSeeMember(role, m));
+        ? pool
+        : pool.filter((m) => canSeeMember(role, m));
     const canOpen = (pathname: string) => {
       const k = navKeyForPath(pathname);
       if (k === null) return true;
@@ -213,7 +217,7 @@ export function RoleProvider({
       canOpen,
       home,
     };
-  }, [id, setRole]);
+  }, [id, setRole, versionId]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
