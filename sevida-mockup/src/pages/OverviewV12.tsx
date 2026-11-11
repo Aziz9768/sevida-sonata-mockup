@@ -17,7 +17,7 @@ import { ordDate } from "./QuickSightDashboardPage";
 import { useGaps } from "../careGaps";
 import { useRun } from "../runs";
 import { useRole } from "../roles";
-import { GROUP, KpiTile, boxSx, changeOf, controlsBox, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { Fact, GROUP, KpiTile, boxSx, changeOf, controlsBox, facts, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -172,28 +172,22 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
 
   return (
     <>
-      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+      <Box sx={{ display: "grid", gap: `${qs.gap}px`, p: `${qs.gap}px`, pb: 0, gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) minmax(0, 1fr)" } }}>
         <Box sx={boxSx}>
           <QsText>
-            <p>
-              <b>HEDIS MEASURE YEAR:</b> {YEAR}
-            </p>
-            <p>
-              <b>Measurement Start:</b> {ordDate(new Date(YEAR, 0, 1))}
-            </p>
-            <p>
-              <b>Measurement End:</b> {ordDate(new Date(YEAR, 11, 31))}
-            </p>
+            <Box sx={facts}>
+              <Fact label="HEDIS MEASURE YEAR" value={String(YEAR)} />
+              <Fact label="Measurement Start" value={ordDate(new Date(YEAR, 0, 1))} />
+              <Fact label="Measurement End" value={ordDate(new Date(YEAR, 11, 31))} />
+            </Box>
           </QsText>
         </Box>
         <Box sx={boxSx}>
           <QsText>
-            <p>
-              <b>Data as Of (Run Date):</b> {runStamp(selectedRun.at)}
-            </p>
-            <p>
-              <b>Dashboard Next Update:</b> {runStamp(run.next)}
-            </p>
+            <Box sx={facts}>
+              <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />
+              <Fact label="Dashboard Next Update" value={runStamp(run.next)} />
+            </Box>
           </QsText>
         </Box>
       </Box>

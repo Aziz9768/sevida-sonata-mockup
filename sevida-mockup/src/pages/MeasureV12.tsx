@@ -12,7 +12,7 @@ import type { DashFilters, Dimension, Timeframe } from "../dashboardData";
 import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, gapShort, militaryOptions } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
 import { useRun } from "../runs";
-import { KpiTile, boxSx, changeOf, controlsBox, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { Fact, KpiTile, boxSx, changeOf, controlsBox, facts, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -39,21 +39,6 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
 
 /** The board's rule: only managers with 100 or more members are ranked, so a manager with few members does not skew the rate. */
 const MIN_PCM_MEMBERS = 100;
-
-/** A header box shows its facts side by side: the label on top, the value below, a thin line between facts. A fact moves to the next row only when the box is too narrow. */
-const facts = {
-  display: "flex",
-  flexWrap: "wrap",
-  rowGap: 1,
-  "& > div": { whiteSpace: "nowrap", pr: 3 },
-  "& > div + div": { borderLeft: qs.tile.border, pl: 3 },
-} as const;
-const Fact = ({ label, value }: { label: string; value: string }) => (
-  <div>
-    <b style={{ display: "block" }}>{label}</b>
-    {value}
-  </div>
-);
 
 /** The three Trend Timeframe descriptions (the same wording as Version 11; the board's wording is still to be confirmed). */
 const TIMEFRAME_TIPS: Record<Timeframe, string> = {

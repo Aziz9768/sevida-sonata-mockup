@@ -66,6 +66,21 @@ export const boxSx = {
   p: `${qs.tile.padding}px`,
 };
 
+/** A header box shows its facts side by side: the label on top, the value below, a thin line between facts. A fact moves to the next row only when the box is too narrow. */
+export const facts = {
+  display: "flex",
+  flexWrap: "wrap",
+  rowGap: 1,
+  "& > div": { whiteSpace: "nowrap", pr: 3 },
+  "& > div + div": { borderLeft: qs.tile.border, pl: 3 },
+} as const;
+export const Fact = ({ label, value }: { label: string; value: string }) => (
+  <div>
+    <b style={{ display: "block" }}>{label}</b>
+    {value}
+  </div>
+);
+
 /* ------------------------------------------------------------------ KPI tile */
 
 export type Tone = "good" | "bad" | "neutral";
