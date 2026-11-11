@@ -860,7 +860,8 @@ function rowsForEnds(code: MeasureCode, list: Member[], tf: Timeframe, ends: Dat
         ...common,
         sample: false,
         evaluated: everyone,
-        initial: k.eligible,
+        // Version 12: members whose result needs review are in neither Eligible nor Excluded, so Initial = Eligible + Excluded stays true.
+        initial: v12() ? k.denominator + k.excluded : k.eligible,
         eligible: k.denominator,
         excluded: k.excluded,
         met,
@@ -987,9 +988,17 @@ export interface InputRow {
   rejected: number;
 }
 /** What went into a measure: each file it reads, how many rows came in, how many were rejected, and the newest file date. */
+const V12_MORE_FILES: Partial<Record<MeasureCode, FileId[]>> = {
+  "CCS-E": ["lab", "medicare-status"],
+  "COL-E": ["visit-e", "pharm"],
+  GSD: ["medicare-status", "visit-e"],
+  WCV: ["medicare-status"],
+};
 export function inputsFor(code: MeasureCode): InputRow[] {
   const def = measures.find((x) => x.code === code)!;
-  return def.files.map((id) => {
+  // Version 12: the files that carry the hospice, long-term-institution, frailty and lab evidence these measures also read.
+  const more = v12() ? (V12_MORE_FILES[code] ?? []).filter((id) => !def.files.includes(id)) : [];
+  return [...def.files, ...more].map((id) => {
     const file = dataFiles.find((f) => f.id === id)!;
     const rejected = file.status === "Failed" ? file.rows : 0;
     return {

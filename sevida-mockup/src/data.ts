@@ -793,7 +793,8 @@ const raceSources = ['Health Plan Collected', 'CMS/State Databases (Enrollment F
 
 const ageCycle = [8, 15, 52, 48, 61, 19, 67, 44, 58, 70, 29, 36, 72, 55, 63, 50, 12, 41, 66, 33, 59, 45, 17, 69, 38, 56, 73, 47, 5, 62];
 
-function generate(count: number, seed = 2026, firstId = 1011): Member[] {
+/** wideAges: ages 3 to 80 spread evenly for both sexes (Version 12 extra members), so every measure has members at both ends of its age range. */
+function generate(count: number, seed = 2026, firstId = 1011, wideAges = false): Member[] {
   const r = rng(seed);
   const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
   const chance = (p: number) => r() < p;
@@ -802,7 +803,7 @@ function generate(count: number, seed = 2026, firstId = 1011): Member[] {
   for (let i = 0; i < count; i++) {
     const n = firstId + i;
     const gender: Gender = i % 2 === 0 ? 'female' : 'male';
-    const age = ageCycle[i % ageCycle.length] + ((i * 7) % 3);
+    const age = wideAges ? 3 + ((i * 37 + 11 * (i >> 1)) % 78) : ageCycle[i % ageCycle.length] + ((i * 7) % 3);
     const dob = d(MY - age, 1 + ((i * 5) % 12), 1 + ((i * 11) % 27));
     const first = pick(gender === 'female' ? firstF : firstM);
     const last = pick(lastN);
@@ -867,7 +868,7 @@ function generate(count: number, seed = 2026, firstId = 1011): Member[] {
       else ev.push(obs(rdate(2026, 1, 11), '29771-3', 'Fecal immunochemical test: negative', 'fit'));
     }
 
-    const diabetic = age >= 30 && chance(0.26);
+    const diabetic = age >= (wideAges ? 18 : 30) && chance(age >= 30 ? 0.26 : 0.05);
     if (diabetic) {
       ev.push(claim(rdate(2026, 1, 6), 'E11.9', 'ICD-10', 'Type 2 diabetes without complications', 'diabetes', { provider: prov }));
       if (chance(0.9)) {
@@ -1284,7 +1285,7 @@ export const v3Extra: Member[] = [
  * can have 100 or more of them. Built the first time a Version 12 screen asks, so older versions never pay for it and never see them.
  */
 let v12Cache: Member[] | null = null;
-export const v12Members = (): Member[] => (v12Cache ??= withRecordFields(withLocations(withSeveralGaps(generate(1536, 4242, 2001)))));
+export const v12Members = (): Member[] => (v12Cache ??= withRecordFields(withLocations(withSeveralGaps(generate(1536, 4242, 2001, true)))));
 /** Every member shown in the app: the 300 demo members, plus the 3 infants in Version 3, plus the 1,536 more of Version 12. */
 export const allMembers = (): Member[] => {
   const v = getVersion();
@@ -1663,7 +1664,7 @@ export const measureByCode = (c: string | undefined) =>
 const v3Defs = new Map<string, MeasureDef>();
 /** Version 3 wording of the current-year measure, from the final requirements sheet (HED-001 to HED-005). */
 function v3Def(def: MeasureDef): MeasureDef {
-  const defKey = `${getVersion() >= 7 ? 7 : 3}:${def.code}`;
+  const defKey = `${getVersion() >= 12 ? 12 : getVersion() >= 7 ? 7 : 3}:${def.code}`;
   let r = v3Defs.get(defKey);
   if (r) return r;
   const swap = (rules: Rule[], prefix: string, text: string): Rule[] => rules.map((x) => (x.text.startsWith(prefix) ? { ...x, text } : x));
@@ -1692,12 +1693,16 @@ function v3Def(def: MeasureDef): MeasureDef {
     r.rules = rules;
   } else if (def.code === 'COL-E') {
     r.rules = add(def.rules, 'Excluded: frailty', institution);
+  } else if (def.code === 'WCV' && getVersion() >= 12) {
+    // NCQA removed telehealth well-care visits from the measure for MY 2025; MY 2026 keeps that.
+    r.rules = add(def.rules, 'Met when a well-care visit', { text: 'A well-care visit held by telehealth (video or phone) does not count. NCQA removed telehealth visits from this measure for MY 2025.', from: 'ncqa', where: 'NCQA MY 2025 and MY 2026 documents' });
   } else if (def.code === 'GSD') {
     r.needs = 'The lowest final HbA1c of the year is below 8%.';
     r.evidenceLabel = 'Lowest HbA1c';
     let rules = swap(def.rules, 'Uses the most recent HbA1c', 'Uses the lowest final HbA1c (or GMI) in the measurement year. Only final, amended and corrected results count.');
     rules = swap(rules, 'The spec names two thresholds', 'The dashboard shows the total, the members above 8% and the members above 9%. The result column is the lowest HbA1c.');
     rules = swap(rules, 'Gap when there is no final HbA1c', 'Gap when there is no final HbA1c this year, or the lowest one is 8% or higher.');
+    if (getVersion() >= 12) rules = add(rules, 'Excluded: hospice', institution);
     r.rules = rules;
   }
   v3Defs.set(defKey, r);
@@ -1822,9 +1827,11 @@ export const rulesOfYear = (year: number): YearRules => {
   const base = yearRules[year] ?? yearRules[MY];
   if (getVersion() < 3) return base;
   const v7 = getVersion() >= 7;
-  const key = `${v7 ? 7 : 3}:${base.year}`;
+  const v12 = getVersion() >= 12;
+  const key = `${v12 ? 12 : v7 ? 7 : 3}:${base.year}`;
   let r = v3Cache.get(key);
-  if (!r) v3Cache.set(key, (r = v7 ? v7Rules(base) : v3Rules(base)));
+  // Version 12: telehealth well-care visits do not count in any year (NCQA removed them from WCV for MY 2025, and MY 2026 keeps that).
+  if (!r) v3Cache.set(key, (r = v12 ? { ...v7Rules(base), telehealthCounts: false } : v7 ? v7Rules(base) : v3Rules(base)));
   return r;
 };
 /** Age range of each measure on Dec 31 of the current year (from the measure rules). */
@@ -1980,7 +1987,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
     add(3, 'excluded', 'Age 66+ with frailty and advanced illness');
     return finish('Excluded', 'Age 66+ with frailty and advanced illness');
   }
-  if (getVersion() >= 3 && (code === 'BCS-E' || code === 'COL-E') && age >= 66) {
+  if (getVersion() >= 3 && (code === 'BCS-E' || code === 'COL-E' || (code === 'GSD' && getVersion() >= 12)) && age >= 66) {
     const isnp = m.segments.find((x) => x.payer === 'SN2' && x.start <= Y_END && x.end >= Y_START);
     if (isnp) {
       const r = 'Age 66+ and enrolled in an institutional special needs plan (I-SNP)';

@@ -30,7 +30,7 @@ export interface MeasureV12State {
 export const emptyMeasure = (): MeasureV12State => ({ f: emptyFilters(), pop: "eligible" });
 
 const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[] = [
-  { value: "initial", label: "Initial Population", states: ["Met", "Gap", "Excluded", "Review"] },
+  { value: "initial", label: "Initial Population", states: ["Met", "Gap", "Excluded"] },
   { value: "excluded", label: "Excluded Population", states: ["Excluded"] },
   { value: "eligible", label: "Eligible Population", states: ["Met", "Gap"] },
   { value: "closed", label: "Closed Gaps", states: ["Met"] },
@@ -64,7 +64,8 @@ function aboutBullets(code: MeasureCode): string[] {
       "Excluded: frailty together with advanced illness (including dementia medication fills in the year or the year before).",
       "Excluded: palliative care during the measurement year (diagnosis or encounter). The demo reads it from diag.",
     ];
-  return [`Who's Included: ${V3_DEFINITION[code]}`, `Met when: ${V3_MET[code]}`, `Excluded: ${V3_EXCLUSIONS[code]}`];
+  const excluded = code === "GSD" ? "Hospice, death, palliative care, age 66+ in an I-SNP or long-term institution, age 66+ with frailty and advanced illness." : V3_EXCLUSIONS[code];
+  return [`Who's Included: ${V3_DEFINITION[code]}`, `Met when: ${V3_MET[code]}`, `Excluded: ${excluded}`];
 }
 /** BCS lists every file received in the last run (the board's 14 files, newest first). The other measures list the files they read. */
 const sourceFiles = (code: MeasureCode) =>
@@ -98,7 +99,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const months = useMemo(() => timeframeRows(code, base, "monthly"), [base, code]);
   const prior = months[months.length - 1];
   const cur = {
-    initial: t.eligible,
+    initial: t.denominator + t.excluded,
     excluded: t.excluded,
     eligible: t.denominator,
     closed: t.met,
@@ -257,6 +258,11 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </Box>
       </Box>
 
+      {t.review > 0 && (
+        <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, px: 2, pt: 1.5 }}>
+          {n0(t.review)} {t.review === 1 ? "member has" : "members have"} a result that needs review (evidence missing or conflicting). {t.review === 1 ? "This member is" : "These members are"} not counted in any tile below until the evidence is decided.
+        </Typography>
+      )}
       <QsSheet>
         {card("population", "Initial Population", "All active members meeting the measurement criteria to identify gaps in care.", "initial", "count", true)}
         {card(
