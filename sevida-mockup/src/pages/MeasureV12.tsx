@@ -17,7 +17,7 @@ import type { Group } from "./dashboardV12Bits";
 
 /**
  * Version 12 measure page (Balsamiq board, BCS tab). The same layout serves BCS, CCS, COL, GSD and WCV: only the words and numbers change.
- * Top to bottom: header boxes, About This Measure (open), seven filters, six tiles, the trend, the two Top n charts, five "Gaps By" charts.
+ * Top to bottom: header boxes, About This Measure (collapsed until opened), seven filters, six tiles, the trend, the two Top n charts, five "Gaps By" charts.
  * The Population filter chooses which members the charts count. The six tiles always show every population, so they stay comparable.
  */
 const YEAR = CURRENT_YEAR;
@@ -201,8 +201,16 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
       </Box>
 
       <Box sx={{ p: `${qs.gap}px`, pb: 0 }}>
-        <Box sx={boxSx}>
-          <Typography sx={{ fontWeight: 700, fontSize: qs.type.visualTitle.size, mb: 1 }}>About This Measure</Typography>
+        <Box
+          component="details"
+          sx={{
+            ...boxSx,
+            "& > summary": { cursor: "pointer", fontWeight: 700, fontSize: qs.type.visualTitle.size, listStylePosition: "inside", borderRadius: 1 },
+            "& > summary:focus-visible": { outline: `2px solid ${qs.meaning.main}`, outlineOffset: 2 },
+            "&[open] > summary": { mb: 1 },
+          }}
+        >
+          <summary>About This Measure</summary>
           <QsText>
             <ul>
               {aboutBullets(code).map((b) => (
