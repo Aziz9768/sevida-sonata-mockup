@@ -4,12 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import { Box, Chip, Tooltip, Typography } from "@mui/material";
 import { DataTable, StatusChip } from "sevida-ui";
 import type { Column, StatusTone } from "sevida-ui";
-import { fmtDate } from "../data";
+import { fmtDate, hashOf, primaryCareOf, providers } from "../data";
 import type { Member } from "../data";
 import { V3_GAP_LABEL, gapShort } from "../v3Data";
 import {
   CLAIM_TYPE_NAME,
   DASH,
+  addDays,
   claimRows,
   dxRows,
   encRows,
@@ -139,6 +140,36 @@ function pick<T>(all: Column<T>[], spec: Array<string | [string, string] | Colum
     return { ...c, header: name ?? c.header, group: undefined, defaultHidden: false };
   });
 }
+/**
+ * Version 12 (Application Tables sheet): every tab shows the sheet's columns, in the sheet's order and with its names.
+ * The sheet's "Optional" fields are in the Columns panel and start off. Fields the demo files do not hold are made up the same way every time.
+ */
+const v12 = () => getVersion() >= 12;
+type Spec<T> = Array<string | [string, string] | Column<T>>;
+function pick12<T>(all: Column<T>[], spec: Spec<T>, optional: Spec<T> = []): Column<T>[] {
+  const get = (s: string | [string, string] | Column<T>): Column<T> => {
+    if (typeof s !== "string" && !Array.isArray(s)) return s;
+    const [key, name] = typeof s === "string" ? [s, undefined] : s;
+    const c = all.find((x) => x.key === key);
+    if (!c) throw new Error(`Missing column ${key}`);
+    return { ...c, header: name ?? c.header };
+  };
+  return [
+    ...spec.map((s) => ({ ...get(s), group: undefined, defaultHidden: false })),
+    ...optional.map((s) => ({ ...get(s), group: "Optional", defaultHidden: true })),
+  ];
+}
+/** "CPT: 96372" becomes the code and its system. */
+const codeOf = (c: string) => (c.includes(": ") ? c.slice(c.indexOf(": ") + 2) : c);
+const systemOf = (c: string) => (c.includes(": ") ? c.slice(0, c.indexOf(": ")) : DASH);
+const SYSTEM_NAME: Record<string, string> = { L: "LOINC", "L:": "LOINC" };
+const systemName = (s: string) => SYSTEM_NAME[s] ?? s;
+/** The place-of-service code that goes with a clinic or a hospital name (sample). */
+const posOf = (place: string): string =>
+  /telehealth/i.test(place) ? "02 - Telehealth" : /medical center|hospital/i.test(place) ? "22 - On Campus Outpatient Hospital" : "11 - Office";
+const lotOf = (key: string) => `LOT-${String(10000 + (hashOf(key) % 89999))}`;
+const STRENGTH = /(\d[\d.,]*\s?(?:mg|mcg|IU|g|mL|units?)(?:\/\s?[\d.]*\s?(?:mL|actuation|mg|g|dose))?)/i;
+const strengthOf = (name: string) => STRENGTH.exec(name)?.[1] ?? DASH;
 /** A code with its description beside it: "CPT: 77067 - Screening mammography". */
 /** An NDC with hyphens, 5-4-2: 00093733956 becomes 00093-7339-56. */
 const ndcFmt = (code: string) => code.replace(/^(NDC: )?(\d{5})-?(\d{4})-?(\d{2})$/, "$1$2-$3-$4");
@@ -188,8 +219,9 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
         pageSize={10}
         searchPlaceholder={search}
         noResultsTitle={`No ${NOUN[tab].toLowerCase()} found`}
-        storageKey={v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
-        toolbar={v11() ? { columns: false } : undefined}
+        storageKey={v12() ? `demo-member-${tab}-v12-a` : v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
+        toolbar={v12() ? undefined : v11() ? { columns: false } : undefined}
+        columnsPanel={v12() ? { tableOrder: true, search: false } : undefined}
       />
       <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
         {NOTE}
@@ -258,7 +290,7 @@ function ClaimsV8({ m }: { m: Member }) {
     source<R>(),
   ];
   const v = v11();
-  const cols = v
+  const colsOld = v
     ? pick(columns, [
         "id",
         ["from", "Service Date From"],
@@ -284,6 +316,42 @@ function ClaimsV8({ m }: { m: Member }) {
         ["measure", "Care Gap"],
       ])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [
+      col<R>("services", "Procedure / Service", (r) => r.lines.map((l) => l.text), { s: true, width: 300, render: (r) => lines(r.lines.map((l) => l.text)) }),
+      ["from", "Service Date"],
+      col<R>("code", "Code", (r) => r.lines.map((l) => l.code), { s: true, width: 120, render: (r) => lines(r.lines.map((l) => l.code)) }),
+      col<R>("system", "Code System", (r) => r.lines.map((l) => l.system), { width: 120, render: (r) => lines(r.lines.map((l) => l.system)) }),
+      col<R>("ctype", "Claim Type", (r) => CLAIM_TYPE_NAME[r.type], { sortable: true, nowrap: true }),
+      col<R>("pdx", "Primary Diagnosis", (r) => (r.diagnoses[0] ? r.diagnoses[0].code : ""), {
+        width: 240,
+        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code} - ${r.diagnoses[0].text}` : DASH),
+      }),
+      col<R>("pos", "Place of Service", (r) => (r.type === "I" ? "21 - Inpatient Hospital" : "11 - Office"), { nowrap: true }),
+      "provider",
+      ["status", "Claim Status"],
+    ],
+    [
+      col<R>("id", "Claim ID", (r) => r.id, { s: true, nowrap: true, sortable: true }),
+      col<R>("line", "Line #", (r) => r.lines.length, { render: (r) => lines(r.lines.map((_, i) => String(i + 1))), nowrap: true }),
+      col<R>("to", "Service Date To", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
+      col<R>("adx", "Additional Diagnoses", (r) => r.diagnoses.slice(1).map((d) => d.code), {
+        width: 220,
+        render: (r) => lines(r.diagnoses.slice(1).map((d) => `${d.code} - ${d.text}`)),
+      }),
+      col<R>("billing", "Billing Provider", (r) => providers.find((x) => x.npi === r.providerNpi)?.org ?? "Madigan Army Medical Center", { width: 200 }),
+      col<R>("paidOn", "Paid Date", (r) => addDays(r.from, 14 + (hashOf(r.id) % 12)), {
+        sortable: true,
+        nowrap: true,
+        render: (r) => (r.payment === "Denied" ? DASH : day(addDays(r.from, 14 + (hashOf(r.id) % 12)))),
+      }),
+      "updated",
+      ["payment", "Payment Type"],
+      ["measure", "Related Care Gap"],
+    ],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return (
     <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={{ key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
   );
@@ -306,9 +374,15 @@ function DiagnosesV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [["name", "Diagnosis Name"], "code", "ctype", ["start", "Start Date"], ["end", "End Date"], "status", "provider", ["measure", "Care Gap"]])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [["name", "Diagnosis"], ["start", "Start Date"], ["code", "Code"], ["ctype", "Code System"], "status", "provider", "source", ["measure", "Related Care Gap"]],
+    [["end", "End Date"], col<R>("lastRec", "Last Recorded Date", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) })],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -330,7 +404,7 @@ function EncountersV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         "type",
         "date",
@@ -341,6 +415,30 @@ function EncountersV8({ m }: { m: Member }) {
         ["measure", "Care Gap"],
       ])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [
+      ["type", "Encounter Type"],
+      ["date", "Encounter Date"],
+      "status",
+      col<R>("dx", "Primary Diagnosis", (r) => r.diagnoses.map((d) => d.code), {
+        width: 240,
+        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code}: ${r.diagnoses[0].text}` : DASH),
+      }),
+      col<R>("pos", "Place of Service", (r) => posOf(r.place), { nowrap: true }),
+      col<R>("facility", "Clinic/Facility", (r) => r.place, { width: 220 }),
+      "provider",
+      ["measure", "Related Care Gap"],
+    ],
+    [
+      "source",
+      col<R>("adx", "Additional Diagnoses", (r) => r.diagnoses.slice(1).map((d) => d.code), {
+        width: 240,
+        render: (r) => lines(r.diagnoses.slice(1).map((d) => `${d.code}: ${d.text}`)),
+      }),
+    ],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -360,7 +458,7 @@ function ImmunizationsV8({ m }: { m: Member }) {
     source<R>(),
   ];
   // Care Gap is hidden by default on this tab (LPP-16365), and there is no column selector, so it is not shown.
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         ["vaccine", "Vaccination"],
         ["date", "Vaccination Date"],
@@ -371,6 +469,21 @@ function ImmunizationsV8({ m }: { m: Member }) {
         col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true }),
       ])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [
+      ["vaccine", "Vaccine"],
+      ["date", "Administered Date"],
+      col<R>("dose", "Dose", (r) => r.vaccine, { nowrap: true, render: (r) => (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
+      col<R>("ccode", "Code", (r) => codeOf(r.code), { nowrap: true }),
+      col<R>("csys", "Code System", (r) => systemOf(r.code), { nowrap: true }),
+      "status",
+      "provider",
+      ["measure", "Related Care Gap"],
+    ],
+    ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
@@ -412,7 +525,7 @@ function LabsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         "test",
         col<R>("result", "Result", (r) => r.result, { nowrap: true }),
@@ -430,6 +543,30 @@ function LabsV8({ m }: { m: Member }) {
         ["measure", "Care Gap"],
       ])
     : columns;
+  const unitOf = (r: R) => (r.e.tag === "hba1c" ? "%" : (r.e.unit ?? ""));
+  const valueOf = (r: R) => (unitOf(r) && r.result.endsWith(` ${unitOf(r)}`) ? r.result.slice(0, -unitOf(r).length - 1) : r.result);
+  const cols12 = pick12(
+    columns,
+    [
+      "test",
+      ["date", "Collection Date"],
+      col<R>("res", "Result", (r) => valueOf(r), { nowrap: true }),
+      col<R>("unit", "Unit", (r) => unitOf(r), { nowrap: true, render: (r) => unitOf(r) || DASH }),
+      col<R>("range", "Reference Range", (r) => r.range, { nowrap: true, render: (r) => r.range.replace(" to ", "–") }),
+      col<R>("flag", "Abnormal Flag", (r) => r.flag, { nowrap: true, sortable: true }),
+      col<R>("lcode", "Code", (r) => r.loinc, { s: true, nowrap: true }),
+      col<R>("lsys", "Code System", () => "LOINC", { nowrap: true }),
+      "provider",
+      ["measure", "Related Care Gap"],
+    ],
+    [
+      ["resulted", "Resulting Date"],
+      col<R>("pstatus", "Panel Status (Final / Preliminary)", (r) => (r.e.status === "preliminary" ? "Preliminary" : "Final"), { nowrap: true }),
+      "source",
+      "panel",
+    ],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -457,9 +594,27 @@ function MedicationsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, ["name", "status", "date", ["qty", "Quantity"], "days", col<R>("code", "Code", (r) => r.code, { nowrap: true, render: (r) => ndcFmt(r.code) }), "provider", ["measure", "Care Gap"]])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [
+      ["name", "Medication"],
+      ["date", "Dispensed Date"],
+      col<R>("strength", "Strength / Dose", (r) => strengthOf(r.name), { nowrap: true }),
+      ["qty", "Quantity"],
+      "days",
+      col<R>("mcode", "Code", (r) => codeOf(r.code), { nowrap: true, render: (r) => ndcFmt(codeOf(r.code)) }),
+      col<R>("msys", "Code System", (r) => systemOf(r.code), { nowrap: true }),
+      "status",
+      "provider",
+      "source",
+      ["measure", "Related Care Gap"],
+    ],
+    ["pharmacy", "refills"],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
 }
 
@@ -497,7 +652,7 @@ function ObservationsV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         "service",
         "type",
@@ -512,6 +667,29 @@ function ObservationsV8({ m }: { m: Member }) {
         ["measure", "Care Gap"],
       ])
     : columns;
+  const obsUnit = (r: R) => (r.e.tag === "hba1c" ? "%" : (r.e.unit ?? ""));
+  const obsValue = (r: R) => {
+    const flag = / \([A-Z]\)$/.exec(r.value)?.[0] ?? "";
+    const base = r.value.slice(0, r.value.length - flag.length);
+    const u = obsUnit(r);
+    return (u && base.endsWith(` ${u}`) ? base.slice(0, -u.length - 1) : base) + flag;
+  };
+  const cols12 = pick12(
+    columns,
+    [
+      ["service", "Observation"],
+      ["date", "Observation Date"],
+      col<R>("val", "Value", (r) => obsValue(r), { nowrap: true }),
+      col<R>("unit", "Unit", (r) => obsUnit(r), { nowrap: true, render: (r) => obsUnit(r) || DASH }),
+      ["type", "Category"],
+      col<R>("ocode", "Code", (r) => codeOf(r.code), { s: true, nowrap: true }),
+      col<R>("osys", "Code System", (r) => systemName(systemOf(r.code)), { nowrap: true }),
+      "provider",
+      ["measure", "Related Care Gap"],
+    ],
+    [col<R>("ostatus", "Status", (r) => r.status, { nowrap: true, sortable: true, render: (r) => chip(r.status) }), "source"],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Service Type or Service…" providerOf={(r) => r.provider} />;
 }
 
@@ -540,7 +718,7 @@ function ProceduresV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         "name",
         "value",
@@ -551,6 +729,21 @@ function ProceduresV8({ m }: { m: Member }) {
         ["measure", "Care Gap"],
       ])
     : columns;
+  const cols12 = pick12(
+    columns,
+    [
+      "name",
+      ["date", "Service Date"],
+      col<R>("pcode", "Code", (r) => codeOf(r.code), { s: true, nowrap: true }),
+      col<R>("psys", "Code System", (r) => systemOf(r.code), { nowrap: true }),
+      "status",
+      "provider",
+      "source",
+      ["measure", "Related Care Gap"],
+    ],
+    [["value", "Result"], col<R>("ppos", "Place of Service", (r) => (r.claim !== DASH ? "11 - Office" : r.encounter ? "11 - Office" : DASH), { nowrap: true })],
+  );
+  const cols = v12() ? cols12 : colsOld;
   return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
 }
 
@@ -590,7 +783,7 @@ function ProvidersV8({ m }: { m: Member }) {
     updated<R>(),
     source<R>(),
   ];
-  const cols = v11()
+  const colsOld = v11()
     ? pick(columns, [
         "name",
         "npi",
@@ -625,5 +818,21 @@ function ProvidersV8({ m }: { m: Member }) {
         }),
       ])
     : columns;
-  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={{ key: "name", direction: "asc" }} search="Search by Provider, Provider ID, Specialty or Organization…" />;
+  const pcmNpi = primaryCareOf(m)?.p.npi;
+  const roleOf = (r: R) => (r.npi === pcmNpi ? "PCM" : "Encounter Provider");
+  const cols12 = pick12(
+    columns,
+    [
+      "name",
+      ["npi", "NPI"],
+      col<R>("role", "Type/Role", (r) => (r.npi === pcmNpi ? 0 : 1), { nowrap: true, sortable: true, render: (r) => roleOf(r) }),
+      "specialty",
+      ["org", "Organization"],
+      "last",
+      "related",
+    ],
+    [["active", "Status"], "entity", col<R>("dirId", "Provider Directory ID", (r) => `PD-${String(100000 + (hashOf(r.npi) % 899999))}`, { nowrap: true })],
+  );
+  const cols = v12() ? cols12 : colsOld;
+  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
 }

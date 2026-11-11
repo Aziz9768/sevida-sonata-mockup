@@ -1689,7 +1689,8 @@ export function useMemberTableColumns(
           header: "Open Gaps",
           filterLabel: "Open Gap Name",
           help: "The HEDIS care gap and Measurement Year",
-          defaultHidden: false,
+          // Version 12 (Application Tables): the default table has no gap name or due date column; they stay in the Columns panel.
+          defaultHidden: getVersion() >= 12,
         },
         {
           key: "openGapMY",
@@ -1734,6 +1735,7 @@ export function useMemberTableColumns(
           header: "Earliest Gap Due Date",
           help: "Date on which the next recommended action is due to close an open gap. For members with multiple gaps, the earliest date is given.",
           group: "Care Gaps",
+          defaultHidden: getVersion() >= 12 ? true : undefined,
           accessor: (m) => (openOf(m).length ? dueDate : null),
           render: (m) => dateCell(openOf(m).length ? dueDate : null),
           sortable: true,

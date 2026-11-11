@@ -18,7 +18,7 @@ import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
 import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
-import { evidenceNameOf, fmtDay, parseDay, useGaps } from "../careGaps";
+import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
 import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, primaryCareOf, stateName, countyOf } from "../data";
 import type { Member } from "../data";
@@ -93,17 +93,34 @@ export function CareGapsPageV3() {
   const v8 = versionNo >= 8;
   // Version 11: LPP-16144 as updated (11 default columns, four selector groups) and Mansi's selector standard.
   const v11 = versionNo >= 11;
-  const { gapsOf } = useGaps();
+  // Version 12 (Application Tables): Excluded status + Exclusion Reason, one shared Priority, opens on the open gaps sorted by Priority then Due Date.
+  const v12 = versionNo >= 12;
+  const { gapsOf, excludedOf } = useGaps();
   const { visible } = useRole();
-  const rows = useMemo<GapRow[]>(
-    () =>
-      visible.flatMap((m) => {
-        const all = gapsOf(m);
-        const n = all.filter((g) => g.status !== "Closed").length;
-        return all.map((g) => ({ id: g.id, m, g, n }));
-      }),
-    [gapsOf, visible],
+  const rows = useMemo<GapRow[]>(() => {
+    const all = visible.flatMap((m) => {
+      const gaps = v12 ? [...gapsOf(m), ...excludedOf(m)] : gapsOf(m);
+      const n = gaps.filter((g) => g.status === "Open" || (!v12 && g.status !== "Closed")).length;
+      return gaps.map((g) => ({ id: g.id, m, g, n }));
+    });
+    if (!v12) return all;
+    // Priority (High first), then Due Date (one date for every gap today), then the newest identified; Open, Closed, then Excluded.
+    const order = { Open: 0, Closed: 1, Excluded: 2 } as const;
+    return [...all].sort(
+      (a, b) =>
+        order[a.g.status] - order[b.g.status] ||
+        priorityRank(gapPriority(a.g)) - priorityRank(gapPriority(b.g)) ||
+        b.g.identified.getTime() - a.g.identified.getTime() ||
+        a.m.name.localeCompare(b.m.name),
+    );
+  }, [gapsOf, excludedOf, visible, v12]);
+  // Version 12: the table shows Gap Closed Date when the list is filtered to Closed gaps, and Exclusion Reason when filtered to Excluded.
+  const [filters, setFilters] = useState<FilterState>(
+    v12 ? { gapStatus: ["Open"] } : v8 ? {} : { gapStatus: ["Open"] },
   );
+  const statusPick = (filters.gapStatus as string[] | undefined) ?? [];
+  const mode: "all" | "closed" | "excluded" =
+    !v12 || statusPick.length !== 1 ? "all" : statusPick[0] === "Closed" ? "closed" : statusPick[0] === "Excluded" ? "excluded" : "all";
 
   const columns = useMemo<Column<GapRow>[]>(() => {
     const toMember = (r: GapRow) => `/members/${r.m.id}?tab=gaps`;
@@ -221,13 +238,13 @@ export function CareGapsPageV3() {
           : "What is still needed to close this gap, in two or three words. Hover to see every record that counts and its date window.",
         group: "Care Gaps",
         accessor: (r) =>
-          r.g.status === "Closed"
+          r.g.status === "Closed" || r.g.status === "Excluded"
             ? ""
             : v8
               ? RECOMMENDED_SENTENCE(r.g.def.code, CURRENT_YEAR)
               : MISSING_SHORT[r.g.def.code],
         render: (r) => {
-          if (r.g.status === "Closed") return v8 ? "N/A" : "–";
+          if (r.g.status === "Closed" || r.g.status === "Excluded") return v8 ? "N/A" : "–";
           // LPP-16144: the AI's sentence, two lines at most, then "…see more".
           if (v8)
             return <LlmText text={RECOMMENDED_SENTENCE(r.g.def.code, CURRENT_YEAR)} />;
@@ -245,11 +262,11 @@ export function CareGapsPageV3() {
           ? "Date by which the gap needs to be closed in order to manage member's care. Also impacts the Gap Met % rates."
           : "Gaps are due by the end of the measurement year: the number of days left, then the date.",
         group: "Care Gaps",
-        accessor: (r) => (v8 && r.g.status === "Closed" ? null : DUE),
+        accessor: (r) => (v8 && r.g.status !== "Open" && (v12 || r.g.status === "Closed") ? null : DUE),
         // LPP-16144: MM/DD/YYYY only, and N/A once the gap is closed.
         render: (r) =>
           v8
-            ? r.g.status === "Closed"
+            ? r.g.status === "Closed" || r.g.status === "Excluded"
               ? "N/A"
               : fmtDate(DUE)
             : `${daysToDue()} days (${fmtDate(DUE)})`,
@@ -399,9 +416,12 @@ export function CareGapsPageV3() {
               help: v8
                 ? "Indicates whether the care gap is open or closed. Open gaps require actions."
                 : "Whether this care gap is Open or Closed. The Gap Status filter chooses which ones the list shows.",
-              render: (r: GapRow) => (
-                <GapStatusChip closed={r.g.status === "Closed"} />
-              ),
+              render: (r: GapRow) =>
+                r.g.status === "Excluded" ? (
+                  <StatusChip tone={gapStatusTone.Excluded} label="Excluded" />
+                ) : (
+                  <GapStatusChip closed={r.g.status === "Closed"} />
+                ),
             }
           : {}),
         searchable: false,
@@ -411,7 +431,7 @@ export function CareGapsPageV3() {
         filter: {
           type: "multiselect",
           ordered: true,
-          options: opt(["Open", "Closed"]),
+          options: opt(v12 ? gapStatusesV12 : ["Open", "Closed"]),
         },
       },
       {
@@ -486,7 +506,7 @@ export function CareGapsPageV3() {
         WCV: "No well-care visit in the measurement year.",
       };
       const priorityOf = (r: GapRow) =>
-        r.g.status === "Closed" ? null : (["High", "Medium", "Low"] as const)[hashOf(r.g.id) % 3];
+        v12 ? gapPriority(r.g) : r.g.status === "Closed" ? null : (["High", "Medium", "Low"] as const)[hashOf(r.g.id) % 3];
       const base = (c: Column<GapRow>, extra: Partial<Column<GapRow>>): Column<GapRow> => ({ ...c, ...extra, searchable: c.searchable });
       const closedEvidence = (r: GapRow) => {
         const c = r.g.work.closed;
@@ -523,11 +543,23 @@ export function CareGapsPageV3() {
         // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
         base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap", nowrap: true }),
         base(g("gapStatus"), { group: "Care Gaps" }),
+        ...(v12
+          ? [
+              { key: "priority", header: "Priority", help: "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => priorityOf(r), render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
+            ]
+          : []),
         base(g("found"), { group: "Care Gaps" }),
         { key: "gapSource", header: "Gap Source", help: "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
-        { key: "priority", header: "Priority", help: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low. Tier definitions to be confirmed. Sample data.", accessor: (r) => priorityOf(r), render: (r) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", ...none },
+        ...(v12
+          ? []
+          : [{ key: "priority", header: "Priority", help: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => priorityOf(r), render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", ...none } as Column<GapRow>]),
         base(g("due"), { group: "Care Gaps", filterOrder: 7, filter: { type: "dateRange" }, help: "Date on which the next recommended action is due to close the gap." }),
-        base(g("closedDate"), { group: "Care Gaps", defaultHidden: true, filterOrder: 8, filter: { type: "dateRange" } }),
+        base(g("closedDate"), { group: "Care Gaps", defaultHidden: v12 ? mode !== "closed" : true, filterOrder: 8, filter: { type: "dateRange" } }),
+        ...(v12
+          ? [
+              { key: "exclusionReason", header: "Exclusion Reason", help: "Why the member is excluded from the measure, for example hospice or palliative care. Shown for Excluded gaps. Sample data: the dates are made up, the reason comes from the measure result.", accessor: (r: GapRow) => r.g.exclusionReason ?? null, render: (r: GapRow) => r.g.exclusionReason ?? "N/A", sortable: true, defaultHidden: mode !== "excluded", width: 280, group: "Care Gaps", ...none } as Column<GapRow>,
+            ]
+          : []),
         { key: "evidence", header: "Evidence", help: "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
         { key: "lastService", header: "Last Service / Result Date", help: "Date on the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Gaps", ...none },
         base(g("missing"), { header: "Recommended Action", group: "Care Gaps", help: "Recommendation on next steps to close the gap." }),
@@ -546,13 +578,10 @@ export function CareGapsPageV3() {
       ];
     }
     return cols;
-  }, [visible, actionsName, versionNo, v8, v11]);
+  }, [visible, actionsName, versionNo, v8, v11, v12, mode]);
 
   // The page opens on the open gaps (the Open Gap column); Gap Status adds the closed ones.
   // Version 8 (LPP-16144): the table shows all the care gaps, open and closed, and the user narrows with Gap Status.
-  const [filters, setFilters] = useState<FilterState>(
-    v8 ? {} : { gapStatus: ["Open"] },
-  );
   const [search, setSearch] = useState("");
   const countIn = (xs: GapRow[]) =>
     v8 ? xs.length : xs.filter((r) => r.g.status !== "Closed").length;
@@ -609,7 +638,7 @@ export function CareGapsPageV3() {
           columns={columns}
           rows={rows}
           getRowId={(r) => r.id}
-          defaultSort={{ key: "found", direction: v8 ? "desc" : "asc" }}
+          defaultSort={v12 ? undefined : { key: "found", direction: v8 ? "desc" : "asc" }}
           noResultsTitle={v8 ? "No care gaps found" : undefined}
           searchOnEnter={v11}
           applyFirst={v11}
@@ -621,8 +650,9 @@ export function CareGapsPageV3() {
           filters={filters}
           onFiltersChange={setFilters}
           onResultCountChange={setShown}
-          storageKey={v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
-          savedViews={v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
+          key={v12 ? mode : undefined}
+          storageKey={v12 ? `demo-care-gaps-v3-ver12-a-${mode}` : v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
+          savedViews={v12 ? "care-gaps-v12" : v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader
           // Version 11: always room for about five rows, even on a short screen (the page scrolls instead of squeezing the table).

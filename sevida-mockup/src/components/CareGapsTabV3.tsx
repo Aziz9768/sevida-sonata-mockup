@@ -7,7 +7,10 @@ import {
   fmtDay,
   fmtWhen,
   gapStatusTone,
+  gapPriority,
   gapStatuses,
+  gapStatusesV12,
+  priorityRank,
   statusHelp,
   useGaps,
 } from "../careGaps";
@@ -30,6 +33,8 @@ interface Row {
   explanation: string;
   closed: Date | null;
   closure: { title: string; detail: string } | null;
+  /** Version 12: why the member is excluded (status Excluded). */
+  exclusion?: string;
 }
 
 const opt = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
@@ -42,7 +47,7 @@ const opt = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
  */
 export function CareGapsTabV3({ m }: { m: Member }) {
   const navigate = useNavigate();
-  const { gapsOf } = useGaps();
+  const { gapsOf, excludedOf } = useGaps();
   const rows = useMemo<Row[]>(() => {
     const now: Row[] = gapsOf(m).map((g) => {
       const c = g.work.closed;
@@ -111,10 +116,172 @@ export function CareGapsTabV3({ m }: { m: Member }) {
           ];
         });
     });
-    return [...now, ...past];
-  }, [m, gapsOf]);
+    // Version 12: the measures the member is excluded from are listed too, with status Excluded and the reason.
+    const excluded: Row[] = excludedOf(m).map((g) => ({
+      id: g.id,
+      year: MY,
+      code: g.def.code,
+      status: g.status,
+      identified: g.identified,
+      explanation: g.result.reason,
+      closed: null,
+      closure: null,
+      exclusion: g.exclusionReason,
+    }));
+    return [...now, ...excluded, ...past];
+  }, [m, gapsOf, excludedOf]);
 
   const to = (r: Row) => `/members/${m.id}/gaps/${r.code}`;
+
+  // ---- Version 12 (Application Tables, Care Gaps tab): Gap Name, Gap Status, Priority, Gap Identified Date, Due Date, Recommended Action,
+  // Evidence, Gap Closed Date. Optional in the Columns panel: Measure Code, Closure Source, Exclusion Reason, Primary Care Manager.
+  // Open gaps first by Priority, then Closed, then Excluded. Priority is the same sample value as on the Care Gaps list and the details page.
+  if (getVersion() >= 12) {
+    const dash = "--";
+    const dueOf = (r: Row) => new Date(r.year, 11, 31);
+    const prio = (r: Row) => gapPriority({ id: r.id, status: r.status });
+    const pcm = (() => {
+      const p = primaryCareOf(m)?.p;
+      return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
+    })();
+    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})`;
+    const optional = { group: "Optional", defaultHidden: true, searchable: false } as const;
+    const cols: Column<Row>[] = [
+      {
+        key: "name",
+        header: "Gap Name",
+        help: "The HEDIS care gap and the measurement year.",
+        accessor: (r) => `${nameOf(r)} ${r.code}`,
+        sortable: true,
+        primary: true,
+        defaultPinned: true,
+        searchable: true,
+        width: 300,
+        filter: { type: "multiselect", options: v3GapOptions },
+        filterAccessor: (r) => r.code,
+        render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
+      },
+      {
+        key: "status",
+        header: "Gap Status",
+        accessor: (r) => r.status,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "multiselect", options: opt(gapStatusesV12) },
+        render: (r) =>
+          r.status === "Excluded" ? (
+            <StatusChip tone={gapStatusTone.Excluded} label="Excluded" />
+          ) : (
+            <GapStatusChip closed={r.status === "Closed"} />
+          ),
+      },
+      {
+        key: "priority",
+        header: "Priority",
+        help: "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
+        accessor: (r) => priorityRank(prio(r)),
+        filterAccessor: (r) => prio(r) ?? "N/A",
+        filter: { type: "multiselect", options: opt(["High", "Medium", "Low"]) },
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        render: (r) => prio(r) ?? dash,
+      },
+      {
+        key: "found",
+        header: "Gap Identified Date",
+        accessor: (r) => r.identified,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => fmtDate(r.identified),
+      },
+      {
+        key: "due",
+        header: "Due Date",
+        accessor: (r) => (r.status === "Open" ? dueOf(r) : null),
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => (r.status === "Open" ? fmtDate(dueOf(r)) : dash),
+      },
+      {
+        key: "action",
+        header: "Recommended Action",
+        accessor: (r) => (r.status === "Open" ? RECOMMENDED_SENTENCE(r.code, r.year) : ""),
+        searchable: false,
+        width: 260,
+        render: (r) => (r.status === "Open" ? <LlmText text={RECOMMENDED_SENTENCE(r.code, r.year)} /> : dash),
+      },
+      {
+        key: "evidence",
+        header: "Evidence",
+        help: "Opens the Evidence tab of the care gap: the records that count for the gap, or that closed it.",
+        accessor: (r) => (r.year === MY ? "Evidence" : ""),
+        searchable: false,
+        nowrap: true,
+        render: (r) => (r.year === MY ? <TableLink to={`${to(r)}?tab=evidence`}>Evidence</TableLink> : dash),
+      },
+      {
+        key: "closedDate",
+        header: "Gap Closed Date",
+        accessor: (r) => r.closed,
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+        filter: { type: "dateRange" },
+        render: (r) => (r.closed ? fmtDay(r.closed.toISOString()) : dash),
+      },
+      { key: "code", header: "Measure Code", help: "The measure's abbreviation, for example BCS-E.", accessor: (r) => r.code, sortable: true, nowrap: true, ...optional },
+      {
+        key: "closureSource",
+        header: "Closure Source",
+        help: "Where the record that closed the gap came from. Blank unless the gap is closed.",
+        accessor: (r) => (r.status === "Closed" ? r.closure?.detail ?? "" : ""),
+        render: (r) => (r.status === "Closed" && r.closure?.detail ? r.closure.detail : dash),
+        sortable: true,
+        width: 220,
+        ...optional,
+      },
+      {
+        key: "exclusionReason",
+        header: "Exclusion Reason",
+        help: "Why the member is excluded from the measure. Shown for Excluded gaps. Sample data.",
+        accessor: (r) => r.exclusion ?? "",
+        render: (r) => r.exclusion ?? dash,
+        sortable: true,
+        width: 260,
+        ...optional,
+      },
+      { key: "pcm", header: "Primary Care Manager", help: "The member's primary care manager. Sample data: the demo members have none, so it is made up.", accessor: () => pcm, render: () => pcm, nowrap: true, ...optional },
+    ];
+    const order = { Open: 0, Closed: 1, Excluded: 2 } as const;
+    const sorted = [...rows].sort(
+      (a, b) =>
+        order[a.status] - order[b.status] ||
+        priorityRank(prio(a)) - priorityRank(prio(b)) ||
+        b.identified.getTime() - a.identified.getTime(),
+    );
+    return (
+      <DataTable
+        ariaLabel="Care gaps"
+        title="List of Care Gaps"
+        columns={cols}
+        rows={sorted}
+        getRowId={(r) => r.id}
+        paginated={false}
+        searchPlaceholder="Search by Measure or Abbreviation"
+        noResultsTitle="No care gaps found"
+        storageKey="demo-member-care-gaps-v12-a"
+        columnsPanel={{ tableOrder: true, search: false }}
+        onRowClick={(r) => r.year === MY && navigate(to(r))}
+        emptyState={<EmptyState title="No care gaps" description={`${m.name} has no care gaps, open or closed.`} />}
+      />
+    );
+  }
 
   // ---- Version 11 (LPP-16155 + Application Tables): Gap Name (Measurement Year), Gap Status, Gap Identified Date, Priority,
   // Due Date, Recommended Action, PCM, Gap Closed Date, Gap Evidence. Default columns only, so no Columns button.
