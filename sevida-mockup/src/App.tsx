@@ -552,7 +552,7 @@ function Protected() {
               <V5Redirect to="/analytics" />
             ) : (
               <MenuGate path="/dashboards">
-                {version.id >= 12 ? <DashboardsV12Page /> : version.id >= 10 ? <AnalyticsOverviewV10Page /> : <DashboardCardsPage />}
+                {version.id >= 10 ? <AnalyticsOverviewV10Page /> : <DashboardCardsPage />}
               </MenuGate>
             )
           }
