@@ -7,7 +7,9 @@ import {
   fmtDay,
   fmtWhen,
   gapStatusTone,
+  evidenceRoles,
   gapPriority,
+  gapRole,
   gapStatuses,
   gapStatusesV12,
   priorityRank,
@@ -35,6 +37,9 @@ interface Row {
   closure: { title: string; detail: string } | null;
   /** Version 12: why the member is excluded (status Excluded). */
   exclusion?: string;
+  /** Version 12: Evidence Role and Reason. */
+  role?: string;
+  roleReason?: string;
 }
 
 const opt = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
@@ -59,6 +64,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         status: g.status,
         identified: g.identified,
         explanation: g.result.reason,
+        role: gapRole(g).role,
+        roleReason: gapRole(g).reason,
         closed: c ? new Date(c.on) : null,
         closure: c
           ? rec
@@ -127,6 +134,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       closed: null,
       closure: null,
       exclusion: g.exclusionReason,
+      role: gapRole(g).role,
+      roleReason: gapRole(g).reason,
     }));
     return [...now, ...excluded, ...past];
   }, [m, gapsOf, excludedOf]);
@@ -234,6 +243,26 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         nowrap: true,
         filter: { type: "dateRange" },
         render: (r) => (r.closed ? fmtDay(r.closed.toISOString()) : dash),
+      },
+      {
+        key: "role",
+        header: "Evidence Role",
+        help: "How the evidence relates to the gap: Closes gap, Exclusion or Doesn't qualify.",
+        accessor: (r) => r.role ?? "",
+        render: (r) => r.role ?? dash,
+        filter: { type: "multiselect", options: opt(evidenceRoles) },
+        searchable: false,
+        sortable: true,
+        nowrap: true,
+      },
+      {
+        key: "roleReason",
+        header: "Reason",
+        help: "Explains a Doesn't qualify row, for example dated outside the lookback window or code not in the measure's value set.",
+        accessor: (r) => r.roleReason ?? "",
+        render: (r) => r.roleReason || dash,
+        searchable: false,
+        width: 300,
       },
       { key: "code", header: "Measure Code", help: "The measure's abbreviation, for example BCS-E.", accessor: (r) => r.code, sortable: true, nowrap: true, ...optional },
       {

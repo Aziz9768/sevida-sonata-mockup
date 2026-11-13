@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Box, Typography } from "@mui/material";
+import { tokens } from "sevida-ui";
 import { QsLegend, niceMax } from "./kit";
+import { getVersion } from "../version";
 import { qs } from "./qsTheme";
 
 /**
@@ -26,11 +28,16 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
 
 const n0 = (n: number) => n.toLocaleString("en-US");
 const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0.00%");
-/** Version 12: Closed is the app's green and Open is its red, the same as the Closed and Open tags everywhere else (Versions 1 to 11 keep blue and orange). */
-export const V12_CLOSED: string = qs.meaning.met;
-export const V12_OPEN: string = qs.tone.danger.border;
-const onOpen = "#FFFFFF";
-const onClosed = "#FFFFFF";
+/**
+ * Version 12: Closed is the app's green and Open is its red (Versions 1 to 11 keep blue and orange).
+ * Version 13 (Sam found the full-strength tones too heavy): Closed uses the design system's lighter "chip" green (the fill of the Closed tag).
+ * The system's chip red (#EF5350) was still strong, so Open uses a softer red, #E57373 (the same step of the red scale as the chip green is of the green scale).
+ * It is not a design-system token yet: to confirm with the design system owner. Dark text sits on both. These are functions, so each version reads its own colours.
+ */
+const v13 = () => getVersion() >= 13;
+export const closedColor = (): string => (v13() ? tokens.status.success.chip : qs.meaning.met);
+export const openColor = (): string => (v13() ? "#E57373" : qs.tone.danger.border);
+const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
 export const OPEN_LEGEND = "Open Gaps Count & %";
@@ -69,8 +76,8 @@ export function QsRateColumns({
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend
         items={[
-          { label: CLOSED_LEGEND, color: V12_CLOSED },
-          { label: OPEN_LEGEND, color: V12_OPEN },
+          { label: CLOSED_LEGEND, color: closedColor() },
+          { label: OPEN_LEGEND, color: openColor() },
         ]}
       />
       {n === 0 ? (
@@ -118,8 +125,8 @@ export function QsRateColumns({
               <g key={r.label}>
                 <title>{tip}</title>
                 <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
-                {seg(hC, r.closed, y(0) - hC, onClosed, V12_CLOSED)}
-                {seg(hO, r.open, y(0) - hC - hO, onOpen, V12_OPEN)}
+                {seg(hC, r.closed, y(0) - hC, onBar(), closedColor())}
+                {seg(hO, r.open, y(0) - hC - hO, onBar(), openColor())}
                 <text
                   x={cx}
                   y={y(0) + 16}
@@ -200,7 +207,7 @@ export function QsRateLines({
               <polyline
                 fill="none"
                 stroke={s.color}
-                strokeWidth={2}
+                strokeWidth={v13() ? 3 : 2}
                 strokeDasharray={s.dashed ? "6 4" : undefined}
                 points={pts.map((p) => `${x(p.i)},${y(p.v)}`).join(" ")}
               />
@@ -237,8 +244,11 @@ export function QsRateBars({
   first,
   label,
   empty = "No manager has an eligible member for these controls",
+  dividerAt,
 }: {
   rows: QsRateRow[];
+  /** Row numbers that start a separate group (Unassigned, Below x Members): a dashed line is drawn above them. */
+  dividerAt?: number[];
   /** The segment drawn first (at the left), and listed first in the legend. */
   first: "open" | "closed";
   label: string;
@@ -267,9 +277,9 @@ export function QsRateBars({
   const max = niceMax(Math.max(1, ...rows.map((r) => r.open + r.closed)));
   const x = (v: number) => padL + (v / (max || 1)) * (W - padL - padR);
   const order: ("open" | "closed")[] = first === "open" ? ["open", "closed"] : ["closed", "open"];
-  const color = { open: V12_OPEN, closed: V12_CLOSED };
-  const fg = { open: onOpen, closed: onClosed };
-  const legend = { open: { label: OPEN_LEGEND, color: V12_OPEN }, closed: { label: CLOSED_LEGEND, color: V12_CLOSED } };
+  const color = { open: openColor(), closed: closedColor() };
+  const fg = { open: onBar(), closed: onBar() };
+  const legend = { open: { label: OPEN_LEGEND, color: openColor() }, closed: { label: CLOSED_LEGEND, color: closedColor() } };
   return (
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend items={order.map((k) => legend[k])} />
@@ -292,6 +302,7 @@ export function QsRateBars({
             const lines = wrap(r.label);
             return (
               <g key={r.label}>
+                {dividerAt?.includes(i) && <line x1={0} x2={W} y1={top} y2={top} stroke={qs.color.border} strokeDasharray="4 3" />}
                 <title>{`${r.label}: Open ${n0(r.open)} (${pct(r.open, total)}), Closed ${n0(r.closed)} (${pct(r.closed, total)})`}</title>
                 <rect x={0} y={top} width={W} height={rowH} fill="transparent" />
                 <text fontSize={12} fill={qs.color.secondaryForeground} textAnchor="end">
@@ -348,7 +359,10 @@ export function QsMeasureBars({
   color,
   ticks,
   height = 320,
+  onSelect,
 }: {
+  /** Click (or Enter on) a bar to open that measure's tab. */
+  onSelect?: (label: string) => void;
   rows: QsMeasureBar[];
   label: string;
   yTitle: string;
@@ -383,8 +397,25 @@ export function QsMeasureBars({
           const cx = padL + slot * i + slot / 2;
           const top = y(r.value);
           return (
-            <g key={r.label}>
-              <title>{`${r.label}: ${r.text}`}</title>
+            <g
+              key={r.label}
+              {...(onSelect
+                ? {
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": `${r.label}: ${r.text}. Open the ${r.label} tab`,
+                    style: { cursor: "pointer", outline: "none" },
+                    onClick: () => onSelect(r.label),
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(r.label);
+                      }
+                    },
+                  }
+                : {})}
+            >
+              <title>{`${r.label}: ${r.text}${onSelect ? " (click to open the tab)" : ""}`}</title>
               <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
               <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(0, y(0) - top)} fill={color} />
               <text textAnchor="middle" fontSize={11} fill={qs.color.primaryForeground}>

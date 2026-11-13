@@ -1,8 +1,13 @@
+import { useMemo } from "react";
 import type { ReactNode } from "react";
-import { Box, Typography } from "@mui/material";
-import { InfoTip } from "sevida-ui";
+import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import { AutocompleteField, InfoTip, tokens } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
+import { closedColor, openColor } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
+import { ALL } from "../sharedFilters";
+import { getVersion } from "../version";
 import { NO_PCP } from "../data";
 import type { MeasureState } from "../data";
 import { PCMS, pcmByName } from "../v7Data";
@@ -35,6 +40,65 @@ export const pcmOptionsV12 = () => [
   ...[...PCMS].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: p.name, label: `${p.name} - NPI: ${p.npi}` })),
   { value: NO_PCP, label: "Unassigned" },
 ];
+
+/** The Primary Care Manager filter. Version 12 is a plain pick list that also takes typing. Version 13 is the search box below. */
+export function PcmFilter({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  if (getVersion() >= 13) return <PcmSearchField value={value} onChange={onChange} />;
+  return (
+    <Box sx={whiteAll}>
+      <AutocompleteField multiple label="Primary Care Manager" placeholder={ALL} options={pcmOptionsV12()} value={value} onChange={onChange} />
+    </Box>
+  );
+}
+
+/**
+ * Version 13, Sam: the Primary Care Manager filter did not look like a search. It now shows a magnifier, the hint "Search PCM name or NPI", an "All" choice at the
+ * top of the list (it clears the choice), a grey "All" tag while nothing is chosen, and a clear (x) button. Pick several managers if you like.
+ * It is the same type-to-search list as the sevida-ui AutocompleteField, with the search icon added.
+ */
+const PCM_ALL = "__all__";
+export function PcmSearchField({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const options = useMemo(() => [{ value: PCM_ALL, label: "All" }, ...pcmOptionsV12()], []);
+  const byValue = (v: string) => options.find((o) => o.value === v) ?? { value: v, label: v };
+  return (
+    <Autocomplete
+      multiple
+      disableCloseOnSelect
+      limitTags={1}
+      options={options}
+      value={value.map(byValue)}
+      onChange={(_, v) => onChange(v.some((o) => o.value === PCM_ALL) ? [] : v.map((o) => o.value))}
+      isOptionEqualToValue={(a, b) => a.value === b.value}
+      renderOption={(props, o) => (
+        <li {...props} key={o.value} style={{ ...props.style, fontWeight: o.value === PCM_ALL ? 700 : undefined }}>
+          {o.label}
+        </li>
+      )}
+      sx={{ "& .MuiAutocomplete-clearIndicator": { visibility: "visible" }, "& .MuiInputBase-root": { background: qs.color.primaryBackground } }}
+      renderInput={(params) => (
+        <MuiTextField
+          {...params}
+          label="Primary Care Manager"
+          placeholder="Search PCM name or NPI"
+          InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+          inputProps={{ ...params.inputProps, "aria-label": "Search Primary Care Manager by name or NPI" }}
+          InputProps={{
+            ...params.InputProps,
+            startAdornment: (
+              <>
+                <InputAdornment position="start" sx={{ mr: 0.5 }}>
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+                {value.length === 0 && <Chip size="small" label="All" sx={{ mr: 0.5 }} />}
+                {params.InputProps.startAdornment}
+              </>
+            ),
+          }}
+        />
+      )}
+    />
+  );
+}
 
 /** The five states a member can have for a measure, grouped the way the Population filters use them. */
 export const STATES_ELIGIBLE: MeasureState[] = ["Met", "Gap"];
@@ -133,8 +197,12 @@ export function KpiTile({
   /** Room for the description, so tiles in one row line up. */
   aboutMin?: number;
 }) {
-  const g = GROUP[group];
-  const ink = tone === "good" ? qs.meaning.met : tone === "bad" ? qs.tone.danger.text : qs.color.secondaryForeground;
+  // Version 13: one light green and one soft red everywhere. The tile stripe uses the chart colours and the numbers and Better / Worse words
+  // use the design system's dark green and dark red text, so they stay readable on white. Version 12 keeps the strong green and red.
+  const v13 = getVersion() >= 13 && (group === "met" || group === "notMet");
+  const g = v13 ? { color: group === "met" ? closedColor() : openColor(), text: group === "met" ? tokens.status.success.dark : tokens.status.danger.dark } : GROUP[group];
+  const ink =
+    tone === "good" ? (getVersion() >= 13 ? tokens.status.success.dark : qs.meaning.met) : tone === "bad" ? (getVersion() >= 13 ? tokens.status.danger.dark : qs.tone.danger.text) : qs.color.secondaryForeground;
   const word = tone === "good" ? "Better" : tone === "bad" ? "Worse" : "No change";
   const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
   return (

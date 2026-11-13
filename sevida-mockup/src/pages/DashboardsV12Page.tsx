@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
-import { PageContainer, SelectField } from "sevida-ui";
+import { PageContainer, SelectField, titleCase } from "sevida-ui";
 import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { NotesContext, QsFrame, QsSheet, QsTable, QsTile } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
@@ -10,6 +10,7 @@ import type { MeasureCode } from "../data";
 import { inputsFor } from "../dashboardData";
 import { gapShort } from "../v3Data";
 import { useRole } from "../roles";
+import { useVersion } from "../version";
 import { useDocumentTitle } from "../components/analytics/AnalyticsBits";
 import { lucidTitle } from "./QuickSightDashboardPage";
 import { Admin } from "./MeasureLucidPage";
@@ -18,6 +19,7 @@ import type { OverviewState } from "./OverviewV12";
 import { MeasureV12, emptyMeasure } from "./MeasureV12";
 import type { MeasureV12State } from "./MeasureV12";
 import { n0, whiteAll } from "./dashboardV12Bits";
+import { DcsTab, HedisInputsTab } from "./hedisInputsV14";
 
 /**
  * Version 12 Analytics dashboards (Balsamiq board, Analytics - Quality Measures).
@@ -74,25 +76,48 @@ export function DashboardsV12Page() {
   const [params] = useSearchParams();
   const first = params.get("m")?.toUpperCase() ?? "";
   const { role } = useRole();
+  // Version 14 (Srikanth): Inputs is HEDIS Inputs, a DCS tab is new, and the page title sits below the tab bar. Versions 12 and 13 are not changed.
+  const v14 = useVersion().version.id >= 14;
   const [tab, setTab] = useState(MEASURE_TABS.includes(first) ? first : OVERVIEW);
   const [ov, setOv] = useState<OverviewState>(emptyOverview());
   const [ms, setMs] = useState<Record<string, MeasureV12State>>({});
-  const tabs = [OVERVIEW, ...MEASURE_TABS, "Inputs", ...(role.dataQuality ? ["Admin"] : [])];
+  const tabs = v14
+    ? [OVERVIEW, ...MEASURE_TABS, "HEDIS Inputs", "DCS", ...(role.dataQuality ? ["Admin"] : [])]
+    : [OVERVIEW, ...MEASURE_TABS, "Inputs", ...(role.dataQuality ? ["Admin"] : [])];
   const code = codeOf(tab);
   useDocumentTitle(`${tab}, Analytics`);
 
-  const title = code ? lucidTitle(code).replace("Care Gaps Dashboard", "Care Gaps") : "HEDIS Care Gaps - Overview";
+  const title = code
+    ? lucidTitle(code).replace("Care Gaps Dashboard", "Care Gaps")
+    : v14 && tab === "HEDIS Inputs"
+      ? "HEDIS Inputs Dashboard"
+      : v14 && tab === "DCS"
+        ? "DCS Validations"
+        : v14 && tab === "Admin"
+          ? "HEDIS Care Gaps - Admin"
+          : "HEDIS Care Gaps - Overview";
   const crumbs = code
     ? [{ label: "Analytics" }, { label: "Overview", href: "/dashboards" }, { label: tab }]
     : [{ label: "Analytics" }, { label: tab }];
   return (
-    <PageContainer title={title} titleVariant="overview" breadcrumbs={crumbs} renderLink={renderCrumbLink}>
+    <PageContainer title={v14 ? undefined : title} titleVariant="overview" breadcrumbs={crumbs} renderLink={renderCrumbLink}>
       <NotesContext.Provider value={{ fr: false, ask: false }}>
         <QsFrame tabs={tabs} active={tab} onTab={setTab} onReset={() => undefined} toolbar={false}>
+          {v14 && (
+            <Box sx={{ px: 2, py: 1.5, bgcolor: qs.color.primaryBackground, borderBottom: qs.tile.border }}>
+              <Typography variant="h3" component="h1" sx={{ overflowWrap: "anywhere" }}>
+                {titleCase(title)}
+              </Typography>
+            </Box>
+          )}
           {tab === OVERVIEW ? (
-            <OverviewV12 s={ov} setS={setOv} />
+            <OverviewV12 s={ov} setS={setOv} onOpenMeasure={(t) => MEASURE_TABS.includes(t) && setTab(t)} />
           ) : code ? (
             <MeasureV12 key={code} code={code} s={ms[tab] ?? emptyMeasure()} setS={(s) => setMs({ ...ms, [tab]: s })} />
+          ) : tab === "HEDIS Inputs" ? (
+            <HedisInputsTab />
+          ) : tab === "DCS" ? (
+            <DcsTab />
           ) : tab === "Inputs" ? (
             <Inputs />
           ) : (

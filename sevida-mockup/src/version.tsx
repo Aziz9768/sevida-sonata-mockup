@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -247,14 +247,44 @@ export const VERSIONS: VersionInfo[] = [
       "Application side, matched to the Application Tables sheet (tab: Application Tables only). Values the data does not have are made-up sample data, labelled 'Sample data' in the column help. Versions 11 and older do not change.",
       "Members list: Open Gaps and Earliest Gap Due Date are off by default (still in the Columns panel). Care Gaps list: opens on the open gaps, sorted by Priority then Due Date; Priority now comes before Gap Identified Date; new Excluded status and Exclusion Reason column (members the measure excludes, e.g. hospice or palliative care); filtering to Closed shows Gap Closed Date and filtering to Excluded shows Exclusion Reason. Priority is one sample value used on the list, the member's Care Gaps tab and the Care Gap Details page (before, the list and the other two disagreed). Counts on the list can differ from earlier versions because Excluded rows are now listed.",
       "Member page: the record tabs (Claims, Diagnoses, Encounters, Immunizations, Labs, Medications, Observations, Procedures) and Providers use the sheet's column names and order, with the extra fields in the Columns panel under Optional. The Columns button is back on these tabs in Version 12 only. Providers show the Primary Care Manager first. The Care Gaps tab is Gap Name, Gap Status, Priority, Gap Identified Date, Due Date, Recommended Action, Evidence (link), Gap Closed Date, sorted open gaps by Priority, then closed, then excluded; Measure Code, Closure Source, Exclusion Reason and Primary Care Manager are optional.",
-      "Care Gap Details: Gap Status, Days Remaining (and Exclusion Reason or Gap Closed Date when they apply) in the summary; a specific 'Why' text (window, last record on file, link to Evidence), 'How To Close The Gap' with the recommended action and what to document, and links to the member's other open gaps. Evidence: Service Date, Record Type, Description, Code, Code System, Result / Value, Provider, Source (optional Record ID, Received Date, Value Set, Clinic / Facility), records that count first, a row opens the record on the member page. History is an event log (Identified, Priority Changed, PCM Changed, Closed, Reopened, Excluded), newest first; the Priority Changed event is a made-up example. Not built (the sheet marks them Future): Evidence Role, Reason, all diagnoses from all sources, outreach events. Not matched: the Care Gaps list selector shows Priority in table order, not after Due Date.",
+      "Care Gap Details: Gap Status, Days Remaining (and Exclusion Reason or Gap Closed Date when they apply) in the summary; a specific 'Why' text (window, last record on file, link to Evidence), 'How To Close The Gap' with the recommended action and what to document, and links to the member's other open gaps. Evidence: Service Date, Record Type, Description, Code, Code System, Result / Value, Provider, Source (optional Record ID, Received Date, Value Set, Clinic / Facility), records that count first, a row opens the record on the member page. History is an event log (Identified, Priority Changed, PCM Changed, Closed, Reopened, Excluded), newest first; the Priority Changed event is a made-up example. Evidence Role (Closes gap, Exclusion, Doesn't qualify) and Reason (why a record does not count, e.g. code not in the value set) are on the member's Care Gaps tab (one per gap) and on the Evidence tab (one per record). Not built (the sheet marks them Future): all diagnoses from all sources, outreach events. Not matched: the Care Gaps list selector shows Priority in table order, not after Due Date.",
       "Left as in Version 11 until the board owner confirms: BCS age 42-74 (the board says 52-74), the trend description wording, 'Disabled' as a military status, and the Admin and Inputs content. The board's typos are not copied.",
+    ],
+  },
+  {
+    id: 13,
+    name: "Version 13",
+    date: "2026-11-13",
+    summary: "Version 12 with Sam's feedback on the dashboard prototype. Version 12 stays exactly as Sam saw it.",
+    changes: [
+      "Everything in Version 12 stays. Versions 12 and older are as they were. Only the Analytics dashboards change.",
+      "Primary Care Manager filter (Overview and every measure page) is a search box: a magnifier, the hint 'Search PCM name or NPI', a grey 'All' tag while nothing is chosen, 'All' at the top of the list (it clears the choice) and an x to clear. Sam suggested the hint 'Enter a PCM Name or NPI to Search'; the hint above was kept for now.",
+      "Overview: the chart 'Closed Gap Rate' is now 'Measure Rate'. Both charts have a description under the title and a click on a bar opens that measure's tab.",
+      "Measure page descriptions use the board's new wording (Initial Population, Closed Gaps Count, Measure Rate, Open Gaps Count) and both Top n charts have the new descriptions.",
+      "Top n is a number box (starts at 5, 1 to 100) with the View All button. 'Minimum Number of Members' is a box the user types in (starts at 30, counts eligible members of the measure) and sets which PCMs are ranked by rate. With View All, a last row 'Below x Members' adds together the PCMs under the minimum.",
+      "Unassigned is always a separate last row under the Open Gaps chart. It is not ranked, and it is not shown in the rate chart.",
+      "Quarterly trend stops at the last completed quarter (no Q4 2026). Monthly is not changed.",
+      "Colours: one light green (the design system's chip green) and one soft red (#E57373) are used everywhere on the dashboards: tile stripes, bars, legends and trend lines. The soft red is not a design-system token yet: to confirm with the design system owner. The big tile numbers and the Better / Worse words use the design system's dark green and dark red text so they stay readable.",
+      "Gaps By Sex always shows Male, Female and Unknown. About 1 member in 25 has Unknown sex (sample data, nobody is added or removed, so totals do not change).",
+      "Still open with Sam: BCS age 42-74 or 52-74 (the board says 52-74); the Overview tile descriptions were not changed because the board's new wording for them was not clear; the monthly trend still shows the month in progress.",
+    ],
+  },
+  {
+    id: 14,
+    name: "Version 14 - Srikanth",
+    date: "2026-11-13",
+    summary: "Version 13 with Srikanth's changes: HEDIS Inputs and DCS tabs, and the page title below the tab bar. Version 13 stays exactly as it was.",
+    changes: [
+      "Everything in Version 13 stays. Versions 13 and older are as they were. Only the Analytics dashboards change.",
+      "The Inputs tab is now HEDIS Inputs, built from Srikanth's Sigma dashboard (HEDIS Inputs Dashboard): four filters (Member Id, Value Set or Medication List Name, Code, Supplemental Data) and the Member Details table with the same 43 column names, in the same order. Every value is made-up sample data. The column 'Fl...' in the screenshot is cut off; it is written 'Flag' here (to confirm).",
+      "New DCS tab (before Admin), from the Sigma DCS Validations dashboard: four filters (Is Valid, Artefact Id, Patient, EOB Id) and the Client HEDIS DCS Artefacts table (Medicaid Id, ListAggDistinct of Artefact, Snapshot Id, Artefact, Artefact Id, Result, Status, Artefact Json, Created At, Organization Id, Indicator). Patient, EOB Id and Is Valid are added as the last three columns so the filters have values to work on (to confirm). All values are made-up sample data.",
+      "The page title (for example 'HEDIS Care Gaps - Overview') is now below the tab bar on every dashboard tab, with the breadcrumb still at the top. HEDIS Inputs is titled 'HEDIS Inputs Dashboard' and DCS 'DCS Validations', as in Sigma.",
     ],
   },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 12;
+export const LATEST_VERSION: VersionId = 14;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>
