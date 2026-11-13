@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Box, Typography } from "@mui/material";
+import { tokens } from "sevida-ui";
 import { QsLegend, niceMax } from "./kit";
 import { qs } from "./qsTheme";
 
@@ -26,11 +27,16 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
 
 const n0 = (n: number) => n.toLocaleString("en-US");
 const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0.00%");
-/** Version 12: Closed is the app's green and Open is its red, the same as the Closed and Open tags everywhere else (Versions 1 to 11 keep blue and orange). */
-export const V12_CLOSED: string = qs.meaning.met;
-export const V12_OPEN: string = qs.tone.danger.border;
-const onOpen = "#FFFFFF";
-const onClosed = "#FFFFFF";
+/**
+ * Version 12: Closed is the app's green and Open is its red (Versions 1 to 11 keep blue and orange). Sam found the full-strength tones too heavy,
+ * so the bars use the design system's lighter "chip" shades (the same fills as the Closed and Open tags) with dark text on them.
+ */
+export const V12_CLOSED: string = tokens.status.success.chip;
+export const V12_OPEN: string = tokens.status.danger.chip;
+/** A thin line needs the stronger green to stay visible on white, so the trend lines keep the full-strength tone. */
+export const V12_CLOSED_LINE: string = qs.meaning.met;
+const onOpen: string = tokens.ink[900];
+const onClosed: string = tokens.ink[900];
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
 export const OPEN_LEGEND = "Open Gaps Count & %";
@@ -237,8 +243,11 @@ export function QsRateBars({
   first,
   label,
   empty = "No manager has an eligible member for these controls",
+  dividerAt,
 }: {
   rows: QsRateRow[];
+  /** Row numbers that start a separate group (Unassigned, Below x Members): a dashed line is drawn above them. */
+  dividerAt?: number[];
   /** The segment drawn first (at the left), and listed first in the legend. */
   first: "open" | "closed";
   label: string;
@@ -292,6 +301,7 @@ export function QsRateBars({
             const lines = wrap(r.label);
             return (
               <g key={r.label}>
+                {dividerAt?.includes(i) && <line x1={0} x2={W} y1={top} y2={top} stroke={qs.color.border} strokeDasharray="4 3" />}
                 <title>{`${r.label}: Open ${n0(r.open)} (${pct(r.open, total)}), Closed ${n0(r.closed)} (${pct(r.closed, total)})`}</title>
                 <rect x={0} y={top} width={W} height={rowH} fill="transparent" />
                 <text fontSize={12} fill={qs.color.secondaryForeground} textAnchor="end">
@@ -348,7 +358,10 @@ export function QsMeasureBars({
   color,
   ticks,
   height = 320,
+  onSelect,
 }: {
+  /** Click (or Enter on) a bar to open that measure's tab. */
+  onSelect?: (label: string) => void;
   rows: QsMeasureBar[];
   label: string;
   yTitle: string;
@@ -383,8 +396,25 @@ export function QsMeasureBars({
           const cx = padL + slot * i + slot / 2;
           const top = y(r.value);
           return (
-            <g key={r.label}>
-              <title>{`${r.label}: ${r.text}`}</title>
+            <g
+              key={r.label}
+              {...(onSelect
+                ? {
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": `${r.label}: ${r.text}. Open the ${r.label} tab`,
+                    style: { cursor: "pointer", outline: "none" },
+                    onClick: () => onSelect(r.label),
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(r.label);
+                      }
+                    },
+                  }
+                : {})}
+            >
+              <title>{`${r.label}: ${r.text}${onSelect ? " (click to open the tab)" : ""}`}</title>
               <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
               <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(0, y(0) - top)} fill={color} />
               <text textAnchor="middle" fontSize={11} fill={qs.color.primaryForeground}>

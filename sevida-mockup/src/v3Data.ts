@@ -59,8 +59,10 @@ const GENDER_OVERRIDE: Record<string, "Other" | "Unknown"> = {
   M1303: "Unknown",
 };
 export const GENDER_V3 = ["Male", "Female", "Other", "Unknown"];
+/** Version 12, sample data: about one member in 25 has no sex on file, so the Gaps By Sex chart has an Unknown bar. Only the label changes: nobody is added or removed. */
+const unknownV12 = (m: Member) => getVersion() >= 12 && hashOf(`${m.id}-sexunk`) % 25 === 0;
 export const genderV3 = (m: Member) =>
-  GENDER_OVERRIDE[m.id] ?? (m.gender === "female" ? "Female" : "Male");
+  GENDER_OVERRIDE[m.id] ?? (unknownV12(m) ? "Unknown" : m.gender === "female" ? "Female" : "Male");
 
 export const MILITARY_V3 = [
   "Active Duty",

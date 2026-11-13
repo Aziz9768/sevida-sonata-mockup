@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import type { ReactNode } from "react";
-import { Box, Typography } from "@mui/material";
+import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import { InfoTip } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
@@ -35,6 +37,55 @@ export const pcmOptionsV12 = () => [
   ...[...PCMS].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: p.name, label: `${p.name} - NPI: ${p.npi}` })),
   { value: NO_PCP, label: "Unassigned" },
 ];
+
+/**
+ * Sam: the Primary Care Manager filter did not look like a search. It now shows a magnifier, the hint "Search PCM name or NPI", an "All" choice at the
+ * top of the list (it clears the choice), a grey "All" tag while nothing is chosen, and a clear (x) button. Pick several managers if you like.
+ * It is the same type-to-search list as the sevida-ui AutocompleteField, with the search icon added.
+ */
+const PCM_ALL = "__all__";
+export function PcmSearchField({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const options = useMemo(() => [{ value: PCM_ALL, label: "All" }, ...pcmOptionsV12()], []);
+  const byValue = (v: string) => options.find((o) => o.value === v) ?? { value: v, label: v };
+  return (
+    <Autocomplete
+      multiple
+      disableCloseOnSelect
+      limitTags={1}
+      options={options}
+      value={value.map(byValue)}
+      onChange={(_, v) => onChange(v.some((o) => o.value === PCM_ALL) ? [] : v.map((o) => o.value))}
+      isOptionEqualToValue={(a, b) => a.value === b.value}
+      renderOption={(props, o) => (
+        <li {...props} key={o.value} style={{ ...props.style, fontWeight: o.value === PCM_ALL ? 700 : undefined }}>
+          {o.label}
+        </li>
+      )}
+      sx={{ "& .MuiAutocomplete-clearIndicator": { visibility: "visible" }, "& .MuiInputBase-root": { background: qs.color.primaryBackground } }}
+      renderInput={(params) => (
+        <MuiTextField
+          {...params}
+          label="Primary Care Manager"
+          placeholder="Search PCM name or NPI"
+          InputLabelProps={{ ...params.InputLabelProps, shrink: true }}
+          inputProps={{ ...params.inputProps, "aria-label": "Search Primary Care Manager by name or NPI" }}
+          InputProps={{
+            ...params.InputProps,
+            startAdornment: (
+              <>
+                <InputAdornment position="start" sx={{ mr: 0.5 }}>
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+                {value.length === 0 && <Chip size="small" label="All" sx={{ mr: 0.5 }} />}
+                {params.InputProps.startAdornment}
+              </>
+            ),
+          }}
+        />
+      )}
+    />
+  );
+}
 
 /** The five states a member can have for a measure, grouped the way the Population filters use them. */
 export const STATES_ELIGIBLE: MeasureState[] = ["Met", "Gap"];

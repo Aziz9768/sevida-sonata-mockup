@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Box, InputAdornment } from "@mui/material";
+import { Box, InputAdornment, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { AutocompleteField, Button, SelectField, TextField } from "sevida-ui";
+import { Button, SelectField, TextField } from "sevida-ui";
 import { QsSheet, QsTable, QsText, QsTile } from "../quicksight/kit";
 import type { QsCol } from "../quicksight/kit";
-import { QsMeasureBars } from "../quicksight/kitV12";
+import { QsMeasureBars, V12_CLOSED, V12_OPEN } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
 import { CURRENT_YEAR, countyOf, fmtDate, primaryCareOf, resultsFor, stateName, ageAtYearEnd } from "../data";
@@ -17,7 +17,7 @@ import { ordDate } from "./QuickSightDashboardPage";
 import { useGaps } from "../careGaps";
 import { useRun } from "../runs";
 import { useRole } from "../roles";
-import { Fact, GROUP, KpiTile, boxSx, changeOf, controlsBox, facts, n0, pcmOptionsV12, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { Fact, KpiTile, PcmSearchField, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -46,7 +46,7 @@ const codes: MeasureCode[] = ["BCS-E", "CCS-E", "COL-E", "GSD", "WCV"];
 /** The result of one member for each of the five measures, this year. */
 const statesOf = (m: Member) => codes.map((c) => resultsFor(m, YEAR)[c].state);
 
-export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewState) => void }) {
+export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS: (s: OverviewState) => void; onOpenMeasure?: (tab: string) => void }) {
   const { run: selectedRun } = useRun();
   const run = runInfo();
   const { memberLists } = useRole();
@@ -193,16 +193,7 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
       </Box>
 
       <Box sx={{ ...controlsBox(4), mt: `${qs.gap}px`, borderTop: qs.tile.border, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "2fr 1fr 1fr auto" } }}>
-        <Box sx={whiteAll}>
-          <AutocompleteField
-            multiple
-            label="Primary Care Manager"
-            placeholder={ALL}
-            options={pcmOptionsV12()}
-            value={s.provider}
-            onChange={(v) => set("provider", v as string[])}
-          />
-        </Box>
+        <PcmSearchField value={s.provider} onChange={(v) => set("provider", v)} />
         <Box sx={whiteAll}>
           <SelectField
             label="Military Status"
@@ -247,13 +238,17 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
           "Total Closed Gaps",
         )}
 
-        <QsTile cols={18} title="Closed Gap Rate">
+        <QsTile cols={18} title="Measure Rate">
+          <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mb: 1 }}>
+            Percentage of each measure's Eligible Population whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population. Click a bar to open the measure tab.
+          </Typography>
           <QsMeasureBars
-            label="Closed gap rate for each measure"
+            label="Measure rate for each measure"
             yTitle="%"
             max={100}
             ticks={[0, 20, 40, 60, 80, 100]}
-            color={GROUP.met.color}
+            color={V12_CLOSED}
+            onSelect={onOpenMeasure}
             rows={perMeasure.map((r) => ({
               label: gapShort(r.code),
               value: share(r.met, r.den),
@@ -262,12 +257,16 @@ export function OverviewV12({ s, setS }: { s: OverviewState; setS: (s: OverviewS
           />
         </QsTile>
         <QsTile cols={18} title="Open Gaps By Measure">
+          <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mb: 1 }}>
+            Number of open gaps for each measure. A member can have open gaps in more than one measure, so the bars add up to Total Open Gaps, not to Members With Open Gaps. Click a bar to open the measure tab.
+          </Typography>
           <QsMeasureBars
             label="Open gaps for each measure"
             yTitle="Open Gap Count"
             max={openTop}
             ticks={openTicks}
-            color={GROUP.notMet.color}
+            color={V12_OPEN}
+            onSelect={onOpenMeasure}
             rows={perMeasure.map((r) => ({
               label: gapShort(r.code),
               value: r.gap,

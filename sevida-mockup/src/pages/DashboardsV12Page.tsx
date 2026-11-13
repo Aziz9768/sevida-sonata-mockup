@@ -90,7 +90,7 @@ export function DashboardsV12Page() {
       <NotesContext.Provider value={{ fr: false, ask: false }}>
         <QsFrame tabs={tabs} active={tab} onTab={setTab} onReset={() => undefined} toolbar={false}>
           {tab === OVERVIEW ? (
-            <OverviewV12 s={ov} setS={setOv} />
+            <OverviewV12 s={ov} setS={setOv} onOpenMeasure={(t) => MEASURE_TABS.includes(t) && setTab(t)} />
           ) : code ? (
             <MeasureV12 key={code} code={code} s={ms[tab] ?? emptyMeasure()} setS={(s) => setMs({ ...ms, [tab]: s })} />
           ) : tab === "Inputs" ? (
