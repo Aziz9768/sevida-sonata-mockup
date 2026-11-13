@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { Box, Typography } from "@mui/material";
 import { tokens } from "sevida-ui";
 import { QsLegend, niceMax } from "./kit";
+import { getVersion } from "../version";
 import { qs } from "./qsTheme";
 
 /**
@@ -28,15 +29,15 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
 const n0 = (n: number) => n.toLocaleString("en-US");
 const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0.00%");
 /**
- * Version 12: Closed is the app's green and Open is its red (Versions 1 to 11 keep blue and orange). Sam found the full-strength tones too heavy,
- * so the bars use the design system's lighter "chip" shades (the same fills as the Closed and Open tags) with dark text on them.
+ * Version 12: Closed is the app's green and Open is its red (Versions 1 to 11 keep blue and orange).
+ * Version 13 (Sam found the full-strength tones too heavy): Closed uses the design system's lighter "chip" green (the fill of the Closed tag).
+ * The system's chip red (#EF5350) was still strong, so Open uses a softer red, #E57373 (the same step of the red scale as the chip green is of the green scale).
+ * It is not a design-system token yet: to confirm with the design system owner. Dark text sits on both. These are functions, so each version reads its own colours.
  */
-export const V12_CLOSED: string = tokens.status.success.chip;
-export const V12_OPEN: string = tokens.status.danger.chip;
-/** A thin line needs the stronger green to stay visible on white, so the trend lines keep the full-strength tone. */
-export const V12_CLOSED_LINE: string = qs.meaning.met;
-const onOpen: string = tokens.ink[900];
-const onClosed: string = tokens.ink[900];
+const v13 = () => getVersion() >= 13;
+export const closedColor = (): string => (v13() ? tokens.status.success.chip : qs.meaning.met);
+export const openColor = (): string => (v13() ? "#E57373" : qs.tone.danger.border);
+const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
 export const OPEN_LEGEND = "Open Gaps Count & %";
@@ -75,8 +76,8 @@ export function QsRateColumns({
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend
         items={[
-          { label: CLOSED_LEGEND, color: V12_CLOSED },
-          { label: OPEN_LEGEND, color: V12_OPEN },
+          { label: CLOSED_LEGEND, color: closedColor() },
+          { label: OPEN_LEGEND, color: openColor() },
         ]}
       />
       {n === 0 ? (
@@ -124,8 +125,8 @@ export function QsRateColumns({
               <g key={r.label}>
                 <title>{tip}</title>
                 <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
-                {seg(hC, r.closed, y(0) - hC, onClosed, V12_CLOSED)}
-                {seg(hO, r.open, y(0) - hC - hO, onOpen, V12_OPEN)}
+                {seg(hC, r.closed, y(0) - hC, onBar(), closedColor())}
+                {seg(hO, r.open, y(0) - hC - hO, onBar(), openColor())}
                 <text
                   x={cx}
                   y={y(0) + 16}
@@ -276,9 +277,9 @@ export function QsRateBars({
   const max = niceMax(Math.max(1, ...rows.map((r) => r.open + r.closed)));
   const x = (v: number) => padL + (v / (max || 1)) * (W - padL - padR);
   const order: ("open" | "closed")[] = first === "open" ? ["open", "closed"] : ["closed", "open"];
-  const color = { open: V12_OPEN, closed: V12_CLOSED };
-  const fg = { open: onOpen, closed: onClosed };
-  const legend = { open: { label: OPEN_LEGEND, color: V12_OPEN }, closed: { label: CLOSED_LEGEND, color: V12_CLOSED } };
+  const color = { open: openColor(), closed: closedColor() };
+  const fg = { open: onBar(), closed: onBar() };
+  const legend = { open: { label: OPEN_LEGEND, color: openColor() }, closed: { label: CLOSED_LEGEND, color: closedColor() } };
   return (
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend items={order.map((k) => legend[k])} />

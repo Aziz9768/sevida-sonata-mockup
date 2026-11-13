@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { InfoTip } from "sevida-ui";
+import { AutocompleteField, InfoTip } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
+import { ALL } from "../sharedFilters";
+import { getVersion } from "../version";
 import { NO_PCP } from "../data";
 import type { MeasureState } from "../data";
 import { PCMS, pcmByName } from "../v7Data";
@@ -38,8 +40,18 @@ export const pcmOptionsV12 = () => [
   { value: NO_PCP, label: "Unassigned" },
 ];
 
+/** The Primary Care Manager filter. Version 12 is a plain pick list that also takes typing. Version 13 is the search box below. */
+export function PcmFilter({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  if (getVersion() >= 13) return <PcmSearchField value={value} onChange={onChange} />;
+  return (
+    <Box sx={whiteAll}>
+      <AutocompleteField multiple label="Primary Care Manager" placeholder={ALL} options={pcmOptionsV12()} value={value} onChange={onChange} />
+    </Box>
+  );
+}
+
 /**
- * Sam: the Primary Care Manager filter did not look like a search. It now shows a magnifier, the hint "Search PCM name or NPI", an "All" choice at the
+ * Version 13, Sam: the Primary Care Manager filter did not look like a search. It now shows a magnifier, the hint "Search PCM name or NPI", an "All" choice at the
  * top of the list (it clears the choice), a grey "All" tag while nothing is chosen, and a clear (x) button. Pick several managers if you like.
  * It is the same type-to-search list as the sevida-ui AutocompleteField, with the search icon added.
  */

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { AutocompleteField, Button, SelectField, TextField } from "sevida-ui";
 import { QsSheet, QsText, QsTile } from "../quicksight/kit";
-import { V12_CLOSED_LINE, QsRateBars, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
+import { QsRateBars, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
 import { CURRENT_YEAR, DEMO_NOW, NO_PCP, fmtDate, resultsFor } from "../data";
@@ -12,7 +12,8 @@ import type { DashFilters, Dimension, Timeframe } from "../dashboardData";
 import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, gapShort, militaryOptions } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
 import { useRun } from "../runs";
-import { Fact, KpiTile, PcmSearchField, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { getVersion } from "../version";
+import { Fact, KpiTile, PcmFilter, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -37,7 +38,11 @@ const POP_OPTIONS: { value: MeasurePop; label: string; states: MeasureState[] }[
   { value: "open", label: "Open Gaps", states: ["Gap"] },
 ];
 
-/** The board's rule: only managers with at least "Minimum Number of Members" eligible members (default 30) are ranked by rate, so a manager with few members does not skew it. */
+/**
+ * Version 12: only managers with 100 or more members are ranked by rate, so a manager with few members does not skew it.
+ * Version 13 (Sam): the user types the "Minimum Number of Members" (eligible members, default 30) and Top n (1 to 100).
+ */
+const V12_MIN_MEMBERS = 100;
 const DEFAULT_MIN_MEMBERS = 30;
 const DEFAULT_TOP_N = 5;
 const MAX_TOP_N = 100;
@@ -87,6 +92,8 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const options = useMemo(() => facetOptions(), []);
   const f = s.f;
   const set = <K extends keyof DashFilters>(key: K, value: DashFilters[K]) => setS({ ...s, f: { ...f, [key]: value } });
+  // Version 13 = Version 12 plus Sam's feedback (see the notes of Version 13).
+  const v13 = getVersion() >= 13;
   const [tf, setTf] = useState<Timeframe>("annual");
   // Top n and Minimum Number of Members are typed. A wrong entry keeps the last good value in use and shows a message under the box.
   const [topText, setTopText] = useState(String(DEFAULT_TOP_N));
@@ -97,7 +104,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const topN = topBad ? DEFAULT_TOP_N : topRaw;
   const minRaw = Number(minText);
   const minBad = minText.trim() === "" || !Number.isInteger(minRaw) || minRaw < 1;
-  const minMembers = minBad ? DEFAULT_MIN_MEMBERS : minRaw;
+  const minMembers = !v13 ? V12_MIN_MEMBERS : minBad ? DEFAULT_MIN_MEMBERS : minRaw;
 
   /* ---- who is counted ---- */
   const base = useMemo(() => filterMembers(f, code), [f, code]);
@@ -133,7 +140,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         group={group}
         title={title}
         about={about}
-        aboutMin={80}
+        aboutMin={v13 ? 80 : 64}
         value={fmt(cur[key])}
         prior={fmt(before[key])}
         change={ch.text}
@@ -149,39 +156,43 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const lines = useMemo(() => {
     if (tf === "annual") return null;
     const l = yearLines(code, list, tf, 2);
-    if (tf !== "quarterly") return l;
+    if (!v13 || tf !== "quarterly") return l;
     // Sam: the quarter that is still running (Q4 of the current year) is not a result yet, so the quarterly line stops at the last completed quarter.
     const running = Math.floor(DEMO_NOW.getMonth() / 3);
     const stop = <T,>(xs: (T | null)[], yr: number) => xs.map((v, i) => (yr === YEAR && i >= running ? null : v));
     return { ...l, series: l.series.map((x) => ({ ...x, values: stop(x.values, x.year), counts: stop(x.counts, x.year) })) };
-  }, [tf, list, code]);
+  }, [tf, list, code, v13]);
   const tfLabel = timeframeOptions.find((o) => o.value === tf)?.label ?? "";
 
-  /* ---- Top n by Primary Care Manager. Unassigned members are never ranked: Unassigned is its own row under the ranked list (open gaps chart only). ---- */
+  /* ---- Top n by Primary Care Manager ---- */
   const managers = gapsByManager(code, list, YEAR, true);
-  const assigned = managers.filter((r) => r.name !== NO_PCP);
-  const unassigned = managers.find((r) => r.name === NO_PCP);
-  // Eligible members of the measure for each manager (the Minimum Number of Members counts these, not every member the manager has).
-  const eligible = useMemo(() => {
+  // Version 12: Unassigned is a manager like the others (ranked), and the minimum counts every member of the manager.
+  // Version 13 (Sam): Unassigned is never ranked, it is its own last row under the open gaps chart; the minimum counts eligible members of the measure.
+  const assigned = v13 ? managers.filter((r) => r.name !== NO_PCP) : managers;
+  const unassigned = v13 ? managers.find((r) => r.name === NO_PCP) : undefined;
+  const counted = useMemo(() => {
     const by = new Map<string, number>();
     for (const m of base) {
-      const st = resultsFor(m, YEAR)[code].state;
-      if (st === "Met" || st === "Gap") by.set(providerOf(m), (by.get(providerOf(m)) ?? 0) + 1);
+      if (v13) {
+        const st = resultsFor(m, YEAR)[code].state;
+        if (st !== "Met" && st !== "Gap") continue;
+      }
+      by.set(providerOf(m), (by.get(providerOf(m)) ?? 0) + 1);
     }
     return by;
-  }, [base, code]);
+  }, [base, code, v13]);
   const take = <T,>(xs: T[]) => (viewAll ? xs : xs.slice(0, topN));
   const row = (r: { name: string; open: number; closed: number }) => ({ label: pcmText(r.name), open: r.open, closed: r.closed });
   const rankedOpen = take([...assigned].sort((a, b) => b.open - a.open || b.closed - a.closed || a.name.localeCompare(b.name))).map(row);
   const topOpen = unassigned ? [...rankedOpen, row(unassigned)] : rankedOpen;
-  const enough = assigned.filter((r) => (eligible.get(r.name) ?? 0) >= minMembers);
-  const few = assigned.filter((r) => (eligible.get(r.name) ?? 0) < minMembers);
+  const enough = assigned.filter((r) => (counted.get(r.name) ?? 0) >= minMembers);
+  const few = assigned.filter((r) => (counted.get(r.name) ?? 0) < minMembers);
   const rankedClosed = take(
     [...enough].sort((a, b) => share(b.closed, b.closed + b.open) - share(a.closed, a.closed + a.open) || b.closed - a.closed || a.name.localeCompare(b.name)),
   ).map(row);
-  // View All adds one last row for the managers under the minimum: their closed and open gaps added together.
+  // Version 13, View All: one last row for the managers under the minimum, their closed and open gaps added together.
   const belowRow =
-    viewAll && few.length
+    v13 && viewAll && few.length
       ? [{ label: `Below ${n0(minMembers)} Members (${few.length} ${few.length === 1 ? "PCM" : "PCMs"})`, closed: few.reduce((a, r) => a + r.closed, 0), open: few.reduce((a, r) => a + r.open, 0) }]
       : [];
   const topClosed = [...rankedClosed, ...belowRow];
@@ -193,7 +204,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
     // The board lists every ten-year band of the measure's ages (40-49, 50-59 ...), also one nobody is in.
     if (dim === "ageBand") return bandsFor(code, YEAR).map((b) => rows.find((r) => r.label === b.label) ?? { label: b.label, closed: 0, open: 0 });
     // Sam: the Sex chart always has Male, Female and Unknown, also one nobody is in.
-    if (dim === "sex") return SEX_V12.map((x) => rows.find((r) => r.label === x) ?? { label: x, closed: 0, open: 0 });
+    if (v13 && dim === "sex") return SEX_V12.map((x) => rows.find((r) => r.label === x) ?? { label: x, closed: 0, open: 0 });
     return rows;
   };
 
@@ -259,7 +270,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))", xl: "1.4fr 1fr 1.1fr 2.3fr 0.8fr 1fr 1fr auto" },
         }}
       >
-        <PcmSearchField value={f.provider} onChange={(v) => set("provider", v)} />
+        <PcmFilter value={f.provider} onChange={(v) => set("provider", v)} />
         <Box sx={whiteAll}>
           <SelectField
             label="Military Status"
@@ -311,7 +322,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </Typography>
       )}
       <QsSheet>
-        {card("population", "Initial Population", "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date.", "initial", "count", true)}
+        {card("population", "Initial Population", v13 ? "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date." : "All active members meeting the measurement criteria to identify gaps in care.", "initial", "count", true)}
         {card(
           "excluded",
           "Excluded Population",
@@ -328,9 +339,9 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           "count",
           true,
         )}
-        {card("met", "Closed Gaps Count", "Eligible Population members whose gap is closed as of the most recent Run Date.", "closed", "count", true)}
-        {card("met", `${short} Measure Rate`, "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population.", "rate", "rate", true, "Closed Gaps Rate")}
-        {card("notMet", "Open Gaps Count", `Eligible Population members whose ${short} gap is open as of the most recent Run Date.`, "open", "count", false)}
+        {card("met", "Closed Gaps Count", v13 ? "Eligible Population members whose gap is closed as of the most recent Run Date." : "All Eligible Population members who have a closed gap as of the most recent Run Date.", "closed", "count", true)}
+        {card("met", `${short} Measure Rate`, v13 ? "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population." : "Numerator: Closed Gaps Count\nDenominator: Eligible Population", "rate", "rate", true, "Closed Gaps Rate")}
+        {card("notMet", "Open Gaps Count", v13 ? `Eligible Population members whose ${short} gap is open as of the most recent Run Date.` : "All Eligible Population members who have an open gap as of the most recent Run Date.", "open", "count", false)}
 
         <QsTile
           cols={36}
@@ -356,7 +367,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
                 labels={lines.labels}
                 series={[...lines.series].reverse().map((x, i) => ({
                   name: x.name,
-                  color: i === 0 ? qs.meaning.neutral : V12_CLOSED_LINE,
+                  color: i === 0 ? qs.meaning.neutral : qs.meaning.met,
                   dashed: i === 0,
                   counts: x.counts,
                   rates: x.values,
@@ -367,45 +378,66 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </QsTile>
 
         <QsTile cols={36} bare plain>
-          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, flexWrap: "wrap" }}>
-            <Box sx={{ width: 120, ...whiteAll }}>
-              <TextField
-                label="Top n"
-                type="number"
-                value={topText}
-                onChange={(e) => {
-                  setTopText(e.target.value);
-                  setViewAll(false);
-                }}
-                error={topBad}
-                helperText={topBad ? `Enter 1 to ${MAX_TOP_N}` : undefined}
-                slotProps={{ htmlInput: { min: 1, max: MAX_TOP_N, step: 1, "aria-label": `Top n, 1 to ${MAX_TOP_N}` } }}
-              />
+          {v13 ? (
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, flexWrap: "wrap" }}>
+              <Box sx={{ width: 120, ...whiteAll }}>
+                <TextField
+                  label="Top n"
+                  type="number"
+                  value={topText}
+                  onChange={(e) => {
+                    setTopText(e.target.value);
+                    setViewAll(false);
+                  }}
+                  error={topBad}
+                  helperText={topBad ? `Enter 1 to ${MAX_TOP_N}` : undefined}
+                  slotProps={{ htmlInput: { min: 1, max: MAX_TOP_N, step: 1, "aria-label": `Top n, 1 to ${MAX_TOP_N}` } }}
+                />
+              </Box>
+              <Box sx={{ width: 240, ...whiteAll }}>
+                <TextField
+                  label="Minimum Number of Members"
+                  type="number"
+                  value={minText}
+                  onChange={(e) => setMinText(e.target.value)}
+                  error={minBad}
+                  helperText={minBad ? "Enter 1 or more" : "Eligible members, for the rate chart"}
+                  slotProps={{ htmlInput: { min: 1, step: 1, "aria-label": "Minimum number of eligible members a manager needs to be ranked by rate" } }}
+                />
+              </Box>
+              <Box sx={{ pt: "22px" }}>
+                <Button variant="secondary" onClick={() => setViewAll(!viewAll)} aria-pressed={viewAll}>
+                  {viewAll ? `Show Top ${topN}` : "View All"}
+                </Button>
+              </Box>
             </Box>
-            <Box sx={{ width: 240, ...whiteAll }}>
-              <TextField
-                label="Minimum Number of Members"
-                type="number"
-                value={minText}
-                onChange={(e) => setMinText(e.target.value)}
-                error={minBad}
-                helperText={minBad ? "Enter 1 or more" : "Eligible members, for the rate chart"}
-                slotProps={{ htmlInput: { min: 1, step: 1, "aria-label": "Minimum number of eligible members a manager needs to be ranked by rate" } }}
-              />
-            </Box>
-            <Box sx={{ pt: "22px" }}>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap" }}>
+              <Box sx={{ width: 160 }}>
+                <SelectField
+                  label="Top n"
+                  value={String(topN)}
+                  onChange={(v) => {
+                    setTopText(v);
+                    setViewAll(false);
+                  }}
+                  options={[5, 10, 15].map((n) => ({ value: String(n), label: `n = ${n}` }))}
+                />
+              </Box>
               <Button variant="secondary" onClick={() => setViewAll(!viewAll)} aria-pressed={viewAll}>
                 {viewAll ? `Show Top ${topN}` : "View All"}
               </Button>
             </Box>
-          </Box>
+          )}
         </QsTile>
         <QsTile cols={18} title={`${nLabel} Primary Care Managers With Members Having Most Open Gaps`}>
           <Box sx={{ maxHeight: 520, overflow: "auto" }}>
             <QsRateBars label={`${nLabel} primary care managers with the most open gaps`} first="open" rows={topOpen} dividerAt={unassigned ? [rankedOpen.length] : undefined} />
           </Box>
           <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 1 }}>
-            PCMs ranked by the number of open gaps among their eligible members. Bars show each PCM's closed and open gaps, with percentages of their eligible members. Members without an assigned PCM are shown as Unassigned below the ranked list.
+            {v13
+              ? "PCMs ranked by the number of open gaps among their eligible members. Bars show each PCM's closed and open gaps, with percentages of their eligible members. Members without an assigned PCM are shown as Unassigned below the ranked list."
+              : "Counts and %s are based on the members that the Primary Care Manager is responsible for."}
           </Typography>
         </QsTile>
         <QsTile cols={18} title={`${nLabel} Primary Care Managers with Highest Closed Gap Rate`}>
@@ -415,11 +447,13 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
               first="closed"
               rows={topClosed}
               dividerAt={belowRow.length ? [rankedClosed.length] : undefined}
-              empty={`No manager has ${n0(minMembers)} or more eligible members for these controls`}
+              empty={v13 ? `No manager has ${n0(minMembers)} or more eligible members for these controls` : `No manager has ${minMembers} or more members for these controls`}
             />
           </Box>
           <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 1 }}>
-            PCMs ranked by the measure rate: closed gaps ÷ eligible members assigned to the PCM. Only PCMs with at least {n0(minMembers)} eligible members for this measure are ranked, because rates based on few members change sharply with each closed gap. Unassigned members are not ranked.
+            {v13
+              ? `PCMs ranked by the measure rate: closed gaps ÷ eligible members assigned to the PCM. Only PCMs with at least ${n0(minMembers)} eligible members for this measure are ranked, because rates based on few members change sharply with each closed gap. Unassigned members are not ranked.`
+              : "Counts and %s are based on the members that the Primary Care Manager is responsible for. Only PCMs with 100+ members are included so that PCMs with few members do not skew metrics."}
           </Typography>
         </QsTile>
 
