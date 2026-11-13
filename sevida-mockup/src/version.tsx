@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -269,10 +269,22 @@ export const VERSIONS: VersionInfo[] = [
       "Still open with Sam: BCS age 42-74 or 52-74 (the board says 52-74); the Overview tile descriptions were not changed because the board's new wording for them was not clear; the monthly trend still shows the month in progress.",
     ],
   },
+  {
+    id: 14,
+    name: "Version 14 - Srikanth",
+    date: "2026-11-13",
+    summary: "Version 13 with Srikanth's changes: HEDIS Inputs and DCS tabs, and the page title below the tab bar. Version 13 stays exactly as it was.",
+    changes: [
+      "Everything in Version 13 stays. Versions 13 and older are as they were. Only the Analytics dashboards change.",
+      "The Inputs tab is now HEDIS Inputs, built from Srikanth's Sigma dashboard (HEDIS Inputs Dashboard): four filters (Member Id, Value Set or Medication List Name, Code, Supplemental Data) and the Member Details table with the same 43 column names, in the same order. Every value is made-up sample data. The column 'Fl...' in the screenshot is cut off; it is written 'Flag' here (to confirm).",
+      "New DCS tab (before Admin), from the Sigma DCS Validations dashboard: four filters (Is Valid, Artefact Id, Patient, EOB Id) and the Client HEDIS DCS Artefacts table (Medicaid Id, ListAggDistinct of Artefact, Snapshot Id, Artefact, Artefact Id, Result, Status, Artefact Json, Created At, Organization Id, Indicator). Patient, EOB Id and Is Valid are added as the last three columns so the filters have values to work on (to confirm). All values are made-up sample data.",
+      "The page title (for example 'HEDIS Care Gaps - Overview') is now below the tab bar on every dashboard tab, with the breadcrumb still at the top. HEDIS Inputs is titled 'HEDIS Inputs Dashboard' and DCS 'DCS Validations', as in Sigma.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 13;
+export const LATEST_VERSION: VersionId = 14;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>
