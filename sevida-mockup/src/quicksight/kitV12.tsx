@@ -207,7 +207,7 @@ export function QsRateLines({
               <polyline
                 fill="none"
                 stroke={s.color}
-                strokeWidth={2}
+                strokeWidth={v13() ? 3 : 2}
                 strokeDasharray={s.dashed ? "6 4" : undefined}
                 points={pts.map((p) => `${x(p.i)},${y(p.v)}`).join(" ")}
               />

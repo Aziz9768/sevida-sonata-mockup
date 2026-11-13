@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { AutocompleteField, Button, SelectField, TextField } from "sevida-ui";
 import { QsSheet, QsText, QsTile } from "../quicksight/kit";
-import { QsRateBars, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
+import { QsRateBars, closedColor, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
 import { CURRENT_YEAR, DEMO_NOW, NO_PCP, fmtDate, resultsFor } from "../data";
@@ -267,7 +267,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           mt: `${qs.gap}px`,
           borderTop: qs.tile.border,
           // All seven filters and Clear All Filters on one row on a wide screen, as the board draws them.
-          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))", xl: "1.4fr 1fr 1.1fr 2.3fr 0.8fr 1fr 1fr auto" },
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))", xl: v13 ? "2fr 1fr 1.1fr 2.1fr 0.7fr 1fr 1fr auto" : "1.4fr 1fr 1.1fr 2.3fr 0.8fr 1fr 1fr auto" },
         }}
       >
         <PcmFilter value={f.provider} onChange={(v) => set("provider", v)} />
@@ -367,7 +367,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
                 labels={lines.labels}
                 series={[...lines.series].reverse().map((x, i) => ({
                   name: x.name,
-                  color: i === 0 ? qs.meaning.neutral : qs.meaning.met,
+                  color: i === 0 ? qs.meaning.neutral : v13 ? closedColor() : qs.meaning.met,
                   dashed: i === 0,
                   counts: x.counts,
                   rates: x.values,

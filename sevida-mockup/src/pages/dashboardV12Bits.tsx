@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { AutocompleteField, InfoTip } from "sevida-ui";
+import { AutocompleteField, InfoTip, tokens } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
+import { closedColor, openColor } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL } from "../sharedFilters";
 import { getVersion } from "../version";
@@ -196,8 +197,12 @@ export function KpiTile({
   /** Room for the description, so tiles in one row line up. */
   aboutMin?: number;
 }) {
-  const g = GROUP[group];
-  const ink = tone === "good" ? qs.meaning.met : tone === "bad" ? qs.tone.danger.text : qs.color.secondaryForeground;
+  // Version 13: one light green and one soft red everywhere. The tile stripe uses the chart colours and the numbers and Better / Worse words
+  // use the design system's dark green and dark red text, so they stay readable on white. Version 12 keeps the strong green and red.
+  const v13 = getVersion() >= 13 && (group === "met" || group === "notMet");
+  const g = v13 ? { color: group === "met" ? closedColor() : openColor(), text: group === "met" ? tokens.status.success.dark : tokens.status.danger.dark } : GROUP[group];
+  const ink =
+    tone === "good" ? (getVersion() >= 13 ? tokens.status.success.dark : qs.meaning.met) : tone === "bad" ? (getVersion() >= 13 ? tokens.status.danger.dark : qs.tone.danger.text) : qs.color.secondaryForeground;
   const word = tone === "good" ? "Better" : tone === "bad" ? "Worse" : "No change";
   const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
   return (

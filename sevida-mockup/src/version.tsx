@@ -264,7 +264,7 @@ export const VERSIONS: VersionInfo[] = [
       "Top n is a number box (starts at 5, 1 to 100) with the View All button. 'Minimum Number of Members' is a box the user types in (starts at 30, counts eligible members of the measure) and sets which PCMs are ranked by rate. With View All, a last row 'Below x Members' adds together the PCMs under the minimum.",
       "Unassigned is always a separate last row under the Open Gaps chart. It is not ranked, and it is not shown in the rate chart.",
       "Quarterly trend stops at the last completed quarter (no Q4 2026). Monthly is not changed.",
-      "Colours: Closed is a lighter green (the design system's chip green) and Open is a soft red (#E57373). The soft red is not a design-system token yet: to confirm with the design system owner. Dark text sits on both. The trend lines keep the stronger green so they stay visible.",
+      "Colours: one light green (the design system's chip green) and one soft red (#E57373) are used everywhere on the dashboards: tile stripes, bars, legends and trend lines. The soft red is not a design-system token yet: to confirm with the design system owner. The big tile numbers and the Better / Worse words use the design system's dark green and dark red text so they stay readable.",
       "Gaps By Sex always shows Male, Female and Unknown. About 1 member in 25 has Unknown sex (sample data, nobody is added or removed, so totals do not change).",
       "Still open with Sam: BCS age 42-74 or 52-74 (the board says 52-74); the Overview tile descriptions were not changed because the board's new wording for them was not clear; the monthly trend still shows the month in progress.",
     ],
