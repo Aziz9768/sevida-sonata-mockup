@@ -37,7 +37,8 @@ const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0
 const v13 = () => getVersion() >= 13;
 const v15 = () => getVersion() >= 15;
 export const closedColor = (): string => (v13() ? tokens.status.success.chip : qs.meaning.met);
-export const openColor = (): string => (v13() ? "#E57373" : qs.tone.danger.border);
+// Version 15 (design-system discipline): Open uses the design system's own chip red (#EF5350) in place of the soft red #E57373 of Versions 13 and 14.
+export const openColor = (): string => (v15() ? tokens.status.danger.chip : v13() ? "#E57373" : qs.tone.danger.border);
 const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
