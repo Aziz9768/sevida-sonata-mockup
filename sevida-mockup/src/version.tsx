@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -281,10 +281,26 @@ export const VERSIONS: VersionInfo[] = [
       "The page title (for example 'HEDIS Care Gaps - Overview') is now below the tab bar on every dashboard tab, with the breadcrumb still at the top. HEDIS Inputs is titled 'HEDIS Inputs Dashboard' and DCS 'DCS Validations', as in Sigma.",
     ],
   },
+  {
+    id: 15,
+    name: "Version 15 - Sam round 2",
+    date: "2026-11-15",
+    summary: "Version 14 with Sam's second round of dashboard feedback. Versions 14 and older stay exactly as they were.",
+    changes: [
+      "Everything in Version 14 stays. Versions 14 and older are as they were. Only the Analytics dashboards change.",
+      "Overview: new descriptions for Member Population, Members With Open Gaps, Total Open Gaps and Total Closed Gaps (the board's wording). 'Total Gaps Closed' is now 'Total Closed Gaps', in the title and in the line under the tile. The board's own line under that tile still says 'Total Gaps Closed' (to fix on the board).",
+      "Measure pages: Eligible Population says 'Initial Population minus Excluded Population'. Initial Population has its own sentence for each measure: BCS (age, sex and enrollment, with 'See About This Measure'), CCS, COL, WCV (age and enrollment) and GSD (members with diabetes). Sam's list had 'age, sex, and enrollment' for CCS; it is left out here because his note says only BCS uses sex (to confirm).",
+      "Age ranges (Sam's Typical Age Ranges): BCS 40-74, CCS 21-64, COL 45-75, GSD 18-75, WCV 3-21, in About This Measure and in the sample members, so counts and rates move a little in this version only. The board's BCS About box still says 52-74.",
+      "Better / Worse: the arrow, the number and the word use the same light green and soft red as the left border of the tile, in bold, with a bigger arrow. The soft red is not a design-system token yet.",
+      "Trends: Quarterly always shows the last 9 completed quarters (Q3 2024 to Q3 2026 now), as three lines (2024, 2025, 2026 YTD). Monthly shows the last 27 completed months (Jul 2024 to Sep 2026), also as three lines, and no longer shows the month in progress. 2024 numbers are made-up sample data. The Annual, Quarterly and Monthly descriptions are the board's wording, with 27 months in Monthly (the board still says 25; to confirm).",
+      "Top n: Top n, Minimum Number of Members and View All have Sam's descriptions. When a bar segment is too narrow to hold its count and percentage, the label moves just outside the bar, so every PCM shows its %. The two descriptions under the Top n charts start on the same line (the shorter chart gets blank rows). To confirm with Sam: the minimum only filters the rate chart (as on the board); the open gaps chart still lists every PCM, so 'Only PCMs with at least the minimum… are shown' is not true there.",
+      "Not done yet: GSD, which has two reasons a gap can be open. Sam put the details in the main UI channel.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 14;
+export const LATEST_VERSION: VersionId = 15;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>

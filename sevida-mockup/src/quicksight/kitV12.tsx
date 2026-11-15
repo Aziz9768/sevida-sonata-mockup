@@ -35,6 +35,7 @@ const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0
  * It is not a design-system token yet: to confirm with the design system owner. Dark text sits on both. These are functions, so each version reads its own colours.
  */
 const v13 = () => getVersion() >= 13;
+const v15 = () => getVersion() >= 15;
 export const closedColor = (): string => (v13() ? tokens.status.success.chip : qs.meaning.met);
 export const openColor = (): string => (v13() ? "#E57373" : qs.tone.danger.border);
 const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
@@ -202,6 +203,9 @@ export function QsRateLines({
         {series.map((s, si) => {
           const pts = s.rates.map((v, i) => (v === null ? null : { i, v, c: s.counts[i] })).filter((p): p is { i: number; v: number; c: number | null } => p !== null);
           const above = si === series.length - 1;
+          // Version 15: three lines (three calendar years). The newest line is labelled above, the others below, one under the other.
+          const rank = series.length - 1 - si;
+          const down = v15() && series.length > 2 ? 18 + Math.max(0, rank - 1) * 26 : 18;
           return (
             <g key={s.name}>
               <polyline
@@ -217,10 +221,10 @@ export function QsRateLines({
                   <circle cx={x(p.i)} cy={y(p.v)} r={4} fill={s.color} stroke={qs.color.primaryBackground} strokeWidth={2} />
                   {slot >= 44 && (
                     <text textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
-                      <tspan x={x(p.i)} y={y(p.v) + (above ? -22 : 18)} fontWeight={700}>
+                      <tspan x={x(p.i)} y={y(p.v) + (above ? -22 : down)} fontWeight={700}>
                         {p.c === null ? "" : n0(p.c)}
                       </tspan>
-                      <tspan x={x(p.i)} y={y(p.v) + (above ? -10 : 30)}>
+                      <tspan x={x(p.i)} y={y(p.v) + (above ? -10 : down + 12)}>
                         {p.v.toFixed(2)}%
                       </tspan>
                     </text>
@@ -245,7 +249,10 @@ export function QsRateBars({
   label,
   empty = "No manager has an eligible member for these controls",
   dividerAt,
+  padRows = 0,
 }: {
+  /** Version 15: blank rows added under the last one, so this chart is as tall as the one beside it and their descriptions start on the same line. */
+  padRows?: number;
   rows: QsRateRow[];
   /** Row numbers that start a separate group (Unassigned, Below x Members): a dashed line is drawn above them. */
   dividerAt?: number[];
@@ -259,7 +266,8 @@ export function QsRateBars({
   const widest = Math.max(0, ...rows.map((r) => r.label.length)) * CH + 10;
   const labelW = Math.round(Math.min(W * 0.42, Math.max(90, widest)));
   const wrapAt = Math.max(10, Math.floor((labelW - 6) / CH));
-  const padL = labelW + 6, padR = 14, padT = 4, padB = 26;
+  // Version 15: a gutter on the right holds the "count - %" of a segment that is too narrow to hold it inside the bar.
+  const padL = labelW + 6, padR = v15() ? 112 : 14, padT = 4, padB = 26;
   const wrap = (s: string) => {
     const out: string[] = [];
     let cur = "";
@@ -273,7 +281,7 @@ export function QsRateBars({
     return out.slice(0, 2);
   };
   const rowH = 40;
-  const height = padT + rows.length * rowH + padB;
+  const height = padT + (rows.length + (v15() ? padRows : 0)) * rowH + padB;
   const max = niceMax(Math.max(1, ...rows.map((r) => r.open + r.closed)));
   const x = (v: number) => padL + (v / (max || 1)) * (W - padL - padR);
   const order: ("open" | "closed")[] = first === "open" ? ["open", "closed"] : ["closed", "open"];
@@ -284,7 +292,7 @@ export function QsRateBars({
     <Box ref={ref} aria-label={label} role="group">
       <QsLegend items={order.map((k) => legend[k])} />
       {rows.length === 0 ? (
-        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center" }}>{empty}</Typography>
+        <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center", ...(v15() && padRows > 0 ? { minHeight: height - 64, boxSizing: "content-box" } : {}) }}>{empty}</Typography>
       ) : (
         <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
           {[0, 0.25, 0.5, 0.75, 1].map((t) => (
@@ -300,6 +308,7 @@ export function QsRateBars({
             const total = r.open + r.closed;
             let start = 0;
             const lines = wrap(r.label);
+            const outside: { k: "open" | "closed"; v: number }[] = [];
             return (
               <g key={r.label}>
                 {dividerAt?.includes(i) && <line x1={0} x2={W} y1={top} y2={top} stroke={qs.color.border} strokeDasharray="4 3" />}
@@ -321,10 +330,12 @@ export function QsRateBars({
                   return (
                     <g key={k}>
                       <rect x={x0} y={top + 6} width={Math.max(1, w)} height={rowH - 12} fill={color[k]} stroke={qs.color.primaryBackground} strokeWidth={1} />
-                      {w >= 84 ? (
+                      {w >= (v15() ? `${n0(v)} - ${pct(v, total)}`.length * 6.6 + 10 : 84) ? (
                         <text x={x0 + w / 2} y={top + rowH / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={fg[k]}>
                           {n0(v)} - {pct(v, total)}
                         </text>
+                      ) : v15() ? (
+                        (outside.push({ k, v }), null)
                       ) : w >= 26 ? (
                         <text x={x0 + w / 2} y={top + rowH / 2 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={fg[k]}>
                           {n0(v)}
@@ -333,6 +344,15 @@ export function QsRateBars({
                     </g>
                   );
                 })}
+                {outside.length > 0 && (
+                  <text x={x(total) + 8} y={top + rowH / 2 + 4} fontSize={11} fontWeight={700} fill={qs.color.primaryForeground}>
+                    {outside.map((o, n) => (
+                      <tspan key={o.k} dx={n ? 8 : 0}>
+                        <tspan fill={color[o.k]}>●</tspan> {n0(o.v)} - {pct(o.v, total)}
+                      </tspan>
+                    ))}
+                  </text>
+                )}
               </g>
             );
           })}

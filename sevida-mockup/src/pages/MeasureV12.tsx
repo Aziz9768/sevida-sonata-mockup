@@ -57,11 +57,30 @@ const TIMEFRAME_TIPS: Record<Timeframe, string> = {
     "Monthly - Displays the Measure Met Rate on the last run of each of the most recently completed 25 months of the current HEDIS version year. Note: HEDIS measure specs can change year to year.",
 };
 
+/** Version 15 (Sam, second round): the board's wording. Monthly says 27 months (Sam's message); the board still says 25. */
+const TIMEFRAME_TIPS_V15: Record<Timeframe, string> = {
+  annual:
+    "Annual - Displays the Measure Met Rate on the last Run Date of the current Measurement Year. Shows the Measure Rate on the last Run Dates of the prior 4 Measurement Years, where applicable. Note: HEDIS measure specs can change year to year.",
+  quarterly:
+    "Quarterly - Displays the Measure Met Rate on the last Run Date of each of the most recently completed 9 quarters across Measurement Years. Note: HEDIS measure specs can change year to year.",
+  monthly:
+    "Monthly - Displays the Measure Met Rate on the last Run Date of each of the most recently completed 27 months across Measurement Years. Note: HEDIS measure specs can change year to year.",
+};
+
+/** Version 15: the Initial Population sentence differs by measure (Sam). Only BCS keeps "See About This Measure". */
+const INITIAL_V15: Record<string, string> = {
+  "BCS-E": "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date. See About This Measure for more information.",
+  "CCS-E": "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
+  "COL-E": "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
+  GSD: "Active members with diabetes who meet the measure age and enrollment criteria as of the most recent Run Date.",
+  WCV: "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
+};
+
 /** The About This Measure bullets. BCS is the board's text. The other measures keep their own wording in the same shape. */
 function aboutBullets(code: MeasureCode): string[] {
   if (code === "BCS-E")
     return [
-      "Who's Included: Women age 42–74 on Dec 31",
+      `Who's Included: Women age ${getVersion() >= 15 ? 40 : 42}–74 on Dec 31`,
       "Enrolled all year (one gap of up to 45 days). The spec says BCS also looks at earlier years; this demo checks the measurement year only.",
       "Met when a mammogram (claim, EHR procedure or screening result) falls in the look-back window.",
       "The look-back window is Oct 1 two years before to Dec 31 of the measurement year.",
@@ -94,6 +113,8 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const set = <K extends keyof DashFilters>(key: K, value: DashFilters[K]) => setS({ ...s, f: { ...f, [key]: value } });
   // Version 13 = Version 12 plus Sam's feedback (see the notes of Version 13).
   const v13 = getVersion() >= 13;
+  // Version 15 = Version 14 plus Sam's second round of feedback (see the notes of Version 15).
+  const v15 = getVersion() >= 15;
   const [tf, setTf] = useState<Timeframe>("annual");
   // Top n and Minimum Number of Members are typed. A wrong entry keeps the last good value in use and shows a message under the box.
   const [topText, setTopText] = useState(String(DEFAULT_TOP_N));
@@ -140,7 +161,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         group={group}
         title={title}
         about={about}
-        aboutMin={v13 ? 80 : 64}
+        aboutMin={v15 ? 88 : v13 ? 80 : 64}
         value={fmt(cur[key])}
         prior={fmt(before[key])}
         change={ch.text}
@@ -155,13 +176,22 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const annual = useMemo(() => (tf === "annual" ? timeframeRows(code, list, "annual") : []), [tf, list, code]);
   const lines = useMemo(() => {
     if (tf === "annual") return null;
+    if (v15) {
+      // Version 15 (Sam): always the last 9 completed quarters or the last 27 completed months, so three calendar years can show.
+      const l3 = yearLines(code, list, tf, 3);
+      const per = tf === "quarterly" ? 4 : 12;
+      const len = tf === "quarterly" ? 9 : 27;
+      const last = DEMO_NOW.getFullYear() * per + Math.floor(DEMO_NOW.getMonth() / (12 / per)) - 1;
+      const keep = <T,>(xs: (T | null)[], yr: number) => xs.map((v, i) => (yr * per + i <= last && yr * per + i > last - len ? v : null));
+      return { ...l3, series: l3.series.map((x) => ({ ...x, values: keep(x.values, x.year), counts: keep(x.counts, x.year) })) };
+    }
     const l = yearLines(code, list, tf, 2);
     if (!v13 || tf !== "quarterly") return l;
     // Sam: the quarter that is still running (Q4 of the current year) is not a result yet, so the quarterly line stops at the last completed quarter.
     const running = Math.floor(DEMO_NOW.getMonth() / 3);
     const stop = <T,>(xs: (T | null)[], yr: number) => xs.map((v, i) => (yr === YEAR && i >= running ? null : v));
     return { ...l, series: l.series.map((x) => ({ ...x, values: stop(x.values, x.year), counts: stop(x.counts, x.year) })) };
-  }, [tf, list, code, v13]);
+  }, [tf, list, code, v13, v15]);
   const tfLabel = timeframeOptions.find((o) => o.value === tf)?.label ?? "";
 
   /* ---- Top n by Primary Care Manager ---- */
@@ -197,6 +227,8 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
       : [];
   const topClosed = [...rankedClosed, ...belowRow];
   const nLabel = viewAll ? "All" : `Top ${topN}`;
+  // Version 15 (Sam): the shorter chart gets blank rows, so both charts are as tall as each other and the two descriptions start on the same line.
+  const rowsMax = Math.max(topOpen.length, topClosed.length);
 
   /* ---- Gaps By ---- */
   const gapRows = (dim: Dimension) => {
@@ -322,7 +354,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </Typography>
       )}
       <QsSheet>
-        {card("population", "Initial Population", v13 ? "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date." : "All active members meeting the measurement criteria to identify gaps in care.", "initial", "count", true)}
+        {card("population", "Initial Population", v15 ? INITIAL_V15[code] : v13 ? "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date." : "All active members meeting the measurement criteria to identify gaps in care.", "initial", "count", true)}
         {card(
           "excluded",
           "Excluded Population",
@@ -334,7 +366,9 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         {card(
           "population",
           "Eligible Population",
-          "All Initial Population members who are not excluded from the measure. Initial Population - Excluded Population. See About This Measure for more information.",
+          v15
+            ? "All Initial Population members who are not excluded from the measure. Initial Population minus Excluded Population. See About This Measure for more information."
+            : "All Initial Population members who are not excluded from the measure. Initial Population - Excluded Population. See About This Measure for more information.",
           "eligible",
           "count",
           true,
@@ -352,7 +386,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
             </Box>
           }
         >
-          <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mb: 1 }}>{TIMEFRAME_TIPS[tf]}</Typography>
+          <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mb: 1 }}>{(v15 ? TIMEFRAME_TIPS_V15 : TIMEFRAME_TIPS)[tf]}</Typography>
           {tf === "annual" ? (
             <QsRateColumns
               label={`${short} closed and open gaps by year`}
@@ -362,12 +396,12 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           ) : (
             lines && (
               <QsRateLines
-                label={`${short} closed gaps by ${tf === "quarterly" ? "quarter" : "month"}, last year and this year to date`}
+                label={`${short} closed gaps by ${tf === "quarterly" ? "quarter" : "month"}, ${v15 ? "the last three calendar years" : "last year and this year to date"}`}
                 xTitle={tf === "quarterly" ? "Quarter" : "Month"}
                 labels={lines.labels}
                 series={[...lines.series].reverse().map((x, i) => ({
                   name: x.name,
-                  color: i === 0 ? qs.meaning.neutral : v13 ? closedColor() : qs.meaning.met,
+                  color: v15 ? (i === 0 ? qs.meaning.neutral : i === 1 ? qs.color.secondaryForeground : closedColor()) : i === 0 ? qs.meaning.neutral : v13 ? closedColor() : qs.meaning.met,
                   dashed: i === 0,
                   counts: x.counts,
                   rates: x.values,
@@ -379,6 +413,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
 
         <QsTile cols={36} bare plain>
           {v13 ? (
+            <>
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, flexWrap: "wrap" }}>
               <Box sx={{ width: 120, ...whiteAll }}>
                 <TextField
@@ -401,7 +436,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
                   value={minText}
                   onChange={(e) => setMinText(e.target.value)}
                   error={minBad}
-                  helperText={minBad ? "Enter 1 or more" : "Eligible members, for the rate chart"}
+                  helperText={minBad ? "Enter 1 or more" : v15 ? undefined : "Eligible members, for the rate chart"}
                   slotProps={{ htmlInput: { min: 1, step: 1, "aria-label": "Minimum number of eligible members a manager needs to be ranked by rate" } }}
                 />
               </Box>
@@ -411,6 +446,20 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
                 </Button>
               </Box>
             </Box>
+            {v15 && (
+              <Box sx={{ mt: 1.5, display: "grid", gap: 0.5, fontSize: qs.type.small.size, color: qs.color.mutedText }}>
+                <Box>
+                  <b>Top n:</b> Enter number of PCMs you'd like to rank.
+                </Box>
+                <Box>
+                  <b>Minimum Number of Members:</b> Only PCMs with at least the minimum number of Eligible Population members are shown. E.g. If min = 30, PCMs with 29 members in their Eligible Population are not considered.
+                </Box>
+                <Box>
+                  <b>View All:</b> All PCMs with at least the minimum number of Eligible Population members are shown.
+                </Box>
+              </Box>
+            )}
+            </>
           ) : (
             <Box sx={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap" }}>
               <Box sx={{ width: 160 }}>
@@ -432,7 +481,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </QsTile>
         <QsTile cols={18} title={`${nLabel} Primary Care Managers With Members Having Most Open Gaps`}>
           <Box sx={{ maxHeight: 520, overflow: "auto" }}>
-            <QsRateBars label={`${nLabel} primary care managers with the most open gaps`} first="open" rows={topOpen} dividerAt={unassigned ? [rankedOpen.length] : undefined} />
+            <QsRateBars label={`${nLabel} primary care managers with the most open gaps`} first="open" rows={topOpen} dividerAt={unassigned ? [rankedOpen.length] : undefined} padRows={rowsMax - topOpen.length} />
           </Box>
           <Typography sx={{ fontSize: qs.type.small.size, color: qs.color.mutedText, mt: 1 }}>
             {v13
@@ -447,6 +496,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
               first="closed"
               rows={topClosed}
               dividerAt={belowRow.length ? [rankedClosed.length] : undefined}
+              padRows={rowsMax - topClosed.length}
               empty={v13 ? `No manager has ${n0(minMembers)} or more eligible members for these controls` : `No manager has ${minMembers} or more members for these controls`}
             />
           </Box>

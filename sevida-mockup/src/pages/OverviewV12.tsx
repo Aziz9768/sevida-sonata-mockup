@@ -54,6 +54,8 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
   const { gapsOf, openOf } = useGaps();
   // Version 13 (Sam's feedback): chart named Measure Rate, descriptions under the chart titles, a click on a bar opens the measure tab.
   const v13 = getVersion() >= 13;
+  // Version 15 (Sam, second round): new tile descriptions, and "Total Gaps Closed" is renamed "Total Closed Gaps".
+  const v15 = getVersion() >= 15;
   const set = <K extends keyof OverviewState>(key: K, value: OverviewState[K]) => setS({ ...s, [key]: value });
 
   /* ---- who is counted: the Primary Care Manager and Military Status filters, then the Population filter ---- */
@@ -217,25 +219,31 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
       <Box sx={{ px: 2, pt: 1, fontSize: qs.type.small.size, color: qs.color.mutedText }}>Based on filter</Box>
 
       <QsSheet>
-        {tile("population", "Member Population", "All members in the population selected as of the most recent Run Date.", "members", true)}
+        {tile("population", "Member Population", v15 ? "All active members matching the selected filters as of the most recent Run Date." : "All members in the population selected as of the most recent Run Date.", "members", true)}
         {tile(
           "notMet",
           "Members With Open Gaps",
-          "All Eligible Population members who have an open gap as of the most recent Run Date. Since a member can have multiple gaps, this counts unique members and not each gap.",
+          v15
+            ? "Members with at least one open gap across all measures as of the most recent Run Date. Each member is counted once, even with multiple open gaps."
+            : "All Eligible Population members who have an open gap as of the most recent Run Date. Since a member can have multiple gaps, this counts unique members and not each gap.",
           "withOpen",
           false,
         )}
         {tile(
           "notMet",
           "Total Open Gaps",
-          "All Open Gaps among Eligible Population members as of the most recent Run Date. Since a member can have multiple gaps, this counts gaps and not unique members.",
+          v15
+            ? "All open gaps across all measures as of the most recent Run Date. A member with multiple open gaps is counted once per gap."
+            : "All Open Gaps among Eligible Population members as of the most recent Run Date. Since a member can have multiple gaps, this counts gaps and not unique members.",
           "open",
           false,
         )}
         {tile(
           "met",
-          "Total Gaps Closed",
-          "All Closed Gaps among Eligible Population members as of the most recent Run Date in the current measurement year. Since a member can have multiple gaps, this counts gaps and not unique members.",
+          v15 ? "Total Closed Gaps" : "Total Gaps Closed",
+          v15
+            ? "All closed gaps across all measures as of the most recent Run Date. A member with multiple closed gaps is counted once per gap."
+            : "All Closed Gaps among Eligible Population members as of the most recent Run Date in the current measurement year. Since a member can have multiple gaps, this counts gaps and not unique members.",
           "closed",
           true,
           "Total Closed Gaps",

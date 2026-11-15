@@ -269,11 +269,14 @@ export const RECOMMENDED_SENTENCE = (code: MeasureCode, year: number): string =>
 /** "Who is Considered" and "What is Left to Close the Gap" on the Care Gap page, as the sheet words them (typos fixed). GSD is blank in the sheet. */
 export const V3_WHO: Record<MeasureCode, string> = {
   get "BCS-E"() {
-    return `Females aged ${getVersion() >= 7 ? 42 : 52}–74 years who were recommended for a breast cancer screening.`;
+    return `Females aged ${getVersion() >= 15 ? 40 : getVersion() >= 7 ? 42 : 52}–74 years who were recommended for a breast cancer screening.`;
   },
-  "CCS-E":
-    "Females aged 24–64 years who were recommended for a routine cervical cancer screening.",
-  "COL-E": "Members aged 46–75 years.",
+  get "CCS-E"() {
+    return `Females aged ${getVersion() >= 15 ? 21 : 24}–64 years who were recommended for a routine cervical cancer screening.`;
+  },
+  get "COL-E"() {
+    return `Members aged ${getVersion() >= 15 ? 45 : 46}–75 years.`;
+  },
   GSD: "",
   WCV: "Members aged 3–21 years that had no more than one gap of up to 45 days during the continuous enrollment period.",
 };
@@ -281,10 +284,12 @@ export const V3_LEFT: Record<MeasureCode, string[]> = {
   "BCS-E": [
     "Bilateral or unilateral mammogram performed during the measurement period.",
   ],
-  "CCS-E": [
-    "If aged 24–64, cervical cytology 2 years prior or during the measurement period.",
+  get "CCS-E"() {
+    return [
+    `If aged ${getVersion() >= 15 ? 21 : 24}–64, cervical cytology 2 years prior or during the measurement period.`,
     "OR if aged 30–64, cervical high-risk human papillomavirus (hrHPV) testing 4 years prior to the measurement period.",
-  ],
+    ];
+  },
   "COL-E": [
     "Fecal occult blood test during the measurement period.",
     "OR stool DNA (sDNA) with FIT test 2 years prior to or during the measurement period.",
@@ -303,10 +308,14 @@ export const V3_LEFT: Record<MeasureCode, string[]> = {
 type Code = "BCS-E" | "CCS-E" | "COL-E" | "GSD" | "WCV";
 export const V3_DEFINITION: Record<Code, string> = {
   get "BCS-E"() {
-    return `Women aged ${getVersion() >= 7 ? 42 : 52}–74 on Dec 31 who were recommended breast cancer screening.`;
+    return `Women aged ${getVersion() >= 15 ? 40 : getVersion() >= 7 ? 42 : 52}–74 on Dec 31 who were recommended breast cancer screening.`;
   },
-  "CCS-E": "Women aged 24–64 on Dec 31 who were recommended routine cervical cancer screening.",
-  "COL-E": "Members aged 46–75 on Dec 31 who were recommended colorectal cancer screening.",
+  get "CCS-E"() {
+    return `Women aged ${getVersion() >= 15 ? 21 : 24}–64 on Dec 31 who were recommended routine cervical cancer screening.`;
+  },
+  get "COL-E"() {
+    return `Members aged ${getVersion() >= 15 ? 45 : 46}–75 on Dec 31 who were recommended colorectal cancer screening.`;
+  },
   get GSD() {
     return getVersion() >= 12 ? "Members aged 18–75 with diabetes. The result is the most recent final HbA1c (or GMI) of the measurement period." : "Members aged 18–75 with diabetes. The result is the lowest final HbA1c of the measurement period.";
   },
@@ -321,7 +330,9 @@ export const V3_EXCLUSIONS: Record<Code, string> = {
 };
 export const V3_MET: Record<Code, string> = {
   "BCS-E": "At least one mammogram from Oct 1 two years before the period through the end of the period.",
-  "CCS-E": "Cervical cytology (age 24–64) in the period or the two years before, or a high-risk HPV test (age 30–64) in the period or the four years before.",
+  get "CCS-E"() {
+    return `Cervical cytology (age ${getVersion() >= 15 ? 21 : 24}–64) in the period or the two years before, or a high-risk HPV test (age 30–64) in the period or the four years before.`;
+  },
   "COL-E": "Stool test (FIT) this year, sDNA-FIT in the last 3 years, CT colonography or sigmoidoscopy in the last 5, colonoscopy in the last 10.",
   get GSD() {
     return getVersion() >= 12 ? "Most recent final HbA1c of the period is below 8%." : "Lowest final HbA1c of the period is below 8%.";
