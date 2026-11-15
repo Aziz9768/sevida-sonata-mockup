@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Box, Typography } from "@mui/material";
 import { AutocompleteField, Button, SelectField, TextField } from "sevida-ui";
 import { QsSheet, QsText, QsTile } from "../quicksight/kit";
 import { QsRateBars, closedColor, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
-import { CURRENT_YEAR, DEMO_NOW, NO_PCP, fmtDate, resultsFor } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, NO_PCP, a1cBandOf, fmtDate, resultsFor } from "../data";
 import type { MeasureCode, MeasureState } from "../data";
 import { SEX_V12, bandsFor, emptyFilters, facetOptions, filterMembers, gapsByManager, groupRates, inputsFor, kpisFor, providerOf, runInfo, timeframeOptions, timeframeRows, yearLines } from "../dashboardData";
 import type { DashFilters, Dimension, Timeframe } from "../dashboardData";
@@ -152,7 +153,19 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
     rate: prior?.rate ?? 0,
     open: prior?.gap ?? 0,
   };
-  const card = (group: Group, title: string, about: string, key: keyof typeof cur, kind: "count" | "rate", upIsGood: boolean, footTitle = title) => {
+  // Version 15 (Sam, GSD): a GSD gap is one gap, open for one of two reasons. The latest HbA1c decides: 8 to 9, or above 9 (or no test this year).
+  const gsdWhy = useMemo(() => {
+    if (!v15 || code !== "GSD") return null;
+    let mid = 0;
+    let high = 0;
+    for (const m of base) {
+      if (resultsFor(m, YEAR)[code].state !== "Gap") continue;
+      if (a1cBandOf(m, YEAR) === "8% to 9%") mid++;
+      else high++;
+    }
+    return { mid, high };
+  }, [v15, code, base]);
+  const card = (group: Group, title: string, about: string, key: keyof typeof cur, kind: "count" | "rate", upIsGood: boolean, footTitle = title, extra?: ReactNode) => {
     const ch = changeOf(cur[key], before[key], kind, upIsGood);
     const fmt = (v: number) => (kind === "count" ? n0(v) : pct2(v));
     return (
@@ -161,6 +174,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         group={group}
         title={title}
         about={about}
+        extra={extra}
         aboutMin={v15 ? 88 : v13 ? 80 : 64}
         value={fmt(cur[key])}
         prior={fmt(before[key])}
@@ -375,7 +389,16 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         )}
         {card("met", "Closed Gaps Count", v13 ? "Eligible Population members whose gap is closed as of the most recent Run Date." : "All Eligible Population members who have a closed gap as of the most recent Run Date.", "closed", "count", true)}
         {card("met", `${short} Measure Rate`, v13 ? "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population." : "Numerator: Closed Gaps Count\nDenominator: Eligible Population", "rate", "rate", true, "Closed Gaps Rate")}
-        {card("notMet", "Open Gaps Count", v13 ? `Eligible Population members whose ${short} gap is open as of the most recent Run Date.` : "All Eligible Population members who have an open gap as of the most recent Run Date.", "open", "count", false)}
+        {card("notMet", "Open Gaps Count", v13 ? `Eligible Population members whose ${short} gap is open as of the most recent Run Date.` : "All Eligible Population members who have an open gap as of the most recent Run Date.", "open", "count", false, undefined, gsdWhy && (
+          <Box sx={{ mt: 0.5, display: "grid", gap: 0.25, fontSize: qs.type.small.size, color: qs.color.secondaryForeground }}>
+            <Box>
+              HbA1c 8 to 9: <b>{n0(gsdWhy.mid)}</b>
+            </Box>
+            <Box>
+              HbA1c above 9, or no test this year: <b>{n0(gsdWhy.high)}</b>
+            </Box>
+          </Box>
+        ))}
 
         <QsTile
           cols={36}

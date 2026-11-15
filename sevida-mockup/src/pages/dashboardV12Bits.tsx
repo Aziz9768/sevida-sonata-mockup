@@ -183,7 +183,10 @@ export function KpiTile({
   footer,
   cols = 12,
   aboutMin = 48,
+  extra,
 }: {
+  /** Version 15: lines under the big number (GSD: why the open gaps are open). */
+  extra?: ReactNode;
   group: Group;
   title: string;
   about: string;
@@ -218,6 +221,7 @@ export function KpiTile({
       <Typography sx={{ fontSize: qs.type.visualTitle.size, fontWeight: 700 }}>{title}</Typography>
       <Typography sx={{ fontSize: qs.type.subtitle.size, color: qs.color.mutedText, lineHeight: 1.3, minHeight: aboutMin, whiteSpace: "pre-line" }}>{about}</Typography>
       <Typography sx={{ fontSize: qs.type.kpi.size, fontWeight: qs.type.kpi.weight, lineHeight: 1.25, mt: 0.5, color: g.text }}>{value}</Typography>
+      {extra}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.75, flexWrap: "wrap" }}>
         <Typography sx={{ fontSize: qs.type.body.size, color: qs.color.secondaryForeground }}>Prior Month: {prior}</Typography>
         {change !== null && (
