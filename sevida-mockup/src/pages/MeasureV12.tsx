@@ -71,7 +71,7 @@ const TIMEFRAME_TIPS_V15: Record<Timeframe, string> = {
 /** Version 15: the Initial Population sentence differs by measure (Sam). Only BCS keeps "See About This Measure". */
 const INITIAL_V15: Record<string, string> = {
   "BCS-E": "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date. See About This Measure for more information.",
-  "CCS-E": "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
+  "CCS-E": "Active members who meet the measure age, sex, and enrollment criteria as of the most recent Run Date.",
   "COL-E": "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
   GSD: "Active members with diabetes who meet the measure age and enrollment criteria as of the most recent Run Date.",
   WCV: "Active members who meet the measure age and enrollment criteria as of the most recent Run Date.",
@@ -158,12 +158,15 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
     if (!v15 || code !== "GSD") return null;
     let mid = 0;
     let high = 0;
+    let low = 0;
     for (const m of base) {
-      if (resultsFor(m, YEAR)[code].state !== "Gap") continue;
+      const st = resultsFor(m, YEAR)[code].state;
+      if (st === "Met") low++;
+      if (st !== "Gap") continue;
       if (a1cBandOf(m, YEAR) === "8% to 9%") mid++;
       else high++;
     }
-    return { mid, high };
+    return { mid, high, low };
   }, [v15, code, base]);
   const card = (group: Group, title: string, about: string, key: keyof typeof cur, kind: "count" | "rate", upIsGood: boolean, footTitle = title, extra?: ReactNode) => {
     const ch = changeOf(cur[key], before[key], kind, upIsGood);
@@ -387,7 +390,13 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           "count",
           true,
         )}
-        {card("met", "Closed Gaps Count", v13 ? "Eligible Population members whose gap is closed as of the most recent Run Date." : "All Eligible Population members who have a closed gap as of the most recent Run Date.", "closed", "count", true)}
+        {card("met", "Closed Gaps Count", v13 ? "Eligible Population members whose gap is closed as of the most recent Run Date." : "All Eligible Population members who have a closed gap as of the most recent Run Date.", "closed", "count", true, undefined, gsdWhy && (
+          <Box sx={{ mt: 0.5, display: "grid", gap: 0.25, fontSize: qs.type.small.size, color: qs.color.secondaryForeground }}>
+            <Box>
+              HbA1c below 8: <b>{n0(gsdWhy.low)}</b>
+            </Box>
+          </Box>
+        ))}
         {card("met", `${short} Measure Rate`, v13 ? "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population." : "Numerator: Closed Gaps Count\nDenominator: Eligible Population", "rate", "rate", true, "Closed Gaps Rate")}
         {card("notMet", "Open Gaps Count", v13 ? `Eligible Population members whose ${short} gap is open as of the most recent Run Date.` : "All Eligible Population members who have an open gap as of the most recent Run Date.", "open", "count", false, undefined, gsdWhy && (
           <Box sx={{ mt: 0.5, display: "grid", gap: 0.25, fontSize: qs.type.small.size, color: qs.color.secondaryForeground }}>

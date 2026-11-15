@@ -204,14 +204,14 @@ export function KpiTile({
   // use the design system's dark green and dark red text, so they stay readable on white. Version 12 keeps the strong green and red.
   const v13 = getVersion() >= 13 && (group === "met" || group === "notMet");
   const g = v13 ? { color: group === "met" ? closedColor() : openColor(), text: group === "met" ? tokens.status.success.dark : tokens.status.danger.dark } : GROUP[group];
-  // Version 15 (Sam): Better / Worse arrow, number and word are bold, with a bigger arrow, in the design system's strong green and red (the
-  // border's light colours are only 2 to 1 and 3.5 to 1 on white; these two are 5 to 1).
+  // Version 15 (Sam): Better / Worse arrow, number and word are bold, with a bigger arrow, in the same light green and red as the left border
+  // of the tile, as Sam suggested. The light green is only 2 to 1 on white: to confirm with Sam.
   const v15 = getVersion() >= 15;
   const ink = v15
     ? tone === "good"
-      ? tokens.status.success.main
+      ? closedColor()
       : tone === "bad"
-        ? tokens.status.danger.main
+        ? openColor()
         : qs.color.secondaryForeground
     : tone === "good" ? (getVersion() >= 13 ? tokens.status.success.dark : qs.meaning.met) : tone === "bad" ? (getVersion() >= 13 ? tokens.status.danger.dark : qs.tone.danger.text) : qs.color.secondaryForeground;
   const word = tone === "good" ? "Better" : tone === "bad" ? "Worse" : "No change";
