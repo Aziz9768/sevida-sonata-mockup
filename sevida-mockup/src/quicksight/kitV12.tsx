@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { Box, Typography } from "@mui/material";
 import { tokens } from "sevida-ui";
 import { QsLegend, niceMax } from "./kit";
@@ -42,6 +42,69 @@ const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
 /** Legend text of the board: "Closed Gaps Count & %". */
 export const CLOSED_LEGEND = "Closed Gaps Count & %";
 export const OPEN_LEGEND = "Open Gaps Count & %";
+/**
+ * Version 15 (Sam): on every chart the numbers show when you hover a bar, column or point, at once (the browser's own tooltip waits about a second).
+ * Versions 12 to 14 keep the browser's own tooltip and write the numbers on the chart, as before.
+ */
+interface TipData {
+  /** Tells the chart which mark is hovered, so it can be drawn bigger. */
+  id?: string;
+  title: string;
+  rows: { color?: string; text: string }[];
+  note?: string;
+}
+function useTip(ref: RefObject<HTMLDivElement | null>) {
+  const [tip, setTip] = useState<{ x: number; y: number; d: TipData } | null>(null);
+  const place = (e: ReactMouseEvent, d: TipData) => {
+    const box = ref.current?.getBoundingClientRect();
+    if (box) setTip({ x: e.clientX - box.left, y: e.clientY - box.top, d });
+  };
+  /** Spread on the group that is hovered. Does nothing before Version 15. */
+  const on = (d: TipData) =>
+    v15() ? { onMouseEnter: (e: ReactMouseEvent) => place(e, d), onMouseMove: (e: ReactMouseEvent) => place(e, d), onMouseLeave: () => setTip(null) } : {};
+  return { tip, on };
+}
+function TipBox({ tip, width }: { tip: { x: number; y: number; d: TipData } | null; width: number }) {
+  if (!tip) return null;
+  const left = tip.x > width - 190;
+  return (
+    <Box
+      role="tooltip"
+      sx={{
+        position: "absolute",
+        left: tip.x + (left ? -14 : 14),
+        top: tip.y - 12,
+        transform: `translate(${left ? "-100%" : "0"}, -100%)`,
+        pointerEvents: "none",
+        zIndex: 10,
+        bgcolor: tokens.ink[900],
+        color: "#FFFFFF",
+        borderRadius: "6px",
+        px: 1.25,
+        py: 0.75,
+        fontSize: 12,
+        lineHeight: 1.45,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <Box sx={{ fontWeight: 700 }}>{tip.d.title}</Box>
+      {tip.d.rows.map((r, i) => (
+        <Box key={i}>
+          {r.color && (
+            <Box
+              component="span"
+              aria-hidden="true"
+              sx={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", bgcolor: r.color, border: "1.5px solid #FFFFFF", mr: 0.75, boxSizing: "border-box" }}
+            />
+          )}
+          {r.text}
+        </Box>
+      ))}
+      {tip.d.note && <Box sx={{ opacity: 0.75, mt: 0.25 }}>{tip.d.note}</Box>}
+    </Box>
+  );
+}
 const cut = (s: string, max: number) => (s.length > max ? `${s.slice(0, Math.max(1, max - 1))}…` : s);
 
 export interface QsRateRow {
@@ -73,8 +136,9 @@ export function QsRateColumns({
   const ih = height - padT - padB;
   const bw = Math.min(88, slot * 0.7);
   const y = (p: number) => padT + ih - (p / 100) * ih;
+  const { tip, on } = useTip(ref);
   return (
-    <Box ref={ref} aria-label={label} role="group">
+    <Box ref={ref} aria-label={label} role="group" sx={{ position: "relative" }}>
       <QsLegend
         items={[
           { label: CLOSED_LEGEND, color: closedColor() },
@@ -121,10 +185,19 @@ export function QsRateColumns({
                   ) : null}
                 </g>
               );
-            const tip = `${r.label}: Closed ${n0(r.closed)} (${pct(r.closed, total)}), Open ${n0(r.open)} (${pct(r.open, total)})`;
+            const tipText = `${r.label}: Closed ${n0(r.closed)} (${pct(r.closed, total)}), Open ${n0(r.open)} (${pct(r.open, total)})`;
             return (
-              <g key={r.label}>
-                <title>{tip}</title>
+              <g
+                key={r.label}
+                {...on({
+                  title: r.label,
+                  rows: [
+                    { color: closedColor(), text: `Closed ${n0(r.closed)} (${pct(r.closed, total)})` },
+                    { color: openColor(), text: `Open ${n0(r.open)} (${pct(r.open, total)})` },
+                  ],
+                })}
+              >
+                {!v15() && <title>{tipText}</title>}
                 <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
                 {seg(hC, r.closed, y(0) - hC, onBar(), closedColor())}
                 {seg(hO, r.open, y(0) - hC - hO, onBar(), openColor())}
@@ -146,6 +219,7 @@ export function QsRateColumns({
           </text>
         </svg>
       )}
+      <TipBox tip={tip} width={W} />
     </Box>
   );
 }
@@ -180,8 +254,9 @@ export function QsRateLines({
   const slot = (W - padL - padR) / Math.max(1, labels.length);
   const x = (i: number) => padL + slot * i + slot / 2;
   const y = (v: number) => padT + ih - (Math.min(100, Math.max(0, v)) / 100) * ih;
+  const { tip, on } = useTip(ref);
   return (
-    <Box ref={ref} aria-label={label} role="group">
+    <Box ref={ref} aria-label={label} role="group" sx={{ position: "relative" }}>
       <QsLegend items={series.map((s) => ({ label: `${s.name} Closed Gaps Count & %`, color: s.color, line: true }))} />
       <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
         {[0, 20, 40, 60, 80, 100].map((t) => (
@@ -203,9 +278,6 @@ export function QsRateLines({
         {series.map((s, si) => {
           const pts = s.rates.map((v, i) => (v === null ? null : { i, v, c: s.counts[i] })).filter((p): p is { i: number; v: number; c: number | null } => p !== null);
           const above = si === series.length - 1;
-          // Version 15: three lines (three calendar years). The newest line is labelled above, the others below, one under the other.
-          const rank = series.length - 1 - si;
-          const down = v15() && series.length > 2 ? 18 + Math.max(0, rank - 1) * 26 : 18;
           return (
             <g key={s.name}>
               <polyline
@@ -215,22 +287,34 @@ export function QsRateLines({
                 strokeDasharray={s.dashed ? "6 4" : undefined}
                 points={pts.map((p) => `${x(p.i)},${y(p.v)}`).join(" ")}
               />
-              {pts.map((p) => (
-                <g key={p.i}>
-                  <title>{`${s.name} ${labels[p.i]}: ${p.c === null ? "" : `${n0(p.c)}, `}${p.v.toFixed(2)}%`}</title>
-                  <circle cx={x(p.i)} cy={y(p.v)} r={4} fill={s.color} stroke={qs.color.primaryBackground} strokeWidth={2} />
-                  {slot >= 44 && (
-                    <text textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
-                      <tspan x={x(p.i)} y={y(p.v) + (above ? -22 : down)} fontWeight={700}>
-                        {p.c === null ? "" : n0(p.c)}
-                      </tspan>
-                      <tspan x={x(p.i)} y={y(p.v) + (above ? -10 : down + 12)}>
-                        {p.v.toFixed(2)}%
-                      </tspan>
-                    </text>
-                  )}
-                </g>
-              ))}
+              {pts.map((p) => {
+                const id = `${si}-${p.i}`;
+                const hot = tip?.d.id === id;
+                return (
+                  <g
+                    key={p.i}
+                    {...on({
+                      id,
+                      title: `${s.name}, ${labels[p.i]}`,
+                      rows: [{ color: s.color, text: `Closed Gaps ${p.c === null ? "" : `${n0(p.c)}, `}${p.v.toFixed(2)}%` }],
+                    })}
+                  >
+                    {!v15() && <title>{`${s.name} ${labels[p.i]}: ${p.c === null ? "" : `${n0(p.c)}, `}${p.v.toFixed(2)}%`}</title>}
+                    {v15() && <circle cx={x(p.i)} cy={y(p.v)} r={11} fill="transparent" />}
+                    <circle cx={x(p.i)} cy={y(p.v)} r={hot ? 6 : 4} fill={s.color} stroke={qs.color.primaryBackground} strokeWidth={2} />
+                    {!v15() && slot >= 44 && (
+                      <text textAnchor="middle" fontSize={10} fill={qs.color.primaryForeground}>
+                        <tspan x={x(p.i)} y={y(p.v) + (above ? -22 : 18)} fontWeight={700}>
+                          {p.c === null ? "" : n0(p.c)}
+                        </tspan>
+                        <tspan x={x(p.i)} y={y(p.v) + (above ? -10 : 30)}>
+                          {p.v.toFixed(2)}%
+                        </tspan>
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
             </g>
           );
         })}
@@ -238,6 +322,7 @@ export function QsRateLines({
           {xTitle}
         </text>
       </svg>
+      <TipBox tip={tip} width={W} />
     </Box>
   );
 }
@@ -288,8 +373,9 @@ export function QsRateBars({
   const color = { open: openColor(), closed: closedColor() };
   const fg = { open: onBar(), closed: onBar() };
   const legend = { open: { label: OPEN_LEGEND, color: openColor() }, closed: { label: CLOSED_LEGEND, color: closedColor() } };
+  const { tip, on } = useTip(ref);
   return (
-    <Box ref={ref} aria-label={label} role="group">
+    <Box ref={ref} aria-label={label} role="group" sx={{ position: "relative" }}>
       <QsLegend items={order.map((k) => legend[k])} />
       {rows.length === 0 ? (
         <Typography sx={{ fontSize: 13, color: qs.color.mutedText, py: 4, textAlign: "center", ...(v15() && padRows > 0 ? { minHeight: height - 64, boxSizing: "content-box" } : {}) }}>{empty}</Typography>
@@ -310,9 +396,15 @@ export function QsRateBars({
             const lines = wrap(r.label);
             const outside: { k: "open" | "closed"; v: number }[] = [];
             return (
-              <g key={r.label}>
+              <g
+                key={r.label}
+                {...on({
+                  title: r.label,
+                  rows: order.map((k) => ({ color: color[k], text: `${k === "open" ? "Open" : "Closed"} ${n0(r[k])} (${pct(r[k], total)})` })),
+                })}
+              >
                 {dividerAt?.includes(i) && <line x1={0} x2={W} y1={top} y2={top} stroke={qs.color.border} strokeDasharray="4 3" />}
-                <title>{`${r.label}: Open ${n0(r.open)} (${pct(r.open, total)}), Closed ${n0(r.closed)} (${pct(r.closed, total)})`}</title>
+                {!v15() && <title>{`${r.label}: Open ${n0(r.open)} (${pct(r.open, total)}), Closed ${n0(r.closed)} (${pct(r.closed, total)})`}</title>}
                 <rect x={0} y={top} width={W} height={rowH} fill="transparent" />
                 <text fontSize={12} fill={qs.color.secondaryForeground} textAnchor="end">
                   {lines.map((l, k) => (
@@ -358,6 +450,7 @@ export function QsRateBars({
           })}
         </svg>
       )}
+      <TipBox tip={tip} width={W} />
     </Box>
   );
 }
@@ -399,8 +492,9 @@ export function QsMeasureBars({
   const slot = (W - padL - padR) / Math.max(1, rows.length);
   const bw = Math.min(72, slot * 0.6);
   const y = (v: number) => padT + ih - (Math.min(max, v) / (max || 1)) * ih;
+  const { tip, on } = useTip(ref);
   return (
-    <Box ref={ref} aria-label={label} role="group">
+    <Box ref={ref} aria-label={label} role="group" sx={{ position: "relative" }}>
       <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
         {ticks.map((t) => (
           <g key={t}>
@@ -419,6 +513,11 @@ export function QsMeasureBars({
           return (
             <g
               key={r.label}
+              {...on({
+                title: r.label,
+                rows: r.text.split(", ").map((t) => ({ text: t })),
+                note: onSelect ? "Click to open the tab" : undefined,
+              })}
               {...(onSelect
                 ? {
                     role: "button",
@@ -435,7 +534,7 @@ export function QsMeasureBars({
                   }
                 : {})}
             >
-              <title>{`${r.label}: ${r.text}${onSelect ? " (click to open the tab)" : ""}`}</title>
+              {!v15() && <title>{`${r.label}: ${r.text}${onSelect ? " (click to open the tab)" : ""}`}</title>}
               <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
               <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(0, y(0) - top)} fill={color} />
               <text textAnchor="middle" fontSize={11} fill={qs.color.primaryForeground}>
@@ -456,6 +555,7 @@ export function QsMeasureBars({
           {xTitle}
         </text>
       </svg>
+      <TipBox tip={tip} width={W} />
     </Box>
   );
 }
