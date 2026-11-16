@@ -8,17 +8,18 @@ import type { QsCol } from "../quicksight/kit";
 import { QsMeasureBars, closedColor, openColor } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
-import { CURRENT_YEAR, countyOf, fmtDate, primaryCareOf, resultsFor, stateName, ageAtYearEnd } from "../data";
+import { CURRENT_YEAR, fmtDate, resultsFor, ageAtYearEnd } from "../data";
+import { clinicOf, countyOfMember, stateNameOf } from "../v16Data";
 import type { Member, MeasureCode } from "../data";
 import { emptyFilters, ethnicityOf, filterMembers, providerOf, raceOf, runInfo, sexOf, timeframeRows } from "../dashboardData";
 import type { DashFilters } from "../dashboardData";
-import { ageRangeOf, gapShort, militaryOptions, militaryV3, tricareIdOf } from "../v3Data";
+import { AGE_RANGES, ageParts, ageRangeOf, gapShort, militaryOptions, militaryV3, tricareIdOf } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
 import { useGaps } from "../careGaps";
 import { useRun } from "../runs";
 import { getVersion } from "../version";
 import { useRole } from "../roles";
-import { Fact, KpiTile, PcmFilter, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { FailedRunNotice, Fact, KpiTile, PcmFilter, RunPickerFact, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, useNextUpdate, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -56,6 +57,9 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
   const v13 = getVersion() >= 13;
   // Version 15 (Sam, second round): new tile descriptions, and "Total Gaps Closed" is renamed "Total Closed Gaps".
   const v15 = getVersion() >= 15;
+  // Version 16 (review of the Overview against the board): the table follows the measure run, Age is the age today, Age Group sorts by age, one header label.
+  const v16 = getVersion() >= 16;
+  const nextUpdate = useNextUpdate(run.next);
   const set = <K extends keyof OverviewState>(key: K, value: OverviewState[K]) => setS({ ...s, [key]: value });
 
   /* ---- who is counted: the Primary Care Manager and Military Status filters, then the Population filter ---- */
@@ -151,13 +155,14 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
   );
   // The three gap columns follow the Members list: an open gap is one that care staff have not closed yet, and a closed gap is a measure
   // that is met or a gap that staff closed. (The tiles above count what the measure run found, as their descriptions say.)
-  const gapNames = (m: Member) => openOf(m).map((g) => gapShort(g.def.code));
-  const closedCount = (m: Member) => statesOf(m).filter((x) => x === "Met").length + gapsOf(m).filter((g) => g.status === "Closed").length;
+  // Version 16: the table counts the same way as the tiles above it (what the measure run found), so its columns add up to the tiles.
+  const gapNames = (m: Member) => (v16 ? codes.filter((_, i) => statesOf(m)[i] === "Gap").map((c) => gapShort(c)) : openOf(m).map((g) => gapShort(g.def.code)));
+  const closedCount = (m: Member) => (v16 ? statesOf(m).filter((x) => x === "Met").length : statesOf(m).filter((x) => x === "Met").length + gapsOf(m).filter((g) => g.status === "Closed").length);
   const cols: QsCol<Member>[] = [
     { key: "name", header: "Member Name", value: (m) => m.name, render: (m) => link(m, m.name), nowrap: true },
     { key: "tricare", header: "Tricare ID", value: (m) => tricareIdOf(m), render: (m) => link(m, tricareIdOf(m)), nowrap: true },
     { key: "dob", header: "Date of Birth", value: (m) => m.dob.getTime(), render: (m) => fmtDate(m.dob), nowrap: true },
-    { key: "age", header: "Age", value: (m) => ageAtYearEnd(m.dob, YEAR), align: "right" },
+    { key: "age", header: "Age", value: (m) => (v16 ? ageParts(m.dob).years : ageAtYearEnd(m.dob, YEAR)), align: "right" },
     { key: "sex", header: "Sex", value: sexOf },
     { key: "mil", header: "Military Status", value: (m) => militaryV3(m), nowrap: true },
     { key: "pcm", header: "Primary Care Manager", value: (m) => pcmText(providerOf(m)), nowrap: true },
@@ -166,10 +171,12 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
     { key: "gaps", header: "Gaps", value: (m) => gapNames(m).join(", "), render: (m) => gapNames(m).join(", ") || "–", nowrap: true },
     { key: "race", header: "Race", value: raceOf, nowrap: true },
     { key: "eth", header: "Ethnicity", value: ethnicityOf, nowrap: true },
-    { key: "ageGroup", header: "Age Group", value: (m) => ageRangeOf(m.dob), nowrap: true },
-    { key: "state", header: "State", value: (m) => stateName(m.state), nowrap: true },
-    { key: "county", header: "County", value: countyOf, nowrap: true },
-    { key: "clinic", header: "Clinic", value: (m) => primaryCareOf(m)?.p.org ?? "–", nowrap: true },
+    v16
+      ? { key: "ageGroup", header: "Age Group", value: (m) => AGE_RANGES.findIndex((r) => r.label === ageRangeOf(m.dob)), render: (m) => ageRangeOf(m.dob), nowrap: true }
+      : { key: "ageGroup", header: "Age Group", value: (m) => ageRangeOf(m.dob), nowrap: true },
+    { key: "state", header: "State", value: stateNameOf, nowrap: true },
+    { key: "county", header: "County", value: countyOfMember, nowrap: true },
+    { key: "clinic", header: "Clinic", value: clinicOf, nowrap: true },
   ];
 
   const clear = () => setS(emptyOverview());
@@ -181,7 +188,7 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
         <Box sx={boxSx}>
           <QsText>
             <Box sx={facts}>
-              <Fact label="HEDIS MEASURE YEAR" value={String(YEAR)} />
+              <Fact label={v16 ? "HEDIS Measure Year" : "HEDIS MEASURE YEAR"} value={String(YEAR)} />
               <Fact label="Measurement Start" value={ordDate(new Date(YEAR, 0, 1))} />
               <Fact label="Measurement End" value={ordDate(new Date(YEAR, 11, 31))} />
             </Box>
@@ -190,12 +197,14 @@ export function OverviewV12({ s, setS, onOpenMeasure }: { s: OverviewState; setS
         <Box sx={boxSx}>
           <QsText>
             <Box sx={facts}>
-              <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />
-              <Fact label="Dashboard Next Update" value={runStamp(run.next)} />
+              {v16 ? <RunPickerFact /> : <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />}
+              <Fact label="Dashboard Next Update" value={runStamp(v16 ? nextUpdate : run.next)} />
             </Box>
           </QsText>
         </Box>
       </Box>
+
+      {v16 && <FailedRunNotice at={run.next} />}
 
       <Box sx={{ ...controlsBox(4), mt: `${qs.gap}px`, borderTop: qs.tile.border, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "2fr 1fr 1fr auto" } }}>
         <PcmFilter value={s.provider} onChange={(v) => set("provider", v)} />

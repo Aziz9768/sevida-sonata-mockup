@@ -36,6 +36,7 @@ const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(2)}%` : "0
  */
 const v13 = () => getVersion() >= 13;
 const v15 = () => getVersion() >= 15;
+const v16 = () => getVersion() >= 16;
 export const closedColor = (): string => (v13() ? tokens.status.success.chip : qs.meaning.met);
 export const openColor = (): string => (v13() ? "#E57373" : qs.tone.danger.border);
 const onBar = (): string => (v13() ? tokens.ink[900] : "#FFFFFF");
@@ -105,6 +106,31 @@ function TipBox({ tip, width }: { tip: { x: number; y: number; d: TipData } | nu
     </Box>
   );
 }
+/**
+ * Version 16 (review): long names are wrapped onto up to 3 lines instead of being cut with "...". A line breaks at a space, after "/" or after "-".
+ * A single word longer than a line is split, so nothing is lost.
+ */
+function wrapLabel(text: string, maxChars: number, lines = 3): string[] {
+  const parts = text.split(/(?<=[/-])|\s+/).filter(Boolean);
+  const out: string[] = [];
+  let cur = "";
+  const flush = () => {
+    if (cur) out.push(cur);
+    cur = "";
+  };
+  for (let w of parts) {
+    while (w.length > maxChars) {
+      flush();
+      out.push(w.slice(0, maxChars));
+      w = w.slice(maxChars);
+    }
+    const glue = cur && !/[/-]$/.test(cur) ? " " : "";
+    if (cur && (cur + glue + w).length > maxChars) flush();
+    cur = cur ? cur + (/[/-]$/.test(cur) ? "" : " ") + w : w;
+  }
+  flush();
+  return out.length > lines ? [...out.slice(0, lines - 1), out.slice(lines - 1).join(" ")] : out;
+}
 const cut = (s: string, max: number) => (s.length > max ? `${s.slice(0, Math.max(1, max - 1))}…` : s);
 
 export interface QsRateRow {
@@ -131,8 +157,11 @@ export function QsRateColumns({
   const padL = 52, padR = 10, padT = 10;
   const n = rows.length;
   const slot = (W - padL - padR) / Math.max(1, n);
-  const tilt = slot < 70;
-  const padB = (tilt ? 78 : 50) + 18;
+  const tilt = v16() ? false : slot < 70;
+  // Version 16: names are wrapped, and the space under the columns grows with the longest name (never more than 6 lines), so no name is cut or runs into the next.
+  const wrapAt = Math.max(7, Math.floor(slot / 5.6));
+  const wrapped = v16() ? rows.map((r) => wrapLabel(r.label, wrapAt, 6)) : [];
+  const padB = v16() ? 34 + 13 * Math.max(1, ...wrapped.map((w) => w.length)) + 16 : (tilt ? 78 : 50) + 18;
   const ih = height - padT - padB;
   const bw = Math.min(88, slot * 0.7);
   const y = (p: number) => padT + ih - (p / 100) * ih;
@@ -209,7 +238,13 @@ export function QsRateColumns({
                   fill={qs.color.secondaryForeground}
                   transform={tilt ? `rotate(-35 ${cx} ${y(0) + 16})` : undefined}
                 >
-                  {cut(r.label, tilt ? 24 : Math.max(8, Math.floor(slot / 6.2)))}
+                  {v16()
+                    ? wrapped[i].map((ln, k) => (
+                        <tspan key={k} x={cx} dy={k === 0 ? 0 : 13}>
+                          {ln}
+                        </tspan>
+                      ))
+                    : cut(r.label, tilt ? 24 : Math.max(8, Math.floor(slot / 6.2)))}
                 </text>
               </g>
             );
@@ -493,6 +528,7 @@ export function QsMeasureBars({
   const bw = Math.min(72, slot * 0.6);
   const y = (v: number) => padT + ih - (Math.min(max, v) / (max || 1)) * ih;
   const { tip, on } = useTip(ref);
+  const [focus, setFocus] = useState<string | null>(null);
   return (
     <Box ref={ref} aria-label={label} role="group" sx={{ position: "relative" }}>
       <svg width={W} height={height} style={{ display: "block", maxWidth: "100%" }}>
@@ -524,6 +560,7 @@ export function QsMeasureBars({
                     tabIndex: 0,
                     "aria-label": `${r.label}: ${r.text}. Open the ${r.label} tab`,
                     style: { cursor: "pointer", outline: "none" },
+                    ...(v16() ? { onFocus: () => setFocus(r.label), onBlur: () => setFocus((f) => (f === r.label ? null : f)) } : {}),
                     onClick: () => onSelect(r.label),
                     onKeyDown: (e: React.KeyboardEvent) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -537,6 +574,9 @@ export function QsMeasureBars({
               {!v15() && <title>{`${r.label}: ${r.text}${onSelect ? " (click to open the tab)" : ""}`}</title>}
               <rect x={cx - slot / 2} y={padT} width={slot} height={ih} fill="transparent" />
               <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(0, y(0) - top)} fill={color} />
+              {v16() && focus === r.label && (
+                <rect x={cx - slot / 2 + 2} y={padT - 24} width={slot - 4} height={ih + 24 + 30} rx={4} fill="none" stroke={qs.meaning.main} strokeWidth={2} />
+              )}
               <text textAnchor="middle" fontSize={11} fill={qs.color.primaryForeground}>
                 <tspan x={cx} y={top - 16} fontWeight={700}>
                   {r.text.split(", ")[0]}

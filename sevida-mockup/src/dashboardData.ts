@@ -1,4 +1,5 @@
 // Numbers for the dashboards (checklist FR-701 to FR-710). Everything is worked out from the demo members, their results and the demo file statuses.
+import { countyOfMember, countyOptions, stateNameOf, stateOptions } from "./v16Data";
 import { getVersion } from "./version";
 import {
   AGE_RANGES,
@@ -24,7 +25,6 @@ import {
   a1cBandOf,
   ageAtYearEnd,
   ageBandsOf,
-  countyOf,
   dataFiles,
   fileRows,
   fmtDate,
@@ -38,7 +38,6 @@ import {
   memberStates,
   militaryOf,
   resultsFor,
-  stateName,
   tally,
 } from "./data";
 import type {
@@ -258,8 +257,8 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
       if (!inDays(latest, f.evFrom, f.evTo)) return false;
     }
     if (f.a1c && a1cBandOf(m, f.year) !== f.a1c) return false;
-    if (f.state && stateName(m.state) !== f.state) return false;
-    if (f.county && countyOf(m) !== f.county) return false;
+    if (f.state && stateNameOf(m) !== f.state) return false;
+    if (f.county && countyOfMember(m) !== f.county) return false;
     if (f.military && (v3() ? militaryV3(m) : militaryOf(m)) !== f.military)
       return false;
     if (f.ageGroup.length && !f.ageGroup.includes(ageGroupOf(m, f.year, code)))
@@ -318,8 +317,8 @@ export function facetOptions(): FacetOptions {
     provider: sortedSet(allMembers().map(providerOf)),
     race: v12() ? RACE_V12 : sortedSet([...allMembers().map(raceOf), ...(v3() ? [NONE] : [])]),
     ethnicity: v12() ? ETHNICITY_V12 : sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
-    state: memberStates,
-    county: memberCounties,
+    state: stateOptions(memberStates),
+    county: countyOptions(memberCounties),
     military: v3() ? militaryOptions() : MILITARY_VALUES,
     openGaps: OPEN_GAP_VALUES,
     a1c: A1C_VALUES,

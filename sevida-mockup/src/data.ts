@@ -1916,7 +1916,9 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
   const Y_END = new Date(year, 11, 31);
   const age = ageAtYearEnd(m.dob, year);
   const [lo, hi] = R.ages[code];
-  const f = m.gender === 'female';
+  // Version 16: a member whose sex is not on file (shown as Unknown) is not counted in the two women's measures. The specification names women.
+  const sexNotOnFile = getVersion() >= 16 && (code === 'BCS-E' || code === 'CCS-E') && (['M1010', 'M1060', 'M1011', 'M1303'].includes(m.id) || hashOf(`${m.id}-sexunk`) % 25 === 0);
+  const f = m.gender === 'female' && !sexNotOnFile;
   const plan = [
     { label: def.checks.age, source: def.checks.ageSource },
     {
@@ -1957,7 +1959,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
           ? 'No diabetes on record'
           : null;
   if (why) {
-    add(0, 'fail', `${f ? 'Female' : 'Male'}, age ${age}. ${why}`);
+    add(0, 'fail', `${f ? 'Female' : sexNotOnFile ? 'Sex not on file' : 'Male'}, age ${age}. ${why}`);
     return finish('Not eligible', why);
   }
   const dx = m.events.filter((e) => e.tag === 'diabetes').sort((x, y) => x.date.getTime() - y.date.getTime());

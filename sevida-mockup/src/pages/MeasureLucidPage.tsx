@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { getVersion } from "../version";
+import { runStamp } from "./dashboardV12Bits";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Box, InputAdornment, Typography } from "@mui/material";
@@ -603,6 +605,8 @@ interface RunRow {
 
 export function Admin({ code }: { code: MeasureCode }) {
   const short = gapShort(code);
+  // Version 16 (review): the run history is written like the headers: the run date as "16th Oct, 2026 @ 2:00 AM CST", "1st Jan 2026", the rate with two decimals.
+  const v16 = getVersion() >= 16;
   const { choices } = useRun();
   const rows = useMemo<RunRow[]>(() => {
     const keep = getAsOfStep();
@@ -616,8 +620,8 @@ export function Admin({ code }: { code: MeasureCode }) {
       const prev = out[i + 1];
       return {
         id: r.id,
-        start: fmtDate(new Date(YEAR, 0, 1)),
-        end: fmtDate(new Date(YEAR, 11, 31)),
+        start: v16 ? ordDate(new Date(YEAR, 0, 1)) : fmtDate(new Date(YEAR, 0, 1)),
+        end: v16 ? ordDate(new Date(YEAR, 11, 31)) : fmtDate(new Date(YEAR, 11, 31)),
         runAt: r.at,
         evaluated: everyone.length,
         initial: t.eligible,
@@ -644,13 +648,13 @@ export function Admin({ code }: { code: MeasureCode }) {
             { key: "run", header: "Run #", value: (r) => r.runAt.getTime(), render: (r) => r.id, nowrap: true },
             { key: "start", header: "Measurement Start", value: (r) => r.start, nowrap: true },
             { key: "end", header: "Measurement End", value: (r) => r.end, nowrap: true },
-            { key: "at", header: "Run Date/Time", value: (r) => r.runAt.getTime(), render: (r) => fmtRunTime(r.runAt), nowrap: true },
+            { key: "at", header: "Run Date/Time", value: (r) => r.runAt.getTime(), render: (r) => (v16 ? runStamp(r.runAt) : fmtRunTime(r.runAt)), nowrap: true },
             { key: "ev", header: "Members Evaluated", value: (r) => r.evaluated, render: (r) => n0(r.evaluated), align: "right" },
             { key: "init", header: "Initial Population", value: (r) => r.initial, render: (r) => n0(r.initial), align: "right" },
             { key: "den", header: "Total Eligible", value: (r) => r.den, render: (r) => n0(r.den), align: "right" },
             { key: "exc", header: "Excluded", value: (r) => r.excluded, render: (r) => n0(r.excluded), align: "right" },
             { key: "num", header: "Numerator (Closed)", value: (r) => r.num, render: (r) => n0(r.num), align: "right" },
-            { key: "rate", header: `${short} Rate (%)`, value: (r) => r.rate, render: (r) => r.rate.toFixed(1), align: "right" },
+            { key: "rate", header: `${short} Rate (%)`, value: (r) => r.rate, render: (r) => r.rate.toFixed(v16 ? 2 : 1), align: "right" },
             {
               key: "cchg",
               header: "Closed Δ",

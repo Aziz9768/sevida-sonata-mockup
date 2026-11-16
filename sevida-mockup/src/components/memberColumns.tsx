@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { clinicOf, countyOfMember, countyOptions, stateNameOf, stateOptions } from "../v16Data";
 import type { ReactNode } from "react";
 import { Stack, Typography } from "@mui/material";
 import { StatusChip, Term } from "sevida-ui";
@@ -37,10 +38,8 @@ import {
   spokenLanguageOf,
   stateLabel,
   stateTone,
-  countyOf,
   militaryOf,
   memberStates,
-  stateName,
   memberCounties,
   raceGroupOf,
   ethnicityGroupOf,
@@ -323,24 +322,24 @@ export function memberFacets<T>(
       key: "state",
       header: "State",
       help: "The state in the member's mailing address, from the member file (State column).",
-      accessor: (r) => stateName(of(r).state),
+      accessor: (r) => stateNameOf(of(r)),
       sortable: true,
       nowrap: true,
       hideBelow: "lg",
       // Off by default so the table stays short enough to read a row without scrolling sideways. Switch on in Columns.
       defaultHidden: true,
-      filter: { type: "select", options: opt(memberStates) },
+      filter: { type: "select", options: opt(stateOptions(memberStates)) },
     },
     county: {
       key: "county",
       header: "County",
       help: "Proposed new column of the member file. The ingestion spec has no County field yet, so it has to be added (or looked up from the Zip code). The values here are sample data.",
-      accessor: (r) => countyOf(of(r)),
+      accessor: (r) => countyOfMember(of(r)),
       sortable: true,
       nowrap: true,
       hideBelow: "lg",
       defaultHidden: true,
-      filter: { type: "select", options: opt(memberCounties) },
+      filter: { type: "select", options: opt(countyOptions(memberCounties)) },
     },
     military: {
       key: "military",
@@ -1662,8 +1661,8 @@ export function useMemberTableColumns(
           key: "clinic",
           header: "Clinic",
           help: "The clinic of the member's primary care manager." + sample,
-          accessor: (m) => primaryCareOf(m)?.p.org ?? null,
-          render: (m) => primaryCareOf(m)?.p.org ?? "–",
+          accessor: (m) => (clinicOf(m) === "–" ? null : clinicOf(m)),
+          render: (m) => clinicOf(m),
           sortable: true,
           defaultHidden: true,
           group: "Care Team & Engagement",

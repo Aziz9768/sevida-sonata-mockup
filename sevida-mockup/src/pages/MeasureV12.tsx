@@ -14,7 +14,7 @@ import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, gapShort, militaryOptions } from 
 import { ordDate } from "./QuickSightDashboardPage";
 import { useRun } from "../runs";
 import { getVersion } from "../version";
-import { Fact, KpiTile, PcmFilter, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, whiteAll } from "./dashboardV12Bits";
+import { FailedRunNotice, Fact, KpiTile, PcmFilter, RunPickerFact, boxSx, changeOf, controlsBox, facts, n0, pcmText, pct2, runStamp, share, useNextUpdate, whiteAll } from "./dashboardV12Bits";
 import type { Group } from "./dashboardV12Bits";
 
 /**
@@ -116,6 +116,9 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
   const v13 = getVersion() >= 13;
   // Version 15 = Version 14 plus Sam's second round of feedback (see the notes of Version 15).
   const v15 = getVersion() >= 15;
+  // Version 16 (review against the board): run picker in the header, the board's wording for the Top n titles, the specification line in About This Measure.
+  const v16 = getVersion() >= 16;
+  const nextUpdate = useNextUpdate(run.next);
   const [tf, setTf] = useState<Timeframe>("annual");
   // Top n and Minimum Number of Members are typed. A wrong entry keeps the last good value in use and shows a message under the box.
   const [topText, setTopText] = useState(String(DEFAULT_TOP_N));
@@ -272,7 +275,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         <Box sx={boxSx}>
           <QsText>
             <Box sx={facts}>
-              <Fact label="MEASUREMENT YEAR" value={String(YEAR)} />
+              <Fact label={v16 ? "HEDIS Measure Year" : "MEASUREMENT YEAR"} value={String(YEAR)} />
               <Fact label="Measurement Start" value={ordDate(new Date(YEAR, 0, 1))} />
               <Fact label="Measurement End" value={ordDate(new Date(YEAR, 11, 31))} />
             </Box>
@@ -281,12 +284,14 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         <Box sx={boxSx}>
           <QsText>
             <Box sx={facts}>
-              <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />
-              <Fact label="Dashboard Next Update" value={runStamp(run.next)} />
+              {v16 ? <RunPickerFact /> : <Fact label="Data as Of (Run Date)" value={runStamp(selectedRun.at)} />}
+              <Fact label="Dashboard Next Update" value={runStamp(v16 ? nextUpdate : run.next)} />
             </Box>
           </QsText>
         </Box>
       </Box>
+
+      {v16 && <FailedRunNotice at={run.next} />}
 
       <Box sx={{ p: `${qs.gap}px`, pb: 0 }}>
         <Box
@@ -301,6 +306,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           <summary>About This Measure</summary>
           <QsText>
             <ul>
+              {v16 && <li>Specification: NCQA HEDIS MY {YEAR} · Value sets: version {YEAR}-07</li>}
               {aboutBullets(code).map((b) => (
                 <li key={b}>{b}</li>
               ))}
@@ -511,7 +517,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
             </Box>
           )}
         </QsTile>
-        <QsTile cols={18} title={`${nLabel} Primary Care Managers With Members Having Most Open Gaps`}>
+        <QsTile cols={18} title={v16 ? `${nLabel} Primary Care Managers With Most Open Gaps` : `${nLabel} Primary Care Managers With Members Having Most Open Gaps`}>
           <Box sx={{ maxHeight: 520, overflow: "auto" }}>
             <QsRateBars label={`${nLabel} primary care managers with the most open gaps`} first="open" rows={topOpen} dividerAt={unassigned ? [rankedOpen.length] : undefined} padRows={rowsMax - topOpen.length} />
           </Box>

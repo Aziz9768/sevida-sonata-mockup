@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { AutocompleteField, InfoTip, tokens } from "sevida-ui";
+import { AutocompleteField, InfoBanner, InfoTip, SelectField, tokens } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
 import { closedColor, openColor } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
@@ -11,6 +11,7 @@ import { getVersion } from "../version";
 import { NO_PCP } from "../data";
 import type { MeasureState } from "../data";
 import { PCMS, pcmByName } from "../v7Data";
+import { useFailedLatestDemo, useRun } from "../runs";
 
 /**
  * Version 12 (Balsamiq board, Analytics - Quality Measures): the pieces the Overview and the measure page share.
@@ -144,6 +145,46 @@ export const Fact = ({ label, value }: { label: string; value: string }) => (
     {value}
   </div>
 );
+
+/**
+ * Version 16: the Data as of (Run Date) fact is a picker, newest run first. A failed run publishes nothing, so it is not in the list.
+ * Choosing a run changes every number on the page, because the numbers follow the run (see runs.tsx).
+ */
+export function RunPickerFact() {
+  const { choices, latest, run, setRunId } = useRun();
+  return (
+    <div style={{ minWidth: 300 }}>
+      <Box sx={whiteAll}>
+        <SelectField
+          label="Data as of (Run Date)"
+          value={run.id}
+          onChange={setRunId}
+          options={choices.map((r) => ({ value: r.id, label: `${runStamp(r.at)}${r.rerunOf ? " (re-run)" : ""}${r.id === latest.id ? " (latest)" : ""}` }))}
+        />
+      </Box>
+    </div>
+  );
+}
+
+/** Version 16: when the newest nightly run failed, the header says so and which results are shown. Only the Version menu demo switch turns this on. */
+export function FailedRunNotice({ at }: { at: Date }) {
+  const on = useFailedLatestDemo();
+  const { isLatest } = useRun();
+  if (!on || !isLatest) return null;
+  return (
+    <Box sx={{ px: `${qs.gap}px`, pt: `${qs.gap}px` }}>
+      <InfoBanner tone="warning" title={`The ${runStamp(at)} run did not finish`}>
+        Showing the results from the last complete run.
+      </InfoBanner>
+    </Box>
+  );
+}
+
+/** The next update. When the newest run failed, the next try is the night after. */
+export const useNextUpdate = (next: Date) => {
+  const failed = useFailedLatestDemo();
+  return failed ? new Date(next.getFullYear(), next.getMonth(), next.getDate() + 1, next.getHours(), next.getMinutes()) : next;
+};
 
 /* ------------------------------------------------------------------ KPI tile */
 

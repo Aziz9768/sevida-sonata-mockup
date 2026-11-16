@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -298,10 +298,27 @@ export const VERSIONS: VersionInfo[] = [
       "GSD: one gap per member, open for one of two reasons, decided by the latest HbA1c (from the team's Slack thread on LPP-16462). The Open Gaps Count tile on the GSD tab shows two lines under the number: 'HbA1c 8 to 9' and 'HbA1c above 9, or no test this year' (they add up to the tile), and the Closed Gaps Count tile shows 'HbA1c below 8' (Sam: 'indicate what is opening/closing the gap'). To confirm: the team is waiting for Allie Grace's clinical answer, and the back end may count GSD as two gaps (<8 and >9). Looking back at any past measurement year (Sam's idea) is not built.",
     ],
   },
+  {
+    id: 16,
+    name: "Version 16 - Review fixes",
+    date: "2026-11-16",
+    summary: "Version 15 after a full review of the Overview and measure tabs against the Balsamiq board and Jira LPP-16051. Versions 15 and older stay exactly as they were.",
+    changes: [
+      "Everything in Version 15 stays. Versions 15 and older are as they were. Only the Analytics dashboards (and the sample members they read) change.",
+      "Overview table: '# Open Gaps', 'Gaps' and '# Closed Gaps (Measure Year)' now follow the measure run, so the table adds up to the tiles above it.",
+      "Header: the run date is a picker ('Data as of (Run Date)') on the Overview and on every measure tab, newest run first. The run text in the top bar is hidden on dashboard pages. If the newest nightly run failed, a small notice says so and the results are the last complete run (switch 'Show a failed latest run' in the Version menu to see it).",
+      "Sample data: five 'Sample ...' clinics tied to the member's PCM and about a dozen places in IL, IN, MO and IA with the matching county, the same on every page. Open and closed gap counts do not change.",
+      "Overview table: Age is the member's age today (as on the Member page). Age Group sorts youngest first. Member Name stays in view when the table scrolls sideways. 'HEDIS MEASURE YEAR' and 'MEASUREMENT YEAR' are both 'HEDIS Measure Year'.",
+      "BCS and CCS count Female members only (11 of the 17 members with unknown sex drop out of the two measures, as the specification says).",
+      "Measure tabs: Top n titles use the board's wording ('... Primary Care Managers With Most Open Gaps'). Long names on the Race and Military Status charts wrap onto as many lines as they need (up to 5 on a narrow screen) instead of being cut. About This Measure starts with 'Specification: NCQA HEDIS MY 2026 · Value sets: version 2026-07'. Bars can be reached with the keyboard and show a focus ring.",
+      "Navigation: the breadcrumb is 'Analytics / BCS' (no 'Overview' step). The chosen tab is kept in the address (#/dashboards?m=BCS), so refresh and the Back button work. Primary Care Manager and Military Status stay when you move between tabs, and Clear All clears them everywhere.",
+      "HEDIS Inputs and DCS: sample dates are on or before the run date (16 Oct 2026, 2:00 AM). Admin: the run history uses the same style as the headers (two decimals, '16th Oct, 2026 @ 2:00 AM CST', '1st Jan 2026').",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 15;
+export const LATEST_VERSION: VersionId = 16;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>
@@ -368,7 +385,7 @@ export const fmtVersionDate = (iso: string) => {
 };
 
 /** The Version dropdown in the header. */
-export function VersionPicker() {
+export function VersionPicker({ footer }: { footer?: ReactNode }) {
   const { version, setVersion } = useVersion();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const narrow = useMediaQuery("(max-width:599.95px)");
@@ -414,6 +431,7 @@ export function VersionPicker() {
             />
           </MenuItem>
         ))}
+        {version.id >= 16 ? footer : null}
       </Menu>
     </>
   );

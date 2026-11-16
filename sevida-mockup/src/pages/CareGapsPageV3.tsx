@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { clinicOf, countyOfMember, stateNameOf } from "../v16Data";
 import { useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
@@ -20,7 +21,7 @@ import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
 import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
-import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, primaryCareOf, stateName, countyOf } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, primaryCareOf } from "../data";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -538,8 +539,8 @@ export function CareGapsPageV3() {
         base(g("military"), { help: "The member's military status. Madigan does not send this yet, so a dash means no data.", group: "Demographics" }),
         base(g("race"), { group: "Demographics" }),
         base(g("ethnicity"), { group: "Demographics" }),
-        { key: "state", header: "State", help: "The state the member lives in, from the member file.", accessor: (r) => stateName(r.m.state), sortable: true, defaultHidden: true, group: "Demographics", ...none },
-        { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOf(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
+        { key: "state", header: "State", help: "The state the member lives in, from the member file.", accessor: (r) => stateNameOf(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
+        { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOfMember(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
         base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap", nowrap: true }),
         base(g("gapStatus"), { group: "Care Gaps" }),
@@ -565,7 +566,7 @@ export function CareGapsPageV3() {
         base(g("missing"), { header: "Recommended Action", group: "Care Gaps", help: "Recommendation on next steps to close the gap." }),
         // ---- Care Team & Engagement
         { key: "pcm", header: "Primary Care Manager", accessor: (r) => pcm(r), render: (r) => pcm(r) ?? "–", sortable: true, group: "Care Team & Engagement", ...none },
-        { key: "clinic", header: "Clinic", help: "The clinic of the member's primary care manager." + sample, accessor: (r) => primaryCareOf(r.m)?.p.org ?? null, render: (r) => primaryCareOf(r.m)?.p.org ?? "–", sortable: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
+        { key: "clinic", header: "Clinic", help: "The clinic of the member's primary care manager." + sample, accessor: (r) => (clinicOf(r.m) === "–" ? null : clinicOf(r.m)), render: (r) => clinicOf(r.m), sortable: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
         { key: "lastVisit", header: "Last Visit", help: "Date of the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
         { key: "nextAppt", header: "Next Appointment", help: "Date of the member's next scheduled visit. Madigan does not send appointments yet.", accessor: (r) => r.g.nextAppointment, render: (r) => (r.g.nextAppointment ? fmtDate(r.g.nextAppointment) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Team & Engagement", ...none },
         { key: "outreachStatus", header: "Outreach Status", help: "Needs Madigan input.", accessor: () => null, render: () => "–", defaultHidden: true, group: "Care Team & Engagement", ...none },

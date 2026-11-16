@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cityOf, countyOfMember, stateNameOf, zipOf } from "../v16Data";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useRole } from "../roles";
 import {
@@ -65,14 +66,12 @@ import {
   NEWEST_FILE,
   ageAtYearEnd,
   continuouslyEnrolled,
-  countyOf,
   currentPayer,
   ethnicityNames,
   fmtDate,
   fmtEnd,
   DEMO_NOW,
   dataFiles,
-  stateName,
   enrollmentStatusOf,
   languageNames,
   measures,
@@ -623,7 +622,7 @@ function ProfileTab({ m }: { m: Member }) {
             },
             {
               label: "Address",
-              value: `${m.street}, ${m.city}, ${stateName(m.state)} ${m.zip}`,
+              value: `${m.street}, ${cityOf(m)}, ${stateNameOf(m)} ${zipOf(m)}`,
               full: true,
             },
             {
@@ -632,7 +631,7 @@ function ProfileTab({ m }: { m: Member }) {
             },
             {
               label: "County (proposed field)",
-              value: countyOf(m),
+              value: countyOfMember(m),
             },
             {
               label: "Military status (proposed field)",

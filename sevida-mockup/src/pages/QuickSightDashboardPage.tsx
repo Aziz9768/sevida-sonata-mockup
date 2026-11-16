@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { countyOfMember, stateNameOf } from "../v16Data";
 import { getVersion, useVersion } from "../version";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -35,7 +36,6 @@ import type { QsBar, QsCol } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
 import {
   a1cBandOf,
-  countyOf,
   militaryOf,
   dataFiles,
   ageAtYearEnd,
@@ -50,7 +50,6 @@ import {
   resultsFor,
   continuouslyEnrolled,
   stateLabel,
-  stateName,
   tally,
   YEARS,
   getAsOfStep,
@@ -2559,8 +2558,8 @@ function Details({
       },
       nowrap: true,
     },
-    { key: "state", header: FL.state, value: (m) => stateName(m.state) },
-    { key: "county", header: LABEL.county, value: countyOf, nowrap: true },
+    { key: "state", header: FL.state, value: stateNameOf },
+    { key: "county", header: LABEL.county, value: countyOfMember, nowrap: true },
     {
       key: "military",
       header: LABEL.military,
