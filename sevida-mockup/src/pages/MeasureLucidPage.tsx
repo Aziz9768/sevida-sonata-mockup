@@ -634,7 +634,8 @@ export function Admin({ code, all = false }: { code: MeasureCode; all?: boolean 
           end: v16 ? ordDate(new Date(YEAR, 11, 31)) : fmtDate(new Date(YEAR, 11, 31)),
           runAt: r.at,
           evaluated: everyone.length,
-          initial: t.eligible,
+          // Version 16: Initial Population = Eligible + Excluded, as on the measure pages (members marked Review are in no count).
+          initial: v16 ? t.denominator + t.excluded : t.eligible,
           excluded: t.excluded,
           num: t.met,
           den: t.denominator,

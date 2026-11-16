@@ -317,6 +317,7 @@ export const VERSIONS: VersionInfo[] = [
       "Measure pages: the Age Range filter uses the age on 31 Dec of the measurement year, like Min / Max and Gaps By Age, so every member in the numbers can be reached by an Age Range choice (BCS: 10 women who are 39 now and turn 40 this year were missing).",
       "Measure pages: when no one is eligible for the chosen filters the Measure Rate tile says N/A (with 'No eligible members for these filters' and no arrow) instead of 0.00%.",
       "Measure pages: Age Range, Race and Ethnicity show the first chosen value and '+2' while closed, so the filter row keeps one height. A stray 'All' no longer sits under a chosen value. (The sevida-ui AutocompleteField got one optional prop, limitTags; every other screen is unchanged.)",
+      "Admin: Initial Population is Eligible plus Excluded, the same as the measure pages (it counted members marked Review, so GSD showed 324 against 317 and the row did not add up).",
     ],
   },
 ];
