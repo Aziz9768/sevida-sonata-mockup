@@ -434,11 +434,20 @@ export const medRows = (m: Member): MedRow[] => {
   ): MedRow => {
     const seed = h(`${m.id}${key}`);
     const total = 1 + (seed % 4);
+    // Version 16 (LPP-16160): the name carries strength and form ("Metformin 500 mg tablet"); about one fill in four is coded in RxNorm, the rest in NDC;
+    // the status shows all three values of the ticket (Active, Discontinued, Inactive).
+    const v16 = getVersion() >= 16;
+    if (v16 && /\d\s?(mg|mcg|IU)$/.test(name)) name = `${name} tablet`;
+    const RXNORM: Record<string, string> = { "Metformin 500 mg tablet": "861004", "Lisinopril 10 mg tablet": "314076", "Atorvastatin 20 mg tablet": "617310" };
+    if (v16 && RXNORM[name] && seed % 4 === 0) {
+      codeSystem = "RxNorm";
+      code = RXNORM[name];
+    }
     return {
       key,
       date,
       name,
-      status: DEMO_NOW.getTime() - date.getTime() <= 100 * DAY ? "Active" : "Inactive",
+      status: v16 && seed % 7 === 0 ? "Discontinued" : DEMO_NOW.getTime() - date.getTime() <= 100 * DAY ? "Active" : "Inactive",
       quantity: `${days * (/inhaler|drops|suspension/i.test(name) ? 1 : 2)} ${/tablet/i.test(name) ? "tablets" : /capsule/i.test(name) ? "capsules" : /mL/.test(name) ? "mL" : "doses"}`,
       days,
       code: `${codeSystem}: ${code}`,

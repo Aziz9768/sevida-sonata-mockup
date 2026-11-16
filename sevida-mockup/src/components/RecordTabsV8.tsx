@@ -783,7 +783,8 @@ function LabsV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ medications */
 function MedicationsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof medRows>[number];
-  const rows = useMemo(() => medRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16160): Dispensed Date, most recent first; the same date: Medication A to Z.
+  const rows = useMemo(() => medRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.name.localeCompare(b.name) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Dispensed Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, alwaysVisible: true, render: (r) => day(r.date) }),
     col<R>("name", "Name", (r) => r.name, { s: true, group: "Clinical", sortable: true, alwaysVisible: true, width: 280 }),
@@ -824,29 +825,62 @@ function MedicationsV8({ m }: { m: Member }) {
     ],
     ["pharmacy", "refills"],
   );
-  // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel.
+  const M16: Record<string, string> = {
+    name: "The name of the medication dispensed.",
+    date: "The date the pharmacy dispensed the medication to the member.",
+    strength: "How much of the active ingredient is in one unit of the medication, for example 500 mg.",
+    dose: "How much of the medication the member takes at one time, for example 1 tablet.",
+    qty: "The amount of medication dispensed in this fill.",
+    days: "The number of days this fill is expected to last.",
+    mcode: "The drug code for this medication, and the coding system it comes from (RxNorm or NDC).",
+    status: "Whether the member is currently on this medication, as reported by the source: Active (currently taking), Discontinued (stopped by a provider) or Inactive (no longer taking).",
+    provider: "The provider who prescribed the medication.",
+    source: "The system or data feed this medication record was received from.",
+    pharmacy: "The pharmacy that dispensed the medication.",
+    pharmacyNpi: "The NPI of the pharmacy.",
+    prescriberNpi: "The NPI of the provider who prescribed the medication.",
+    prescriberName: "The name of the provider who prescribed the medication.",
+    refills: "The number of refills left on this prescription, out of the total refills prescribed.",
+    created: "The date this record was first received.",
+    updated: "The date this record was last changed.",
+  };
+  // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel (no Related Care Gap).
   const doseOf = (r: R) => (/inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe|insulin/i.test(r.name) ? "1 injection" : "1 tablet");
-  const prescriberOf = (r: R) => providers.find((x) => x.npi === r.prescriberNpi)?.name ?? r.provider;
-  const cols16 = ticket16<R>(cols12, {
-    main: (c) =>
-      mapKey(c, "mcode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })).flatMap((x) =>
-        x.key === "strength"
-          ? [
-              col<R>("strength", "Strength", (r) => strengthOf(r.name), { nowrap: true }),
-              col<R>("dose", "Dose", (r) => doseOf(r), { nowrap: true }),
-            ]
-          : [x],
-      ),
-    hidden: (c) => [
-      ...c.filter((x) => x.key === "measure"),
-      { ...columns.find((x) => x.key === "pharmacy")!, header: "Pharmacy Name" },
-      columns.find((x) => x.key === "pharmacyNpi")!,
-      col<R>("prescriberNpi", "Prescriber NPI", (r) => r.prescriberNpi, { nowrap: true }),
-      col<R>("prescriberName", "Prescriber Name", (r) => prescriberOf(r), { sortable: true }),
-      { ...columns.find((x) => x.key === "refills")!, header: "Refills Remaining" },
-    ],
-  });
-  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
+  const cols16 = v16()
+    ? ticket16<R>(cols12, {
+        main: (c) =>
+          mapKey(
+            mapKey(c, "mcode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })),
+            "name",
+            // Name, strength and form, at most 2 lines, then "…" with the full text in a tooltip.
+            (x) => ({
+              ...x,
+              render: (r: R) => (
+                <Tooltip title={r.name} arrow>
+                  <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {r.name}
+                  </Box>
+                </Tooltip>
+              ),
+            }),
+          ).flatMap((x) =>
+            x.key === "strength"
+              ? [
+                  col<R>("strength", "Strength", (r) => strengthOf(r.name), { nowrap: true }),
+                  col<R>("dose", "Dose", (r) => doseOf(r), { nowrap: true }),
+                ]
+              : [x],
+          ),
+        hidden: () => [
+          { ...columns.find((x) => x.key === "pharmacy")!, header: "Pharmacy Name" },
+          columns.find((x) => x.key === "pharmacyNpi")!,
+          col<R>("prescriberNpi", "Prescriber Provider NPI", (r) => r.prescriberNpi, { nowrap: true }),
+          col<R>("prescriberName", "Prescriber Name", (r) => r.provider, { sortable: true }),
+          { ...columns.find((x) => x.key === "refills")!, header: "Refills Remaining" },
+        ],
+      }).map((c) => (M16[c.key] ? { ...c, help: M16[c.key] } : c))
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
   return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
 }
 
