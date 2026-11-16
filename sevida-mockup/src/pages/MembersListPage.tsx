@@ -73,7 +73,9 @@ export function MembersListPage() {
         applyFirst={v11}
         columnsPanel={v11 ? { tableOrder: true, search: true, clearSelections: v16 } : undefined}
         searchPlaceholder={
-          v11
+          v16
+            ? "Search by Member Name or Member ID"
+            : v11
             ? "Search by Member Name or Tricare ID"
             : v3
             ? "Search by Member Name or Tricare ID…"

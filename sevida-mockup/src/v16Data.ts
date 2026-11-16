@@ -43,6 +43,14 @@ const ALL_PLACES = CLINICS.flatMap((c) => c.places);
 
 const v16 = () => getVersion() >= 16;
 
+/** LPP-16069: a member name is written "First MI Last" (Jane M Doe). The sample members have no middle name, so a letter is made up (the same one every time). */
+export function displayName(m: { id: string; name: string }): string {
+  if (!v16()) return m.name;
+  const [first, ...rest] = m.name.split(" ");
+  if (rest.length === 0) return m.name;
+  return `${first} ${"ABCDEFGHJKLMNPRSTW"[hashOf(`${m.id}-mi`) % 18]} ${rest.join(" ")}`;
+}
+
 /**
  * The primary care manager of a member as a person with a name and an NPI. From Version 16 it is the same manager the dashboards and the member
  * header show (see pcmOf); before that it is the provider from the member's file, as it always was.

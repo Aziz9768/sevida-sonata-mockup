@@ -19,7 +19,7 @@ import {
 } from "../v3Data";
 import { Field } from "./Field";
 import { MemberIdsModalV3 } from "./MemberIdsV3";
-import { clinicOf } from "../v16Data";
+import { clinicOf, displayName } from "../v16Data";
 import { pcmOf } from "../v7Data";
 
 /**
@@ -71,10 +71,10 @@ export function MemberHeaderV4({
           <Typography variant="h6" component="h1" sx={{ overflowWrap: "anywhere" }}>
             {nameTo ? (
               <Link component={RouterLink} to={nameTo} variant="inherit" underline="hover" color="secondary">
-                {m.name}
+                {displayName(m)}
               </Link>
             ) : (
-              m.name
+              displayName(m)
             )}
           </Typography>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>

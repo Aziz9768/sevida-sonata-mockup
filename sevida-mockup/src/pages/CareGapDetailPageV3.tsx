@@ -1,8 +1,8 @@
 import { getVersion, useVersion } from "../version";
-import { pcmPerson } from "../v16Data";
+import { displayName, pcmPerson } from "../v16Data";
 import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import {
   Button,
   Card,
@@ -248,7 +248,35 @@ function OverviewV12({ g }: { g: GapView }) {
   const others = openOf(g.m).filter((x) => x.def.code !== code);
   const left = code === "GSD" ? V11_LEFT_GSD : V3_LEFT[code];
   const who = code === "GSD" ? V11_WHO_GSD : V3_WHO[code];
+  // Version 16 (LPP-16227): a Gap Summary table (Status, Priority, Gap Identified Date, Due Date, Days Remaining) opens the Overview.
+  const summary =
+    getVersion() >= 16 ? (
+      <Card title="Gap Summary">
+        <Table size="small" aria-label="Gap Summary">
+          <TableHead>
+            <TableRow>
+              {["Status", "Priority", "Gap Identified Date", "Due Date", "Days Remaining"].map((h) => (
+                <TableCell key={h} sx={{ fontWeight: 700 }}>
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            <TableRow>
+              <TableCell>{excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}</TableCell>
+              <TableCell>{gapPriority(g) ?? "N/A"}</TableCell>
+              <TableCell>{fmtDate(g.identified)}</TableCell>
+              <TableCell>{g.status === "Open" ? fmtDate(DUE) : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
+    ) : null;
   return (
+    <Stack spacing={2}>
+      {summary}
     <Card title={excluded ? "Why the Member Is Excluded" : closed ? "Why the Gap Is Closed" : "Why the Gap Is Open"}>
       <Stack spacing={2.5}>
         <Stack spacing={0.5}>
@@ -305,6 +333,7 @@ function OverviewV12({ g }: { g: GapView }) {
         </Stack>
       </Stack>
     </Card>
+    </Stack>
   );
 }
 
@@ -846,7 +875,7 @@ export function CareGapDetailPageV3() {
     ? [
         { label: "Care Gaps", href: "/care-gaps" },
         { label: def ? label : "Not found", href: "/care-gaps" },
-        ...(m ? [{ label: m.name, href: `/members/${m.id}` }] : []),
+        ...(m ? [{ label: displayName(m), href: `/members/${m.id}` }] : []),
         { label: tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
       ]
     : v8
@@ -908,12 +937,13 @@ export function CareGapDetailPageV3() {
           // LPP-16153: "Care Gap Name: Member Name" and the Open / Closed label (same green and red everywhere).
           <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-              {label}: {m.name}
+              {label}: {displayName(m)}
             </Typography>
             {excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}
           </Stack>
         )}
         <MemberHeader m={m} year={MY} nameTo={`/members/${m.id}`} />
+        {!v16 && (
         <Card title="Care Gap Summary">
           <Box
             sx={{
@@ -977,6 +1007,7 @@ export function CareGapDetailPageV3() {
             </Field>
           </Box>
         </Card>
+        )}
         <Tabs
           ariaLabel="Care gap sections"
           value={tab}

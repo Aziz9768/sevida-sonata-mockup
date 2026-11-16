@@ -181,6 +181,8 @@ const withText = (code: string, text: string) => (code === DASH || !text ? code 
  * Columns panel (off). Every tab also offers Created On, Created By and Last Updated there, and every column has an info (i) text.
  */
 const v16 = () => getVersion() >= 16;
+/** Version 16: change one column of the default table by its key. */
+const mapKey = <T,>(c: Column<T>[], key: string, f: (x: Column<T>) => Column<T>): Column<T>[] => c.map((x) => (x.key === key ? f(x) : x));
 const HELP16: Record<string, string> = {
   Provider: "The provider on this record, written Last, First credentials. A dash means the source did not send one.",
   Source: "The system the record came from.",
@@ -393,8 +395,16 @@ function ClaimsV8({ m }: { m: Member }) {
           by("services"),
           { ...by("from"), header: "Service Start Date" },
           col<R>("to", "Service End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
-          by("code"),
-          by("system"),
+          // LPP-16156: the Code is the ICD-10-CM diagnosis code or codes, one per line with the description; with no diagnosis it is the service code.
+          col<R>("code", "Code", (r) => (r.diagnoses.length ? r.diagnoses.map((d) => d.code) : r.lines.map((l) => l.code)), {
+            s: true,
+            width: 260,
+            render: (r) => lines(r.diagnoses.length ? r.diagnoses.map((d) => `${d.code} - ${d.text}`) : r.lines.map((l) => `${l.code} - ${l.text}`)),
+          }),
+          col<R>("system", "Code System", (r) => (r.diagnoses.length ? "ICD-10-CM" : r.lines.map((l) => l.system)), {
+            width: 120,
+            render: (r) => (r.diagnoses.length ? "ICD-10-CM" : lines(r.lines.map((l) => l.system))),
+          }),
           col<R>("ctype", "Claim Type", (r) => r.type, {
             sortable: true,
             nowrap: true,
@@ -508,7 +518,14 @@ function EncountersV8({ m }: { m: Member }) {
       }),
     ],
   );
-  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16158): the Clinic / Facility is the member's own clinic (the one in the member header).
+  const cols = v16()
+    ? ticket16<R>(cols12, {
+        main: (c) => mapKey(c, "facility", (x) => ({ ...x, accessor: (r: R) => (/telehealth/i.test(r.place) ? r.place : clinicOf(m)) })),
+      })
+    : v12()
+      ? cols12
+      : colsOld;
   return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -553,7 +570,12 @@ function ImmunizationsV8({ m }: { m: Member }) {
     ],
     ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
   );
-  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16360): the code is written with its system, "CVX: 208".
+  const cols = v16()
+    ? ticket16<R>(cols12, { main: (c) => mapKey(c, "ccode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code)}: ${codeOf(r.code)}` })) })
+    : v12()
+      ? cols12
+      : colsOld;
   return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
@@ -639,7 +661,16 @@ function LabsV8({ m }: { m: Member }) {
   // Version 16 (LPP-16159): the reference range is only filled when the result is out of range (the Abnormal Flag says so).
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
-      c.map((x) => (x.key === "range" ? { ...x, render: (r: R) => (r.flag !== DASH ? r.range.replace(" to ", "–") : DASH) } : x)),
+      mapKey(
+        mapKey(
+          mapKey(c, "range", (x) => ({ ...x, render: (r: R) => (r.flag !== DASH ? r.range.replace(" to ", "–") : DASH) })),
+          "res",
+          // "7.2 %": the value with its unit (the Unit column stays too).
+          (x) => ({ ...x, render: (r: R) => (unitOf(r) ? `${valueOf(r)} ${unitOf(r)}` : valueOf(r)) }),
+        ),
+        "lcode",
+        (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.test) }),
+      ),
   });
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
@@ -690,11 +721,11 @@ function MedicationsV8({ m }: { m: Member }) {
     ["pharmacy", "refills"],
   );
   // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel.
-  const doseOf = (r: R) => (/tablet|capsule/i.test(r.name) ? "1 tablet" : /inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe/i.test(r.name) ? "1 injection" : "1 unit");
+  const doseOf = (r: R) => (/inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe|insulin/i.test(r.name) ? "1 injection" : "1 tablet");
   const prescriberOf = (r: R) => providers.find((x) => x.npi === r.prescriberNpi)?.name ?? r.provider;
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
-      c.flatMap((x) =>
+      mapKey(c, "mcode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })).flatMap((x) =>
         x.key === "strength"
           ? [
               col<R>("strength", "Strength", (r) => strengthOf(r.name), { nowrap: true }),
@@ -789,7 +820,12 @@ function ObservationsV8({ m }: { m: Member }) {
   // Version 16 (LPP-16161): the value has its status in small type on a second line; Observation Type is hidden with Status and Source.
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
-      c.map((x) =>
+      mapKey(c, "ocode", (x) => ({
+        ...x,
+        width: 320,
+        nowrap: false,
+        render: (r: R) => withText(r.code.startsWith("L: ") ? `LOINC: ${r.code.slice(3)}` : r.code, r.service),
+      })).map((x) =>
         x.key === "val"
           ? {
               ...x,
@@ -860,7 +896,12 @@ function ProceduresV8({ m }: { m: Member }) {
     ],
     [["value", "Result"], col<R>("ppos", "Place of Service", (r) => (r.claim !== DASH ? "11 - Office" : r.encounter ? "11 - Office" : DASH), { nowrap: true })],
   );
-  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16162): "CPT: 77067 - bilateral screening mammography".
+  const cols = v16()
+    ? ticket16<R>(cols12, { main: (c) => mapKey(c, "pcode", (x) => ({ ...x, width: 320, nowrap: false, render: (r: R) => withText(r.code, r.name) })) })
+    : v12()
+      ? cols12
+      : colsOld;
   return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
 }
 

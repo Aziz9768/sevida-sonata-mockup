@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { clinicOf, countyOfMember, pcmPerson, stateNameOf } from "../v16Data";
+import { clinicOf, countyOfMember, displayName, pcmPerson, stateNameOf } from "../v16Data";
 import { useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
@@ -117,7 +117,8 @@ export function CareGapsPageV3() {
   }, [gapsOf, excludedOf, visible, v12]);
   // Version 12: the table shows Gap Closed Date when the list is filtered to Closed gaps, and Exclusion Reason when filtered to Excluded.
   const [filters, setFilters] = useState<FilterState>(
-    v12 ? { gapStatus: ["Open"] } : v8 ? {} : { gapStatus: ["Open"] },
+    // Version 16 (LPP-16144): the list shows every gap of the year, open and closed, so no status is chosen when the page opens.
+    versionNo >= 16 ? {} : v12 ? { gapStatus: ["Open"] } : v8 ? {} : { gapStatus: ["Open"] },
   );
   const statusPick = (filters.gapStatus as string[] | undefined) ?? [];
   const mode: "all" | "closed" | "excluded" =
@@ -527,13 +528,13 @@ export function CareGapsPageV3() {
           // LPP-16213: a member with more than one open gap is easy to spot.
           render: (r) => (
             <Stack spacing={0.5} alignItems="flex-start">
-              <TableLink to={`/members/${r.m.id}?tab=gaps`}>{r.m.name}</TableLink>
+              <TableLink to={`/members/${r.m.id}?tab=gaps`}>{displayName(r.m)}</TableLink>
               {r.n > 1 && <StatusChip tone="warning" label={`${r.n} open gaps`} />}
             </Stack>
           ),
         }),
         { key: "dodId", header: "DoD ID", help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample, accessor: (r) => String(1000000000 + (hashOf(`${r.m.id}-dod`) % 9000000000)), sortable: true, nowrap: true, defaultHidden: true, group: "Identifiers", ...none },
-        base(g("tricare"), { group: "Identifiers", help: undefined }),
+        base(g("tricare"), { group: "Identifiers", help: undefined, ...(v16 ? { header: "Member ID" } : {}) }),
         base(g("genesisEhr"), { header: "Genesis MRN", help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.", group: "Identifiers" }),
         base(g("dob"), { group: "Demographics", ...(v16 ? { help: undefined } : {}) }),
         base(g("age"), { defaultHidden: false, help: undefined, group: "Demographics" }),
@@ -649,7 +650,7 @@ export function CareGapsPageV3() {
           searchOnEnter={v11}
           applyFirst={v11}
           columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"] } : undefined}
-          searchPlaceholder={v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
+          searchPlaceholder={versionNo >= 16 ? "Search by Member Name or Member ID" : v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
           searchPlaceholderCompact="Member name, Tricare ID"
           search={search}
           onSearchChange={setSearch}

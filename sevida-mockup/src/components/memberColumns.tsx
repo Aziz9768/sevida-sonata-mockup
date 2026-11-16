@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { clinicOf, countyOfMember, countyOptions, pcmPerson, stateNameOf, stateOptions } from "../v16Data";
+import { clinicOf, countyOfMember, countyOptions, displayName, pcmPerson, stateNameOf, stateOptions } from "../v16Data";
 import type { ReactNode } from "react";
 import { Stack, Typography } from "@mui/material";
 import { StatusChip, Term } from "sevida-ui";
@@ -1590,7 +1590,12 @@ export function useMemberTableColumns(
       const nameCol = by("name");
       return [
         // ---- Identifiers
-        { ...nameCol, group: "Identifiers", help: undefined },
+        {
+          ...nameCol,
+          group: "Identifiers",
+          help: undefined,
+          render: getVersion() >= 16 ? (m: MemberRow) => <TableLink to={`/members/${m.id}`}>{displayName(m)}</TableLink> : nameCol.render,
+        },
         {
           key: "dodId",
           header: "DoD ID",
@@ -1703,6 +1708,8 @@ export function useMemberTableColumns(
           help: "The HEDIS care gap and Measurement Year",
           // Version 12 (Application Tables): the default table has no gap name or due date column; they stay in the Columns panel.
           defaultHidden: getVersion() >= 12,
+          // Version 16 (LPP-16069): the Care Gaps group has # Open Gaps, Open Gap (Measurement Year) and Closed Gap (Measurement Year); this column stays only as the Open Gap Name filter.
+          ...(getVersion() >= 16 ? { filterOnly: true, group: undefined } : {}),
         },
         {
           key: "openGapMY",

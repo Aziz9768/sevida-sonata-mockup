@@ -7,6 +7,7 @@
 import { DEMO_NOW, MY, hashOf, memberForYear, providerName, providers, v3Filler, v3TabOf } from "./data";
 import type { Evt, Member } from "./data";
 import { impactsOf } from "./careGaps";
+import { getVersion } from "./version";
 
 export const DASH = "--";
 const DAY = 86_400_000;
@@ -132,7 +133,13 @@ export const claimRows = (m: Member): ClaimRow[] => {
       from: e0.date,
       to: type === "I" ? addDays(e0.date, 1 + (seed % 3)) : e0.date,
       type,
-      lines: g.map((x) => ({ text: x.text, code: x.code, system: x.system })),
+      // Version 16 (LPP-16156): a claim has one header and one or more lines. About one office claim in three also bills the blood draw.
+      lines: [
+        ...g.map((x) => ({ text: x.text, code: x.code, system: x.system })),
+        ...(getVersion() >= 16 && type === "P" && seed % 3 === 0 && !g.some((x) => x.code === "36415")
+          ? [{ text: "Collection of venous blood by venipuncture", code: "36415", system: "CPT" }]
+          : []),
+      ],
       payment: denied ? "Denied" : seed % 7 === 0 ? "Partially Paid" : "Paid",
       paid: denied ? money(0) : money(seed % 7 === 0 ? amt / 2 : amt),
       provider: lastFirst(p),
@@ -249,7 +256,15 @@ export const encRows = (m: Member): EncRow[] => {
         end: null,
         type: VISIT_TYPE(e),
         status: STATUS_ENC[e.status] ?? "Completed",
-        diagnoses: near.map((x) => ({ code: x.code, text: x.text })),
+        // Version 16 (LPP-16158): every visit shows a primary diagnosis; with no diagnosis near the date it is the routine-exam code for the member's age.
+        diagnoses:
+          near.length === 0 && getVersion() >= 16
+            ? [
+                (e.date.getFullYear() - m.dob.getFullYear() < 18
+                  ? { code: "Z00.129", text: "Encounter for routine child health examination without abnormal findings" }
+                  : { code: "Z00.00", text: "Encounter for general adult medical examination without abnormal findings" }),
+              ]
+            : near.map((x) => ({ code: x.code, text: x.text })),
         provider: providerCell(m, e),
         place: e.telehealth ? "Telehealth (member's home)" : POS[seed % POS.length],
         measures: measuresOf(m, e),
