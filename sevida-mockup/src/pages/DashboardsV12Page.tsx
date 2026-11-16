@@ -62,7 +62,9 @@ function Inputs() {
 
 /** Admin: the Measurement Run History of Version 11, now one level up, so it asks which measure. */
 function AdminTab() {
+  // Version 16 (second review): no Measure dropdown. One table lists every measure.
   const [code, setCode] = useState<MeasureCode>("BCS-E");
+  if (useVersion().version.id >= 16) return <Admin code="BCS-E" all />;
   return (
     <>
       <Box sx={{ px: 2, pt: 2, maxWidth: 260, ...whiteAll }}>
