@@ -59,7 +59,7 @@ export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
 });
 
 const GREEN = ["Active", "Completed", "Paid", "Final", "Yes"];
-const RED = ["Denied", "Canceled", "Cancelled", "Not Done", "Stopped", "Discontinued"];
+const RED = ["Denied", "Entered in Error", "Canceled", "Cancelled", "Not Done", "Stopped", "Discontinued"];
 const tone = (s: string): StatusTone =>
   GREEN.includes(s) ? "success" : RED.includes(s) ? "danger" : s === "Inactive" || s === "Resolved" || s === "Remission" ? "neutral" : "warning";
 const chip = (s: string): ReactNode => (s === DASH ? DASH : <StatusChip tone={tone(s)} label={s} />);
@@ -517,7 +517,8 @@ function DiagnosesV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ encounters */
 function EncountersV8({ m }: { m: Member }) {
   type R = ReturnType<typeof encRows>[number];
-  const rows = useMemo(() => encRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16158): Encounter Date, most recent first; the same date: Encounter Type A to Z.
+  const rows = useMemo(() => encRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.type.localeCompare(b.type) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Service Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, alwaysVisible: true, render: (r) => day(r.date) }),
     col<R>("type", "Visit Type", (r) => r.type, { s: true, group: "Clinical", sortable: true, alwaysVisible: true }),
@@ -566,14 +567,35 @@ function EncountersV8({ m }: { m: Member }) {
       }),
     ],
   );
-  // Version 16 (LPP-16158): the Clinic / Facility is the member's own clinic (the one in the member header).
-  const cols = v16()
+  // Version 16 (LPP-16158): the seven ticket columns. Place of Service is the location name; the Clinic / Facility is the member's own clinic (the one in the member header).
+  // Hidden: End Date, Source, Created On, Created By, Last Updated (no Related Care Gap, no Additional Diagnoses). The info texts are the ticket's.
+  const E16: Record<string, string> = {
+    type: "The kind of visit, such as an office visit, wellness visit or telehealth visit.",
+    date: "The date the encounter took place.",
+    status: "Where the encounter is in its lifecycle, as reported by the source: Planned, Arrived, Triaged, In Progress, On Leave, Completed, Canceled or Entered in Error.",
+    dx: "The main diagnosis recorded for this encounter, with its ICD-10-CM code and description.",
+    pos: "Where the encounter took place.",
+    facility: "The clinic or facility where the member was seen.",
+    provider: "The provider who saw the member at this encounter.",
+    end: "The date the encounter ended.",
+    source: "The system or data feed this encounter was received from.",
+    created: "The date this record was first received.",
+    updated: "The date this record was last changed.",
+  };
+  const cols16 = v16()
     ? ticket16<R>(cols12, {
-        main: (c) => mapKey(c, "facility", (x) => ({ ...x, accessor: (r: R) => (/telehealth/i.test(r.place) ? r.place : clinicOf(m)) })),
-      })
-    : v12()
-      ? cols12
-      : colsOld;
+        main: (c) =>
+          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: (r: R) => (/telehealth/i.test(r.place) ? r.place : clinicOf(m)) })), "pos", (x) => ({
+            ...x,
+            accessor: (r: R) => r.place,
+          })),
+        hidden: (h) => [
+          col<R>("end", "End Date", (r) => r.end, { sortable: true, nowrap: true, render: (r) => day(r.end) }),
+          ...h.filter((c) => c.key === "source"),
+        ],
+      }).map((c) => (E16[c.key] ? { ...c, help: E16[c.key] } : c))
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
   return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
 }
 

@@ -250,6 +250,18 @@ export interface EncRow {
   updated: Date;
   source: string;
 }
+/** Version 16 (LPP-16158): the eight statuses of the ticket appear in the sample data; the open ones (Planned to In Progress) only on the most recent visits. */
+const statusV16 = (e: Evt, seed: number): string => {
+  const base = STATUS_ENC[e.status] ?? "Completed";
+  if (base !== "Completed") return base;
+  const roll = seed % 40;
+  const recent = DEMO_NOW.getTime() - e.date.getTime() <= 60 * DAY;
+  if (roll === 0 || roll === 1) return "Canceled";
+  if (roll === 2) return "Entered in Error";
+  if (roll === 3) return "On Leave";
+  if (recent && roll >= 4 && roll <= 7) return ["Planned", "Arrived", "Triaged", "In Progress"][roll - 4];
+  return "Completed";
+};
 export const encRows = (m: Member): EncRow[] => {
   const all = allRecords(m);
   const dx = all.filter((e) => v3TabOf(e) === "diagnoses");
@@ -262,9 +274,9 @@ export const encRows = (m: Member): EncRow[] => {
         key: evKey(e),
         e,
         date: e.date,
-        end: null,
+        end: getVersion() >= 16 && !["Planned", "Arrived", "Triaged", "In Progress"].includes(statusV16(e, seed)) ? e.date : null,
         type: VISIT_TYPE(e),
-        status: STATUS_ENC[e.status] ?? "Completed",
+        status: getVersion() >= 16 ? statusV16(e, seed) : STATUS_ENC[e.status] ?? "Completed",
         // Version 16 (LPP-16158): every visit shows a primary diagnosis; with no diagnosis near the date it is the routine-exam code for the member's age.
         diagnoses:
           near.length === 0 && getVersion() >= 16
