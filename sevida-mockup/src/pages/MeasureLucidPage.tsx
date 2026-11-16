@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { getVersion } from "../version";
+import { runStamp } from "./dashboardV12Bits";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Box, InputAdornment, Typography } from "@mui/material";
@@ -29,6 +31,7 @@ import {
   allMembers,
   ageAtYearEnd,
   fmtDate,
+  measures,
   getAsOfStep,
   resultsFor,
   setAsOfStep,
@@ -589,6 +592,9 @@ function MemberDetails({ code }: { code: MeasureCode }) {
 
 interface RunRow {
   id: string;
+  runId: string;
+  order: number;
+  measure: string;
   start: string;
   end: string;
   runAt: Date;
@@ -601,33 +607,43 @@ interface RunRow {
   closedChange: number | null;
 }
 
-export function Admin({ code }: { code: MeasureCode }) {
+export function Admin({ code, all = false }: { code: MeasureCode; all?: boolean }) {
   const short = gapShort(code);
+  // Version 16 (review): the run history is written like the headers: the run date as "16th Oct, 2026 @ 2:00 AM CST", "1st Jan 2026", the rate with two decimals.
+  // Version 16 (second review): no Measure dropdown. With `all` the table lists every measure, one row for each run and measure, with a Measure column.
+  const v16 = getVersion() >= 16;
   const { choices } = useRun();
   const rows = useMemo<RunRow[]>(() => {
     const keep = getAsOfStep();
     const everyone = allMembers();
+    const codes: MeasureCode[] = all ? measures.map((m) => m.code).sort() : [code];
     const out = choices.slice(0, 11).map((r) => {
       setAsOfStep(r.step);
-      return { r, t: tally(everyone, code, YEAR) };
+      return { r, ts: codes.map((c) => ({ c, t: tally(everyone, c, YEAR) })) };
     });
     setAsOfStep(keep);
-    return out.slice(0, 10).map(({ r, t }, i) => {
-      const prev = out[i + 1];
-      return {
-        id: r.id,
-        start: fmtDate(new Date(YEAR, 0, 1)),
-        end: fmtDate(new Date(YEAR, 11, 31)),
-        runAt: r.at,
-        evaluated: everyone.length,
-        initial: t.eligible,
-        excluded: t.excluded,
-        num: t.met,
-        den: t.denominator,
-        rate: t.rate,
-        closedChange: prev ? t.met - prev.t.met : null,
-      };
-    });
+    return out.slice(0, 10).flatMap(({ r, ts }, i) =>
+      ts.map(({ c, t }, k) => {
+        const prev = out[i + 1]?.ts[k];
+        return {
+          id: all ? `${r.id}-${c}` : r.id,
+          runId: r.id,
+          order: r.at.getTime() * 10 + (ts.length - k),
+          measure: gapShort(c),
+          start: v16 ? ordDate(new Date(YEAR, 0, 1)) : fmtDate(new Date(YEAR, 0, 1)),
+          end: v16 ? ordDate(new Date(YEAR, 11, 31)) : fmtDate(new Date(YEAR, 11, 31)),
+          runAt: r.at,
+          evaluated: everyone.length,
+          // Version 16: Initial Population = Eligible + Excluded, as on the measure pages (members marked Review are in no count).
+          initial: v16 ? t.denominator + t.excluded : t.eligible,
+          excluded: t.excluded,
+          num: t.met,
+          den: t.denominator,
+          rate: t.rate,
+          closedChange: prev ? t.met - prev.t.met : null,
+        };
+      }),
+    );
   }, [choices]);
   return (
     <QsSheet>
@@ -641,16 +657,17 @@ export function Admin({ code }: { code: MeasureCode }) {
           wrapHeaders
           rows={rows}
           cols={[
-            { key: "run", header: "Run #", value: (r) => r.runAt.getTime(), render: (r) => r.id, nowrap: true },
+            { key: "run", header: "Run #", value: (r) => r.runAt.getTime(), render: (r) => r.runId, nowrap: true },
+            ...(all ? [{ key: "measure", header: "Measure", value: (r: RunRow) => r.measure, nowrap: true }] : []),
             { key: "start", header: "Measurement Start", value: (r) => r.start, nowrap: true },
             { key: "end", header: "Measurement End", value: (r) => r.end, nowrap: true },
-            { key: "at", header: "Run Date/Time", value: (r) => r.runAt.getTime(), render: (r) => fmtRunTime(r.runAt), nowrap: true },
+            { key: "at", header: "Run Date/Time", value: (r) => (all ? r.order : r.runAt.getTime()), render: (r) => (v16 ? runStamp(r.runAt) : fmtRunTime(r.runAt)), nowrap: true },
             { key: "ev", header: "Members Evaluated", value: (r) => r.evaluated, render: (r) => n0(r.evaluated), align: "right" },
             { key: "init", header: "Initial Population", value: (r) => r.initial, render: (r) => n0(r.initial), align: "right" },
             { key: "den", header: "Total Eligible", value: (r) => r.den, render: (r) => n0(r.den), align: "right" },
             { key: "exc", header: "Excluded", value: (r) => r.excluded, render: (r) => n0(r.excluded), align: "right" },
             { key: "num", header: "Numerator (Closed)", value: (r) => r.num, render: (r) => n0(r.num), align: "right" },
-            { key: "rate", header: `${short} Rate (%)`, value: (r) => r.rate, render: (r) => r.rate.toFixed(1), align: "right" },
+            { key: "rate", header: all ? "Rate (%)" : `${short} Rate (%)`, value: (r) => r.rate, render: (r) => r.rate.toFixed(v16 ? 2 : 1), align: "right" },
             {
               key: "cchg",
               header: "Closed Δ",

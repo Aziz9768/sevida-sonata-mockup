@@ -22,6 +22,8 @@ import { describeFilter } from "./filters";
 export interface TableToolbarProps<T> {
   /** Heading shown at the left, e.g. "Members". The number of rows is added for you. */
   title?: ReactNode;
+  /** Keep the title exactly as written (no Title Case), for a sentence-style heading such as "Member's Open and Closed Care Gaps in the current Measurement Year, 2026". */
+  titleAsWritten?: boolean;
   total: number;
   showSearch: boolean;
   search: string;
@@ -129,7 +131,7 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
 
   const title =
     typeof p.title === "string" && p.title.trim()
-      ? `${titleCase(p.title)} (${p.total.toLocaleString()})`
+      ? `${p.titleAsWritten ? p.title : titleCase(p.title)} (${p.total.toLocaleString()})`
       : p.title;
 
   const hasHeader = !!(

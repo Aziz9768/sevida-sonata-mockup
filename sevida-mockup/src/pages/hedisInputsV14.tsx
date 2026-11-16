@@ -6,6 +6,7 @@ import type { QsCol } from "../quicksight/kit";
 import { qs } from "../quicksight/qsTheme";
 import { hashOf } from "../data";
 import { PCMS } from "../v7Data";
+import { getVersion } from "../version";
 import { controlsBox } from "./dashboardV12Bits";
 
 /**
@@ -107,7 +108,13 @@ const INPUT_HEADS: [string, string][] = [
   ["isRn", "Is Registered Nurse"],
 ];
 
+/** Version 16: a date of service from 6 Jan 2025 up to 15 Oct 2026. */
+const dosV16 = (n: number) => {
+  const d = new Date(2025, 0, 6 + (n % 648));
+  return stamp(d.getFullYear(), d.getMonth() + 1, d.getDate());
+};
 const inputRows = (): Rec[] => {
+  const v16 = getVersion() >= 16;
   const rows: Rec[] = [];
   for (let i = 0; i < 40; i++) {
     const memberId = String(100000 + i);
@@ -124,7 +131,8 @@ const inputRows = (): Rec[] => {
       const line = pick(hh, LINES);
       const month = 1 + ((h + k * 3) % 10);
       const day = 1 + ((h + k * 5) % 27);
-      const dos = stamp(2026, month, day);
+      // Version 16: dates of service run from early 2025 to the day before the run (15 Oct 2026), never after the run date.
+      const dos = v16 ? dosV16(h + k * 37 + hh) : stamp(2026, month, day);
       const denied = hh % 6 === 0;
       rows.push({
         memberId,
@@ -145,7 +153,7 @@ const inputRows = (): Rec[] => {
         dos,
         dob,
         dataType: line.type,
-        clientId: `test-decks-${line.type === "diagnosis" ? "DX" : "WCC"}-2026-${memberId}`,
+        clientId: `test-decks-${line.type === "diagnosis" ? "DX" : "WCC"}-${v16 ? dos.slice(0, 4) : "2026"}-${memberId}`,
         pcp: bool(hh >>> 2),
         obgyn: bool(hh >>> 3),
         provName: `${prov.name}`,
@@ -230,6 +238,7 @@ const DCS_HEADS: [string, string][] = [
 ];
 
 const dcsRows = (): Rec[] => {
+  const v16 = getVersion() >= 16;
   const snaps = [uuid("snap-1"), uuid("snap-2"), uuid("snap-3")];
   const org = "38ea8435-164a-4196-a088-43da11fb69a8";
   const rows: Rec[] = [];
@@ -247,7 +256,8 @@ const dcsRows = (): Rec[] => {
       result: kind === "ok" ? "Artefact successfully validated" : kind === "failed" ? "Artefact failed validation: a required element is missing" : "Validation has not run yet",
       status: kind === "ok" ? "SUCCESS" : kind === "failed" ? "FAILURE" : "PENDING",
       json: "null",
-      createdAt: stamp(2026, 11, 11, `13:03:${two(i % 60)}`),
+      // Version 16: created in the night run of 16 Oct 2026, before it ended at 2:00 AM.
+      createdAt: v16 ? stamp(2026, 10, 16, `01:${two(40 + Math.floor(i / 60))}:${two(i % 60)}`) : stamp(2026, 11, 11, `13:03:${two(i % 60)}`),
       orgId: org,
       indicator: "C",
       patient,

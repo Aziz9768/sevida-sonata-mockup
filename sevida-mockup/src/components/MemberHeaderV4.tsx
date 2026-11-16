@@ -4,7 +4,7 @@ import { Box, Collapse, Divider, Link, Stack, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { Card, DetailGrid, IconButton, StatusChip } from "sevida-ui";
-import { DEMO_NOW, enrollmentStatusOf, fmtDate, fmtEnd, languageNames } from "../data";
+import { DEMO_NOW, enrollmentStatusOf, fmtDate, fmtEnd, languageNames, NO_PCP } from "../data";
 import { getVersion } from "../version";
 import { memberExtras } from "../recordFields";
 import type { Member } from "../data";
@@ -19,6 +19,8 @@ import {
 } from "../v3Data";
 import { Field } from "./Field";
 import { MemberIdsModalV3 } from "./MemberIdsV3";
+import { clinicOf, displayName } from "../v16Data";
+import { pcmOf } from "../v7Data";
 
 /**
  * Version 4 member header: the look of the original header (name, date of birth and status chip on top, a divider, small-capital
@@ -30,6 +32,7 @@ import { MemberIdsModalV3 } from "./MemberIdsV3";
 export function MemberHeaderV4({
   m,
   openGaps,
+  closedGaps,
   updated,
   nameTo,
   measuresMet,
@@ -37,6 +40,8 @@ export function MemberHeaderV4({
 }: {
   m: Member;
   openGaps: number;
+  /** Version 16: the number of measures with a closed care gap (SevidaLite count ticket). */
+  closedGaps?: number;
   updated?: Date;
   /** Version 8: "3 of 4". */
   measuresMet?: string;
@@ -69,10 +74,10 @@ export function MemberHeaderV4({
           <Typography variant="h6" component="h1" sx={{ overflowWrap: "anywhere" }}>
             {nameTo ? (
               <Link component={RouterLink} to={nameTo} variant="inherit" underline="hover" color="secondary">
-                {m.name}
+                {displayName(m)}
               </Link>
             ) : (
-              m.name
+              displayName(m)
             )}
           </Typography>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
@@ -148,10 +153,20 @@ export function MemberHeaderV4({
                 openGaps
               )}
             </Field>
+            {getVersion() >= 16 && closedGaps !== undefined && (
+              <Field label="Closed Care Gaps">
+                <Link component={RouterLink} to={`/members/${m.id}?tab=gaps`} underline="always" color="secondary" variant="inherit">
+                  {closedGaps}
+                </Link>
+              </Field>
+            )}
             {v8 && <Field label="Measures Met">{measuresMet ?? "–"}</Field>}
             <Field label="Gap Data Last Updated">
               {updated ? fmtDate(updated) : "Not received"}
             </Field>
+            {/* Version 16: the member's Primary Care Manager and Clinic, the same as the Members list and Care Gaps. */}
+            {getVersion() >= 16 && <Field label="Primary Care Manager">{pcmOf(m) === NO_PCP ? "Unassigned" : pcmOf(m)}</Field>}
+            {getVersion() >= 16 && <Field label="Clinic">{clinicOf(m)}</Field>}
           </Box>
           <Box
             sx={{

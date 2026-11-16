@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { ReactNode } from "react";
 import {
@@ -299,6 +300,42 @@ export const runLabel = (r: Run, latest: Run) =>
 
 /* ------------------------------------------------------------------ the chosen run */
 
+/**
+ * Version 16 demo switch: pretend the newest nightly run (the 17th Oct, 2:00 AM) did not finish. The pages then say so in the header, and the
+ * results stay those of the last complete run. Turn it on in the Version menu. Nothing else changes.
+ */
+const FAIL_KEY = "sonata-demo-failed-latest";
+const readFail = () => {
+  try {
+    return sessionStorage.getItem(FAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+let failedLatest = readFail();
+const failListeners = new Set<() => void>();
+export const setFailedLatestDemo = (on: boolean) => {
+  failedLatest = on;
+  try {
+    sessionStorage.setItem(FAIL_KEY, on ? "1" : "0");
+  } catch {
+    /* the demo still works for this visit */
+  }
+  failListeners.forEach((l) => l());
+};
+export const useFailedLatestDemo = () =>
+  useSyncExternalStore(
+    (cb) => {
+      failListeners.add(cb);
+      return () => failListeners.delete(cb);
+    },
+    () => failedLatest,
+  );
+
+/** When a run was last chosen in the header picker. The dashboards remount for a new run; they use this to keep the filters the person had set. */
+let lastSwitchAt = 0;
+export const justSwitchedRun = () => Date.now() - lastSwitchAt < 3000;
+
 const KEY = "sonata-demo-run";
 const readId = (): string | null => {
   try {
@@ -352,6 +389,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
     return choices.some((r) => r.id === saved) ? saved! : latest.id;
   });
   const setRunId = useCallback((next: string) => {
+    lastSwitchAt = Date.now();
     setId(next);
     try {
       sessionStorage.setItem(KEY, next);

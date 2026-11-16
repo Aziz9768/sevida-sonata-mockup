@@ -7,6 +7,7 @@
 import { DEMO_NOW, MY, hashOf, memberForYear, providerName, providers, v3Filler, v3TabOf } from "./data";
 import type { Evt, Member } from "./data";
 import { impactsOf } from "./careGaps";
+import { getVersion } from "./version";
 
 export const DASH = "--";
 const DAY = 86_400_000;
@@ -126,13 +127,24 @@ export const claimRows = (m: Member): ClaimRow[] => {
       const hit = DX_BY_TAG.find(([re]) => re.test(x.tag));
       if (hit && !dx.some((d) => d.code === hit[1])) dx.push({ code: hit[1], text: hit[2] });
     }
+    // Version 16 (LPP-16156): every professional or institutional claim carries a diagnosis, so the Code column shows ICD-10-CM codes (sample data).
+    if (getVersion() >= 16 && type !== "D" && dx.length === 0) {
+      const lab = g.some((x) => x.tag && /lab|a1c|cbc|panel/i.test(x.tag)) || g.every((x) => /^8\d{4}$/.test(x.code));
+      dx.push(lab ? { code: "Z01.89", text: "Encounter for other specified special examinations" } : { code: "Z00.00", text: "Encounter for general adult medical examination without abnormal findings" });
+    }
     const p = e0.provider ? providerName(e0.provider) : undefined;
     return {
       id: `${e0.date.getFullYear()}${pad(e0.date.getMonth() + 1)}${pad(e0.date.getDate())}${pad(10000 + (seed % 89999), 5)}`,
       from: e0.date,
       to: type === "I" ? addDays(e0.date, 1 + (seed % 3)) : e0.date,
       type,
-      lines: g.map((x) => ({ text: x.text, code: x.code, system: x.system })),
+      // Version 16 (LPP-16156): a claim has one header and one or more lines. About one office claim in three also bills the blood draw.
+      lines: [
+        ...g.map((x) => ({ text: x.text, code: x.code, system: x.system })),
+        ...(getVersion() >= 16 && type === "P" && seed % 3 === 0 && !g.some((x) => x.code === "36415")
+          ? [{ text: "Collection of venous blood by venipuncture", code: "36415", system: "CPT" }]
+          : []),
+      ],
       payment: denied ? "Denied" : seed % 7 === 0 ? "Partially Paid" : "Paid",
       paid: denied ? money(0) : money(seed % 7 === 0 ? amt / 2 : amt),
       provider: lastFirst(p),
@@ -166,7 +178,7 @@ export interface DxRow {
   end: Date | null;
   name: string;
   codes: Array<{ code: string; system: string }>;
-  status: "Active" | "Resolved" | "Inactive";
+  status: "Active" | "Resolved" | "Inactive" | "Recurrence" | "Relapse" | "Remission";
   provider: string;
   measures: string[];
   created: Date;
@@ -178,22 +190,26 @@ export const dxRows = (m: Member): DxRow[] =>
     .filter((e) => v3TabOf(e) === "diagnoses")
     .map((e) => {
       const acute = ACUTE.includes(e.code);
+      // Version 16 (LPP-16157): the six statuses of the ticket appear in the sample data. Most long-term conditions stay Active.
+      const roll = getVersion() >= 16 && !acute ? h(`${m.id}${e.code}${e.date.getTime()}`) % 20 : 99;
+      const chronic = roll === 0 ? ("Recurrence" as const) : roll === 1 ? ("Relapse" as const) : roll <= 3 ? ("Remission" as const) : roll === 4 ? ("Inactive" as const) : ("Active" as const);
       return {
         key: evKey(e),
         e,
         start: e.date,
-        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : null,
+        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : chronic === "Inactive" ? addDays(e.date, 60 + (h(e.code) % 90)) : null,
         name: e.text,
         codes: [
           { code: e.code, system: e.system === "ICD-10" ? "ICD-10-CM" : e.system },
           ...(SNOMED[e.code] ? [{ code: SNOMED[e.code], system: "SNOMED CT" }] : []),
         ],
-        status: acute ? ("Resolved" as const) : ("Active" as const),
+        status: acute ? ("Resolved" as const) : chronic,
         provider: providerCell(m, e),
         measures: measuresOf(m, e),
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        // Version 16 (LPP-16157): for the Madigan POC every diagnosis comes from the Encounters (the EHR feed); claim diagnoses come with the full product.
+        source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
 
@@ -234,6 +250,18 @@ export interface EncRow {
   updated: Date;
   source: string;
 }
+/** Version 16 (LPP-16158): the eight statuses of the ticket appear in the sample data; the open ones (Planned to In Progress) only on the most recent visits. */
+const statusV16 = (e: Evt, seed: number): string => {
+  const base = STATUS_ENC[e.status] ?? "Completed";
+  if (base !== "Completed" || e.tag !== "other") return base;
+  const roll = seed % 40;
+  const recent = DEMO_NOW.getTime() - e.date.getTime() <= 60 * DAY;
+  if (roll === 0 || roll === 1) return "Canceled";
+  if (roll === 2) return "Entered in Error";
+  if (roll === 3) return "On Leave";
+  if (recent && roll >= 4 && roll <= 7) return ["Planned", "Arrived", "Triaged", "In Progress"][roll - 4];
+  return "Completed";
+};
 export const encRows = (m: Member): EncRow[] => {
   const all = allRecords(m);
   const dx = all.filter((e) => v3TabOf(e) === "diagnoses");
@@ -246,10 +274,18 @@ export const encRows = (m: Member): EncRow[] => {
         key: evKey(e),
         e,
         date: e.date,
-        end: null,
+        end: getVersion() >= 16 && !["Planned", "Arrived", "Triaged", "In Progress"].includes(statusV16(e, seed)) ? e.date : null,
         type: VISIT_TYPE(e),
-        status: STATUS_ENC[e.status] ?? "Completed",
-        diagnoses: near.map((x) => ({ code: x.code, text: x.text })),
+        status: getVersion() >= 16 ? statusV16(e, seed) : STATUS_ENC[e.status] ?? "Completed",
+        // Version 16 (LPP-16158): every visit shows a primary diagnosis; with no diagnosis near the date it is the routine-exam code for the member's age.
+        diagnoses:
+          near.length === 0 && getVersion() >= 16
+            ? [
+                (e.date.getFullYear() - m.dob.getFullYear() < 18
+                  ? { code: "Z00.129", text: "Encounter for routine child health examination without abnormal findings" }
+                  : { code: "Z00.00", text: "Encounter for general adult medical examination without abnormal findings" }),
+              ]
+            : near.map((x) => ({ code: x.code, text: x.text })),
         provider: providerCell(m, e),
         place: e.telehealth ? "Telehealth (member's home)" : POS[seed % POS.length],
         measures: measuresOf(m, e),
@@ -307,6 +343,14 @@ export const labRows = (m: Member): LabRow[] => {
     .map((e) => {
       const unit = e.tag === "hba1c" ? "%" : (e.unit ?? "");
       const prelim = e.status === "preliminary";
+      // Version 16 (LPP-16159): the sample also has Low and Abnormal flags (the ticket lists High, Low and Abnormal). Display only: the quality measures read the record itself.
+      const range = e.refRange ? /^\s*(-?[\d.]+)\s*(?:to|–|-)\s*(-?[\d.]+)/.exec(e.refRange) : null;
+      const roll = getVersion() >= 16 && range && e.tag !== "hba1c" && e.value !== undefined && (!e.flag || e.flag === "Normal") ? h(`${m.id}${e.code}${e.date.getTime()}lab`) % 14 : 99;
+      const lo = range ? Number(range[1]) : 0;
+      const hi = range ? Number(range[2]) : 0;
+      const okRoll = roll === 0 && lo <= 0 ? 99 : roll;
+      const shownValue = okRoll === 0 ? Math.round(lo * 0.85 * 10) / 10 : okRoll === 1 ? Math.round(hi * 1.25 * 10) / 10 : e.value;
+      const shownFlag = okRoll === 0 ? "Low" : okRoll === 1 ? "Abnormal" : e.flag;
       const near = visits
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
         .filter((x) => x.d <= 14 * DAY)
@@ -316,9 +360,9 @@ export const labRows = (m: Member): LabRow[] => {
         e,
         date: e.date,
         test: e.text.replace(/,? ?\d+(\.\d+)?%.*$/, "").replace(/ \(preliminary\)$/, ""),
-        result: e.value === undefined ? DASH : `${e.value}${unit ? ` ${unit}` : ""}`,
+        result: shownValue === undefined ? DASH : `${shownValue}${unit ? ` ${unit}` : ""}`,
         range: e.refRange ? (/[A-Za-z%]/.test(e.refRange.replace(/ to /, "")) || !unit ? e.refRange : `${e.refRange} ${unit}`) : DASH,
-        flag: e.flag && e.flag !== "Normal" ? e.flag : DASH,
+        flag: shownFlag && shownFlag !== "Normal" ? shownFlag : DASH,
         resulted: prelim ? null : (e.resultedOn ?? addDays(e.date, 1 + (h(e.code + e.date.getTime()) % 3))),
         panel: PANEL[e.code] ?? DASH,
         loinc: e.code,
@@ -390,11 +434,20 @@ export const medRows = (m: Member): MedRow[] => {
   ): MedRow => {
     const seed = h(`${m.id}${key}`);
     const total = 1 + (seed % 4);
+    // Version 16 (LPP-16160): the name carries strength and form ("Metformin 500 mg tablet"); about one fill in four is coded in RxNorm, the rest in NDC;
+    // the status shows all three values of the ticket (Active, Discontinued, Inactive).
+    const v16 = getVersion() >= 16;
+    if (v16 && /\d\s?(mg|mcg|IU)$/.test(name)) name = `${name} tablet`;
+    const RXNORM: Record<string, string> = { "Metformin 500 mg tablet": "861004", "Lisinopril 10 mg tablet": "314076", "Atorvastatin 20 mg tablet": "617310" };
+    if (v16 && RXNORM[name] && seed % 4 === 0) {
+      codeSystem = "RxNorm";
+      code = RXNORM[name];
+    }
     return {
       key,
       date,
       name,
-      status: DEMO_NOW.getTime() - date.getTime() <= 100 * DAY ? "Active" : "Inactive",
+      status: v16 && seed % 7 === 0 ? "Discontinued" : DEMO_NOW.getTime() - date.getTime() <= 100 * DAY ? "Active" : "Inactive",
       quantity: `${days * (/inhaler|drops|suspension/i.test(name) ? 1 : 2)} ${/tablet/i.test(name) ? "tablets" : /capsule/i.test(name) ? "capsules" : /mL/.test(name) ? "mL" : "doses"}`,
       days,
       code: `${codeSystem}: ${code}`,
@@ -467,7 +520,17 @@ export const immRows = (m: Member): ImmRow[] => {
     key,
     date,
     vaccine,
-    status: status === "completed" ? "Completed" : status === "not-done" ? "Not Done" : status.charAt(0).toUpperCase() + status.slice(1),
+    // Version 16 (LPP-16360): the three statuses of the ticket (Completed, Not Done, Entered in Error) appear in the sample data.
+    status:
+      getVersion() >= 16 && status === "completed" && h(`${m.id}${key}imm`) % 12 < 2
+        ? h(`${m.id}${key}imm`) % 12 === 0
+          ? "Not Done"
+          : "Entered in Error"
+        : status === "completed"
+          ? "Completed"
+          : status === "not-done"
+            ? "Not Done"
+            : status.charAt(0).toUpperCase() + status.slice(1),
     code: `CVX: ${cvx}`,
     provider: lastFirst(providerName(npi)),
     measures,
@@ -512,7 +575,15 @@ export interface ObsRow {
   created: Date;
   updated: Date;
   source: string;
+  /** Version 16 (LPP-16161): the unit on its own, for the Unit column. */
+  unit: string;
 }
+/** Version 16 (LPP-16161): the SNOMED CT code of a vital sign, used for some of the sample rows. */
+const SCT: Record<string, string> = { "8480-6": "271649006", "8462-4": "271650006", "29463-7": "27113001", "8302-2": "50373000", "39156-5": "60621009", "8867-4": "364075005" };
+const OBS_STATUS16 = ["Preliminary", "Amended", "Corrected", "Registered", "Cancelled", "Entered in Error"];
+/** Flag (High / Low / Abnormal) for the sample vitals; the sample data carries none. */
+const obsFlag16 = (code: string, v: number): "H" | "L" | "A" | "" =>
+  code === "8480-6" ? (v >= 120 ? "H" : v < 90 ? "L" : "") : code === "8462-4" ? (v >= 80 ? "H" : v < 60 ? "L" : "") : code === "8867-4" ? (v > 100 ? "H" : v < 60 ? "L" : "") : code === "39156-5" ? (v >= 25 ? "H" : v < 18.5 ? "L" : "") : "";
 export const obsRows = (m: Member): ObsRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
@@ -525,29 +596,55 @@ export const obsRows = (m: Member): ObsRow[] => {
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
         .filter((x) => x.d <= 14 * DAY)
         .sort((a, b) => a.d - b.d)[0];
-      const vital = VITAL.includes(e.code);
+      const vital = VITAL.includes(e.code) || e.code === "9843-4";
+      const v16 = getVersion() >= 16;
+      const roll = v16 ? h(`${m.id}${e.code}${e.date.getTime()}obs`) % 20 : 0;
+      // Version 16 (LPP-16161): the name without the result, the value with its unit and flag, the code system (LOINC / SNOMED CT), the claim status.
+      const parsed = /^(.*?)[:\s]+(-?\d+(?:\.\d+)?)\s*(\S+)?$/.exec(e.text);
+      const coded = /^([^:]+):\s*(.+)$/.exec(e.text);
+      const num = e.value ?? (parsed ? Number(parsed[2]) : undefined);
+      const unit16 = e.value !== undefined ? (e.tag === "hba1c" ? "%" : (e.unit ?? "")) : (parsed?.[3] ?? "");
+      const f16 = (num !== undefined ? obsFlag16(e.code, num) : "") || (e.flag && e.flag !== "Normal" ? e.flag.charAt(0) : "");
+      const value16 =
+        num !== undefined
+          ? `${num}${unit16 ? ` ${unit16}` : ""}${f16 ? ` (${f16})` : ""}`
+          : coded
+            ? coded[2].charAt(0).toUpperCase() + coded[2].slice(1)
+            : DASH;
+      const name16 = parsed && e.value === undefined ? parsed[1] : coded ? coded[1] : e.text;
+      const sct = v16 && SCT[e.code] && roll % 4 === 0;
       return {
         key: evKey(e),
         e,
         date: e.date,
         end: null,
-        type: vital ? "Vital Signs" : e.tag === "hba1c" ? "Laboratory" : "Exam",
-        service: e.text.replace(/ \d+(\.\d+)?.*$/, "").replace(/,.*$/, ""),
-        value:
-          e.value === undefined
+        type: v16
+          ? e.code === "76689-9"
+            ? "Social History"
+            : e.tag === "hba1c" || e.code === "29771-3"
+              ? "Laboratory"
+              : vital
+                ? "Vital Signs"
+                : "Exam"
+          : vital ? "Vital Signs" : e.tag === "hba1c" ? "Laboratory" : "Exam",
+        service: v16 ? name16 : e.text.replace(/ \d+(\.\d+)?.*$/, "").replace(/,.*$/, ""),
+        value: v16
+          ? value16
+          : e.value === undefined
             ? (/\d/.test(e.text) ? e.text.replace(/^[^\d]*/, "") : DASH) + flag
             : `${e.value}${unit ? ` ${unit}` : ""}${flag}`,
-        status: OBS_STATUS[e.status] ?? "Final",
-        code: `L: ${e.code}`,
+        status: v16 ? (h(`${m.id}${e.code}${e.date.getTime()}os`) % 6 === 0 ? OBS_STATUS16[h(`${e.code}${e.date.getTime()}os2`) % OBS_STATUS16.length] : "Final") : (OBS_STATUS[e.status] ?? "Final"),
+        code: sct ? `SCT: ${SCT[e.code]}` : `L: ${e.code}`,
         provider: providerCell(m, e),
         measures: measuresOf(m, e),
         related: near ? { label: VISIT_TYPE(near.v), date: near.v.date, tab: "encounters" } : null,
-        claimStatus: DASH,
+        claimStatus: v16 ? (roll < 12 ? "Active" : roll === 12 ? "Cancelled" : roll === 13 ? "Draft" : roll === 14 ? "Entered in Error" : DASH) : DASH,
         payment: DASH,
         paid: DASH,
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        source: v16 ? "MHS GENESIS" : sourceName(e),
+        unit: v16 ? unit16 : unit,
       };
     });
 };
@@ -596,7 +693,17 @@ export const procRows = (m: Member): ProcRow[] => {
             : e.tag === "colonoscopy" || e.tag === "sigmoidoscopy"
               ? "Body site: Colon"
               : DASH,
-        status: e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed",
+        status:
+          getVersion() >= 16
+            ? (() => {
+                // Version 16 (LPP-16162): all seven statuses of the ticket appear in the sample.
+                const base = e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed";
+                if (base !== "Completed" || e.tag !== "other") return base;
+                const roll = seed % 20;
+                const recent = DEMO_NOW.getTime() - e.date.getTime() < 45 * DAY;
+                return recent && roll < 4 ? (roll < 2 ? "In Progress" : "On Hold") : roll === 4 ? "Unknown" : roll === 5 ? "Entered in Error" : roll === 6 ? "Stopped" : base;
+              })()
+            : e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed",
         provider: providerCell(m, e),
         code: `${e.system}: ${e.code}`,
         measures: measuresOf(m, e),
@@ -607,7 +714,7 @@ export const procRows = (m: Member): ProcRow[] => {
         paid: isClaim ? (e.status === "denied" ? money(0) : money(50 + (seed % 20000) / 100)) : DASH,
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
 };

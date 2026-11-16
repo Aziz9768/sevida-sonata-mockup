@@ -1,4 +1,5 @@
 // Numbers for the dashboards (checklist FR-701 to FR-710). Everything is worked out from the demo members, their results and the demo file statuses.
+import { countyOfMember, countyOptions, stateNameOf, stateOptions } from "./v16Data";
 import { getVersion } from "./version";
 import {
   AGE_RANGES,
@@ -24,7 +25,6 @@ import {
   a1cBandOf,
   ageAtYearEnd,
   ageBandsOf,
-  countyOf,
   dataFiles,
   fileRows,
   fmtDate,
@@ -38,7 +38,6 @@ import {
   memberStates,
   militaryOf,
   resultsFor,
-  stateName,
   tally,
 } from "./data";
 import type {
@@ -149,15 +148,17 @@ export const ageBands = AGE_GROUPS;
 export const bandsFor = (code: MeasureCode, year: number): { label: string; lo: number; hi: number }[] => {
   const [lo, hi] = ageBandsOf(year)[code];
   const out: { label: string; lo: number; hi: number }[] = [];
-  for (let s = Math.floor(lo / 10) * 10; s <= hi; s += 10) {
-    const e = Math.min(s + 9, hi);
+  // Version 16: the first band starts at the measure's youngest age (COL 45-49, CCS 21-29, GSD 18-19, WCV 3-9), not at the round number below it.
+  for (let s = getVersion() >= 16 ? lo : Math.floor(lo / 10) * 10; s <= hi; s = Math.floor(s / 10) * 10 + 10) {
+    const e = Math.min(Math.floor(s / 10) * 10 + 9, hi);
     out.push({ label: `${s}-${e}`, lo: s, hi: e });
   }
   return out;
 };
 export const ageGroupOf = (m: Member, year: number, code?: MeasureCode) => {
   // Version 12: the age ranges of the Members list, for every measure.
-  if (v12()) return ageRangeOf(m.dob);
+  // Version 16: on a measure page the Age Range is the age on 31 Dec of the measurement year (the age the measure itself uses), so it agrees with Min / Max and Gaps By Age.
+  if (v12()) return getVersion() >= 16 && code ? ageRangeOf(m.dob, new Date(year, 11, 31)) : ageRangeOf(m.dob);
   if (getVersion() >= 7 && code) {
     const age = ageAtYearEnd(m.dob, year);
     return bandsFor(code, year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";
@@ -258,8 +259,8 @@ export function filterMembers(f: DashFilters, code?: MeasureCode): Member[] {
       if (!inDays(latest, f.evFrom, f.evTo)) return false;
     }
     if (f.a1c && a1cBandOf(m, f.year) !== f.a1c) return false;
-    if (f.state && stateName(m.state) !== f.state) return false;
-    if (f.county && countyOf(m) !== f.county) return false;
+    if (f.state && stateNameOf(m) !== f.state) return false;
+    if (f.county && countyOfMember(m) !== f.county) return false;
     if (f.military && (v3() ? militaryV3(m) : militaryOf(m)) !== f.military)
       return false;
     if (f.ageGroup.length && !f.ageGroup.includes(ageGroupOf(m, f.year, code)))
@@ -318,8 +319,8 @@ export function facetOptions(): FacetOptions {
     provider: sortedSet(allMembers().map(providerOf)),
     race: v12() ? RACE_V12 : sortedSet([...allMembers().map(raceOf), ...(v3() ? [NONE] : [])]),
     ethnicity: v12() ? ETHNICITY_V12 : sortedSet([...allMembers().map(ethnicityOf), ...(v3() ? [NONE] : [])]),
-    state: memberStates,
-    county: memberCounties,
+    state: stateOptions(memberStates),
+    county: countyOptions(memberCounties),
     military: v3() ? militaryOptions() : MILITARY_VALUES,
     openGaps: OPEN_GAP_VALUES,
     a1c: A1C_VALUES,

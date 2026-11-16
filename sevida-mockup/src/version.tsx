@@ -17,7 +17,7 @@ import { Button } from "sevida-ui";
  * To add a version: add a row here (with its date), then read `useVersion().id` where the screens differ.
  * Never edit the behaviour of an older version: version 1 stays exactly as it was on its date.
  */
-export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
+export type VersionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
 export interface VersionInfo {
   id: VersionId;
   name: string;
@@ -281,10 +281,54 @@ export const VERSIONS: VersionInfo[] = [
       "The page title (for example 'HEDIS Care Gaps - Overview') is now below the tab bar on every dashboard tab, with the breadcrumb still at the top. HEDIS Inputs is titled 'HEDIS Inputs Dashboard' and DCS 'DCS Validations', as in Sigma.",
     ],
   },
+  {
+    id: 15,
+    name: "Version 15 - Sam round 2",
+    date: "2026-11-15",
+    summary: "Version 14 with Sam's second round of dashboard feedback. Versions 14 and older stay exactly as they were.",
+    changes: [
+      "Everything in Version 14 stays. Versions 14 and older are as they were. Only the Analytics dashboards change.",
+      "Overview: new descriptions for Member Population, Members With Open Gaps, Total Open Gaps and Total Closed Gaps (the board's wording). 'Total Gaps Closed' is now 'Total Closed Gaps', in the title and in the line under the tile. The board's own line under that tile still says 'Total Gaps Closed' (to fix on the board).",
+      "Measure pages: Eligible Population says 'Initial Population minus Excluded Population'. Initial Population has its own sentence for each measure: BCS and CCS (age, sex and enrollment; BCS keeps 'See About This Measure'), COL and WCV (age and enrollment) and GSD (members with diabetes). Sam's note says only BCS uses sex, but the CCS sentence he wrote has it: his written sentence is used (to confirm).",
+      "Age ranges (Sam's Typical Age Ranges): BCS 40-74, CCS 21-64, COL 45-75, GSD 18-75, WCV 3-21, in About This Measure and in the sample members, so counts and rates move a little in this version only. The 2025 year in the trend charts keeps its own rule (BCS 50-74). The board's BCS About box still says 52-74.",
+      "Better / Worse: the arrow, the number and the word are bold, with a bigger arrow, in the same light green and soft red as the left border of the tile, as Sam suggested. The light green is only 2 to 1 on white (4.5 to 1 is the usual minimum for text), so Sam may find it faint (to confirm). The soft red #E57373 is the same as Versions 13 and 14 and is not a design-system token yet.",
+      "Trends: Quarterly always shows the last 9 completed quarters (Q3 2024 to Q3 2026 now), as three lines (2024, 2025, 2026 YTD). Monthly shows the last 27 completed months (Jul 2024 to Sep 2026), also as three lines, and no longer shows the month in progress. 2024 numbers are made-up sample data. The Annual, Quarterly and Monthly descriptions are the board's wording, with 27 months in Monthly (the board still says 25; to confirm).",
+      "Top n: Top n, Minimum Number of Members and View All have Sam's descriptions. When a bar segment is too narrow to hold its count and percentage, the label moves just outside the bar, so every PCM shows its %. The two descriptions under the Top n charts start on the same line (the shorter chart gets blank rows). To confirm with Sam: the minimum only filters the rate chart (as on the board); the open gaps chart still lists every PCM, so 'Only PCMs with at least the minimum… are shown' is not true there.",
+      "Hover numbers (Sam): on every chart, hovering a bar, column or point shows the numbers at once in a small dark box (the older versions show the browser's slower tooltip). On the Quarterly and Monthly trend lines the count and % are no longer written on the chart; they show only when you hover a point (the lines were too crowded with three years). The count and % written inside the bars and columns stay.",
+      "GSD: one gap per member, open for one of two reasons, decided by the latest HbA1c (from the team's Slack thread on LPP-16462). The Open Gaps Count tile on the GSD tab shows two lines under the number: 'HbA1c 8 to 9' and 'HbA1c above 9, or no test this year' (they add up to the tile), and the Closed Gaps Count tile shows 'HbA1c below 8' (Sam: 'indicate what is opening/closing the gap'). To confirm: the team is waiting for Allie Grace's clinical answer, and the back end may count GSD as two gaps (<8 and >9). Looking back at any past measurement year (Sam's idea) is not built.",
+    ],
+  },
+  {
+    id: 16,
+    name: "Version 16 - Review fixes",
+    date: "2026-11-16",
+    summary: "Version 15 after a full review of the Overview and measure tabs against the Balsamiq board and Jira LPP-16051. Versions 15 and older stay exactly as they were.",
+    changes: [
+      "Everything in Version 15 stays. Versions 15 and older are as they were. Only the Analytics dashboards (and the sample members they read) change.",
+      "Overview table: '# Open Gaps', 'Gaps' and '# Closed Gaps (Measure Year)' now follow the measure run, so the table adds up to the tiles above it.",
+      "Header: the run date is a picker ('Data as of (Run Date)') on the Overview and on every measure tab, newest run first. The run text in the top bar is hidden on dashboard pages. If the newest nightly run failed, a small notice says so and the results are the last complete run (switch 'Show a failed latest run' in the Version menu to see it).",
+      "Sample data: five 'Sample ...' clinics tied to the member's PCM and about a dozen places in IL, IN, MO and IA with the matching county, the same on every page. Open and closed gap counts do not change. The Member page header shows the member's Primary Care Manager and Clinic, and its address matches the same place.",
+      "Overview table: Age is the member's age today (as on the Member page). Age Group sorts youngest first. Member Name stays in view when the table scrolls sideways. 'HEDIS MEASURE YEAR' and 'MEASUREMENT YEAR' are both 'HEDIS Measure Year'.",
+      "BCS and CCS count Female members only (11 of the 17 members with unknown sex drop out of the two measures, as the specification says).",
+      "Measure tabs: Top n titles use the board's wording ('... Primary Care Managers With Most Open Gaps'). Long names on the Race and Military Status charts wrap onto as many lines as they need (up to 5 on a narrow screen) instead of being cut. About This Measure starts with 'Specification: NCQA HEDIS MY 2026 · Value sets: version 2026-07'. Bars can be reached with the keyboard and show a focus ring.",
+      "Navigation: the breadcrumb is 'Analytics / BCS' (no 'Overview' step). The chosen tab is kept in the address (#/dashboards?m=BCS), so refresh and the Back button work. Primary Care Manager and Military Status stay when you move between tabs, and Clear All clears them everywhere.",
+      "CCS, COL, GSD and WCV tabs (checked against BCS): the first column of Gaps By Age starts at the measure's youngest age (COL 45-49, CCS 21-29, GSD 18-19, WCV 3-9). The Age Range filter lists only the ranges that apply to the measure. BCS and CCS list only All and Female in the Sex filter. About This Measure has one bullet per rule for every measure, like BCS. The rate tile's footer uses the tile's name ('CCS Measure Rate on the last Run Date...').",
+      "HEDIS Inputs and DCS: sample dates are on or before the run date (16 Oct 2026, 2:00 AM). Admin: the run history uses the same style as the headers (two decimals, '16th Oct, 2026 @ 2:00 AM CST', '1st Jan 2026') The Measure dropdown is gone: one table lists every measure, with a Measure column (one row per run and measure).",
+      "Measure pages: the Age Range filter uses the age on 31 Dec of the measurement year, like Min / Max and Gaps By Age, so every member in the numbers can be reached by an Age Range choice (BCS: 10 women who are 39 now and turn 40 this year were missing).",
+      "Measure pages: when no one is eligible for the chosen filters the Measure Rate tile says N/A (with 'No eligible members for these filters' and no arrow) instead of 0.00%.",
+      "Measure pages: Age Range, Race and Ethnicity show the first chosen value and '+2' while closed, so the filter row keeps one height. A stray 'All' no longer sits under a chosen value. (The sevida-ui AutocompleteField got one optional prop, limitTags; every other screen is unchanged.)",
+      "Admin: Initial Population is Eligible plus Excluded, the same as the measure pages (it counted members marked Review, so GSD showed 324 against 317 and the row did not add up).",
+      "Jira audit (LPP-16069, 16144, 16155 to 16163, 16227 to 16229, 16360), Members List: the title is 'Members List (n)'; the columns are Member ID and Gender; the list opens sorted by # Open Gaps (most first, then name A to Z); # Open Gaps is a link to the member's Care Gaps tab; Created On, Created By and Last Updated are in the Columns panel under Records; the panel has Clear Selections.",
+      "Member Details tabs: the title is the tab name and the count ('Claims (2)'); the breadcrumb is 'Members > Care Gaps' or 'Members > Member Claims'; 'Related Care Gap' (in no ticket) is off by default; every tab offers Created On, Created By and Last Updated; every column has an info text. Care Gaps tab: Evidence Role and Reason are off by default and the title follows the ticket. Claims: Service Start Date and Service End Date, Claim Type P / I / D with the full name on hover, Claim Status hidden. Labs: the reference range shows only for out-of-range results. Medications: Strength and Dose are two columns and the pharmacy, prescriber and refill columns are hidden. Observations: the status is on a second line under the value. Providers: newest Last Interaction first and the ticket's nine hidden columns; the primary care manager has a row.",
+      "Care Gaps list and details: sorted by Priority (High first), Gender instead of Sex, Closure Source instead of Evidence, info texts only on the columns the ticket names. Details breadcrumb is 'Care Gaps > Gap Name > Member > Overview / Evidence / History'; Evidence descriptions open the record, newest Service Date first; History is titled 'Gap History' and the words 'Sample event' are gone.",
+      "Jira audit, second round: member names read 'First M Last'; the Care Gaps list opens with every gap (open and closed) and calls the ID column Member ID; Code columns are written with their system ('CPT: 71046 - ...', 'LOINC: ...', 'NDC: ...', 'CVX: 208'); lab Result shows value and unit; Claims show several service lines in one claim and the Code column holds the ICD-10-CM diagnosis codes; every encounter has a primary diagnosis and the member's own clinic; Medications Dose; the Care Gap Overview opens with a Gap Summary table (Status, Priority, Gap Identified Date, Due Date, Days Remaining).",
+      "One primary care manager per member everywhere (header, Members list, Care Gaps list and details, Providers tab, dashboards). Before, the list and details showed the manager from the member's file and the header and dashboards showed another name.",
+    ],
+  },
 ];
 /** Versions 5 and 6 are the Analytics redesign experiments (own pages). Version 7 goes back to the Version 4 dashboard. */
 export const isRedesign = (id: number) => id === 5 || id === 6;
-export const LATEST_VERSION: VersionId = 14;
+export const LATEST_VERSION: VersionId = 16;
 
 const KEY = "sevida-mockup-version";
 const isId = (x: unknown): x is VersionId =>
@@ -351,7 +395,7 @@ export const fmtVersionDate = (iso: string) => {
 };
 
 /** The Version dropdown in the header. */
-export function VersionPicker() {
+export function VersionPicker({ footer }: { footer?: ReactNode }) {
   const { version, setVersion } = useVersion();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const narrow = useMediaQuery("(max-width:599.95px)");
@@ -397,6 +441,7 @@ export function VersionPicker() {
             />
           </MenuItem>
         ))}
+        {version.id >= 16 ? footer : null}
       </Menu>
     </>
   );

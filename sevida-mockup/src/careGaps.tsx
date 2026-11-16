@@ -39,6 +39,7 @@ import {
   providerName,
   resultsFor,
   stateLabel,
+  a1cBandOf,
 } from "./data";
 import type {
   Evt,
@@ -897,6 +898,8 @@ export interface GapView {
   lastUpdated: Date;
   /** Version 12: why the member is excluded (status Excluded only). */
   exclusionReason?: string;
+  /** Version 16 (SevidaLite count ticket): GSD reports two rates. A member with HbA1c 8% to 9% has the below-8 gap open and the above-9 gap closed. */
+  rate?: "<8" | ">9";
 }
 
 /** Evidence status, from the records and requests (it is about the proof, not the work). */
@@ -1524,7 +1527,26 @@ export function GapsProvider({ children }: { children: ReactNode }) {
     (m: Member) =>
       measures
         .map((x) => get(m, x.code))
-        .filter((g): g is GapView => g !== null),
+        .filter((g): g is GapView => g !== null)
+        // Version 16: GSD has two rates (below 8%, above 9%). HbA1c 8% to 9% leaves the below-8 rate open and meets the above-9 rate,
+        // so the member has an open and a closed GSD gap. Each is counted once per measure (see summaryOf and the Members list).
+        .flatMap((g) => {
+          if (getVersion() < 16 || g.def.code !== "GSD" || g.status === "Closed" || a1cBandOf(g.m) !== "8% to 9%") return [g];
+          const closed: GapView = {
+            ...g,
+            id: `${g.id}:gt9`,
+            status: "Closed",
+            rate: ">9",
+            next: null,
+            nextAppointment: null,
+            work: {
+              ...g.work,
+              status: "Closed",
+              closed: { on: g.work.identified, by: SYSTEM, reason: "HbA1c is not above 9%: the above-9 rate is met.", evidenceId: g.work.evidence.find((e) => e.kind.toLowerCase().includes("hba1c"))?.id ?? "" },
+            },
+          };
+          return [{ ...g, rate: "<8" as const }, closed];
+        }),
     [get],
   );
   const openOf = useCallback(
@@ -1857,7 +1879,8 @@ export function summaryOf(
       (g) =>
         g.evidenceStatus === "Requested" || g.evidenceStatus === "Received",
     ).length,
-    closed: gaps.filter((g) => g.status === "Closed").length,
+    // Version 16: a measure counts once, even when GSD has two closed rates.
+    closed: new Set(gaps.filter((g) => g.status === "Closed").map((g) => g.def.code)).size,
     met: count("Met"),
     excluded: count("Excluded"),
     review: count("Review"),

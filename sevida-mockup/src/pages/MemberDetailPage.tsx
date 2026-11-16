@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cityOf, countyOfMember, stateNameOf, zipOf } from "../v16Data";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useRole } from "../roles";
 import {
@@ -65,14 +66,12 @@ import {
   NEWEST_FILE,
   ageAtYearEnd,
   continuouslyEnrolled,
-  countyOf,
   currentPayer,
   ethnicityNames,
   fmtDate,
   fmtEnd,
   DEMO_NOW,
   dataFiles,
-  stateName,
   enrollmentStatusOf,
   languageNames,
   measures,
@@ -623,7 +622,7 @@ function ProfileTab({ m }: { m: Member }) {
             },
             {
               label: "Address",
-              value: `${m.street}, ${m.city}, ${stateName(m.state)} ${m.zip}`,
+              value: `${m.street}, ${cityOf(m)}, ${stateNameOf(m)} ${zipOf(m)}`,
               full: true,
             },
             {
@@ -632,7 +631,7 @@ function ProfileTab({ m }: { m: Member }) {
             },
             {
               label: "County (proposed field)",
-              value: countyOf(m),
+              value: countyOfMember(m),
             },
             {
               label: "Military status (proposed field)",
@@ -1243,6 +1242,7 @@ export function MemberHeader({
       <MemberHeaderV4
         m={m}
         openGaps={sum.open}
+        closedGaps={version.id >= 16 ? sum.closed : undefined}
         updated={newestReceived()}
         nameTo={nameTo}
         measuresMet={sum.scored > 0 ? `${sum.met} of ${sum.scored}` : undefined}
@@ -1615,11 +1615,20 @@ export function MemberDetailPage() {
     <PageContainer
       // Version 3 has "Gap Data Last Updated" inside the header (sheet wireframe), so it is not repeated here.
       breadcrumbsEnd={v3 ? undefined : <DataFreshness />}
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Members", href: "/members" },
-        { label: m.name },
-      ]}
+      // Version 16 (LPP-16155 to 16163): the trail is Members > Care Gaps, or Members > Member Claims and so on for the other tabs.
+      breadcrumbs={
+        version.id >= 16
+          ? [
+              { label: "Members", href: "/members" },
+              // LPP-16156 writes the Claims trail as "Members > Member Care Gaps" (most likely a copy of the Care Gaps ticket); the mockup follows the ticket word for word.
+              { label: tab === "gaps" ? "Care Gaps" : tab === "claims" ? "Member Care Gaps" : `Member ${(v3Items.find((t) => t.key === tab)?.label ?? "Details")}` },
+            ]
+          : [
+              { label: "Home", href: "/" },
+              { label: "Members", href: "/members" },
+              { label: m.name },
+            ]
+      }
       renderLink={renderCrumbLink}
     >
       <Stack spacing={2}>

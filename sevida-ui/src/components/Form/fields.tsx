@@ -116,6 +116,8 @@ interface AutocompleteBase {
   disabled?: boolean;
   error?: boolean;
   helperText?: ReactNode;
+  /** `multiple` only: how many chips show while the field is not focused. The rest become "+2". Off by default (every chip shows). */
+  limitTags?: number;
 }
 export type AutocompleteFieldProps =
   | (AutocompleteBase & { multiple?: false; value: string | null; onChange: (value: string | null) => void })
@@ -132,6 +134,7 @@ export function AutocompleteField(props: AutocompleteFieldProps) {
     return (
       <Autocomplete
         multiple
+        limitTags={props.limitTags}
         disabled={disabled}
         options={options}
         value={props.value.map(byValue)}

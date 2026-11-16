@@ -1678,7 +1678,7 @@ function v3Def(def: MeasureDef): MeasureDef {
   const institution: Rule = { text: 'Excluded: age 66+ and enrolled in an institutional special needs plan (I-SNP), or living in a long-term institution (LTI flag) during the year.', from: 'spec', where: 'member-en, medicare-status' };
   r = { ...def };
   if (def.code === 'BCS-E') {
-    const lo = getVersion() >= 7 ? 42 : 52;
+    const lo = getVersion() >= 15 ? 40 : getVersion() >= 7 ? 42 : 52;
     r.population = `Women age ${lo}–74`;
     r.ageRule = `Female, age ${lo}–74 on Dec 31`;
     let rules = swap(def.rules, 'Member is female', `Member is female, ${lo}–74 on Dec 31.`);
@@ -1686,13 +1686,22 @@ function v3Def(def: MeasureDef): MeasureDef {
     rules = add(rules, 'Excluded: mastectomy', institution);
     r.rules = rules;
   } else if (def.code === 'CCS-E') {
+    const ccsLo = getVersion() >= 15 ? 21 : 24;
+    r.population = `Women age ${ccsLo}–64`;
+    r.ageRule = `Female, age ${ccsLo}–64 on Dec 31`;
     r.needs = 'Cervical cytology in the last three years, or a high-risk HPV test in the last five years (age 30–64 and 30 or older on the test date).';
-    let rules = swap(def.rules, 'The look-back window is three years', 'Cytology counts in the year and the two years before (age 24–64). A high-risk HPV (hrHPV) test also counts when done in the year or the four years before, at age 30–64 and 30 or older on the test date.');
+    let rules = swap(def.rules, 'The look-back window is three years', `Cytology counts in the year and the two years before (age ${ccsLo}–64). A high-risk HPV (hrHPV) test also counts when done in the year or the four years before, at age 30–64 and 30 or older on the test date.`);
+    rules = swap(rules, 'Member is female', `Member is female, ${ccsLo}–64 on Dec 31.`);
     rules = swap(rules, 'Excluded: hysterectomy', 'Excluded: hysterectomy with no cervix, cervical agenesis or acquired absence of the cervix, recorded as a procedure or diagnosis.');
     rules = [...rules, { text: 'Excluded: palliative care during the measurement year (diagnosis or encounter).', from: 'spec', where: sheet }];
     r.rules = rules;
   } else if (def.code === 'COL-E') {
     r.rules = add(def.rules, 'Excluded: frailty', institution);
+    if (getVersion() >= 15) {
+      r.population = 'Members age 45–75';
+      r.ageRule = 'Age 45–75 on Dec 31';
+      r.rules = swap(r.rules, 'Member is 46–75', 'Member is 45–75 on Dec 31.');
+    }
   } else if (def.code === 'WCV' && getVersion() >= 12) {
     // NCQA removed telehealth well-care visits from the measure for MY 2025; MY 2026 keeps that.
     r.rules = add(def.rules, 'Met when a well-care visit', { text: 'A well-care visit held by telehealth (video or phone) does not count. NCQA removed telehealth visits from this measure for MY 2025.', from: 'ncqa', where: 'NCQA MY 2025 and MY 2026 documents' });
@@ -1830,10 +1839,19 @@ export const rulesOfYear = (year: number): YearRules => {
   if (getVersion() < 3) return base;
   const v7 = getVersion() >= 7;
   const v12 = getVersion() >= 12;
-  const key = `${v12 ? 12 : v7 ? 7 : 3}:${base.year}`;
+  const v15 = getVersion() >= 15;
+  const key = `${v15 ? 15 : v12 ? 12 : v7 ? 7 : 3}:${base.year}`;
   let r = v3Cache.get(key);
   // Version 12: telehealth well-care visits do not count in any year (NCQA removed them from WCV for MY 2025, and MY 2026 keeps that).
-  if (!r) v3Cache.set(key, (r = v12 ? { ...v7Rules(base), telehealthCounts: false } : v7 ? v7Rules(base) : v3Rules(base)));
+  // Version 15 (Sam's Typical Age Ranges): BCS 40-74 for the current year (2025 stays 50-74), CCS 21-64 and COL 45-75 for every year.
+  if (!r) {
+    if (v15) {
+      const ages = { ...v7Rules(base).ages, 'CCS-E': [21, 64] as [number, number], 'COL-E': [45, 75] as [number, number] };
+      if (base.year === MY) ages['BCS-E'] = [40, 74];
+      r = { ...v7Rules(base), ages, telehealthCounts: false };
+    } else r = v12 ? { ...v7Rules(base), telehealthCounts: false } : v7 ? v7Rules(base) : v3Rules(base);
+    v3Cache.set(key, r);
+  }
   return r;
 };
 /** Age range of each measure on Dec 31 of the current year (from the measure rules). */
@@ -1898,7 +1916,9 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
   const Y_END = new Date(year, 11, 31);
   const age = ageAtYearEnd(m.dob, year);
   const [lo, hi] = R.ages[code];
-  const f = m.gender === 'female';
+  // Version 16: a member whose sex is not on file (shown as Unknown) is not counted in the two women's measures. The specification names women.
+  const sexNotOnFile = getVersion() >= 16 && (code === 'BCS-E' || code === 'CCS-E') && (['M1010', 'M1060', 'M1011', 'M1303'].includes(m.id) || hashOf(`${m.id}-sexunk`) % 25 === 0);
+  const f = m.gender === 'female' && !sexNotOnFile;
   const plan = [
     { label: def.checks.age, source: def.checks.ageSource },
     {
@@ -1939,7 +1959,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
           ? 'No diabetes on record'
           : null;
   if (why) {
-    add(0, 'fail', `${f ? 'Female' : 'Male'}, age ${age}. ${why}`);
+    add(0, 'fail', `${f ? 'Female' : sexNotOnFile ? 'Sex not on file' : 'Male'}, age ${age}. ${why}`);
     return finish('Not eligible', why);
   }
   const dx = m.events.filter((e) => e.tag === 'diabetes').sort((x, y) => x.date.getTime() - y.date.getTime());

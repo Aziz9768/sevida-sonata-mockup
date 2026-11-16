@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Autocomplete, Box, Chip, InputAdornment, TextField as MuiTextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { AutocompleteField, InfoTip, tokens } from "sevida-ui";
+import { AutocompleteField, InfoBanner, InfoTip, SelectField, tokens } from "sevida-ui";
 import { QsTile } from "../quicksight/kit";
 import { closedColor, openColor } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
@@ -11,6 +11,7 @@ import { getVersion } from "../version";
 import { NO_PCP } from "../data";
 import type { MeasureState } from "../data";
 import { PCMS, pcmByName } from "../v7Data";
+import { useFailedLatestDemo, useRun } from "../runs";
 
 /**
  * Version 12 (Balsamiq board, Analytics - Quality Measures): the pieces the Overview and the measure page share.
@@ -145,6 +146,46 @@ export const Fact = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
+/**
+ * Version 16: the Data as of (Run Date) fact is a picker, newest run first. A failed run publishes nothing, so it is not in the list.
+ * Choosing a run changes every number on the page, because the numbers follow the run (see runs.tsx).
+ */
+export function RunPickerFact() {
+  const { choices, latest, run, setRunId } = useRun();
+  return (
+    <div style={{ minWidth: 300 }}>
+      <Box sx={whiteAll}>
+        <SelectField
+          label="Data as of (Run Date)"
+          value={run.id}
+          onChange={setRunId}
+          options={choices.map((r) => ({ value: r.id, label: `${runStamp(r.at)}${r.rerunOf ? " (re-run)" : ""}${r.id === latest.id ? " (latest)" : ""}` }))}
+        />
+      </Box>
+    </div>
+  );
+}
+
+/** Version 16: when the newest nightly run failed, the header says so and which results are shown. Only the Version menu demo switch turns this on. */
+export function FailedRunNotice({ at }: { at: Date }) {
+  const on = useFailedLatestDemo();
+  const { isLatest } = useRun();
+  if (!on || !isLatest) return null;
+  return (
+    <Box sx={{ px: `${qs.gap}px`, pt: `${qs.gap}px` }}>
+      <InfoBanner tone="warning" title={`The ${runStamp(at)} run did not finish`}>
+        Showing the results from the last complete run.
+      </InfoBanner>
+    </Box>
+  );
+}
+
+/** The next update. When the newest run failed, the next try is the night after. */
+export const useNextUpdate = (next: Date) => {
+  const failed = useFailedLatestDemo();
+  return failed ? new Date(next.getFullYear(), next.getMonth(), next.getDate() + 1, next.getHours(), next.getMinutes()) : next;
+};
+
 /* ------------------------------------------------------------------ KPI tile */
 
 export type Tone = "good" | "bad" | "neutral";
@@ -183,7 +224,10 @@ export function KpiTile({
   footer,
   cols = 12,
   aboutMin = 48,
+  extra,
 }: {
+  /** Version 15: lines under the big number (GSD: why the open gaps are open). */
+  extra?: ReactNode;
   group: Group;
   title: string;
   about: string;
@@ -201,8 +245,16 @@ export function KpiTile({
   // use the design system's dark green and dark red text, so they stay readable on white. Version 12 keeps the strong green and red.
   const v13 = getVersion() >= 13 && (group === "met" || group === "notMet");
   const g = v13 ? { color: group === "met" ? closedColor() : openColor(), text: group === "met" ? tokens.status.success.dark : tokens.status.danger.dark } : GROUP[group];
-  const ink =
-    tone === "good" ? (getVersion() >= 13 ? tokens.status.success.dark : qs.meaning.met) : tone === "bad" ? (getVersion() >= 13 ? tokens.status.danger.dark : qs.tone.danger.text) : qs.color.secondaryForeground;
+  // Version 15 (Sam): Better / Worse arrow, number and word are bold, with a bigger arrow, in the same light green and red as the left border
+  // of the tile, as Sam suggested. The light green is only 2 to 1 on white: to confirm with Sam.
+  const v15 = getVersion() >= 15;
+  const ink = v15
+    ? tone === "good"
+      ? closedColor()
+      : tone === "bad"
+        ? openColor()
+        : qs.color.secondaryForeground
+    : tone === "good" ? (getVersion() >= 13 ? tokens.status.success.dark : qs.meaning.met) : tone === "bad" ? (getVersion() >= 13 ? tokens.status.danger.dark : qs.tone.danger.text) : qs.color.secondaryForeground;
   const word = tone === "good" ? "Better" : tone === "bad" ? "Worse" : "No change";
   const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
   return (
@@ -211,6 +263,7 @@ export function KpiTile({
       <Typography sx={{ fontSize: qs.type.visualTitle.size, fontWeight: 700 }}>{title}</Typography>
       <Typography sx={{ fontSize: qs.type.subtitle.size, color: qs.color.mutedText, lineHeight: 1.3, minHeight: aboutMin, whiteSpace: "pre-line" }}>{about}</Typography>
       <Typography sx={{ fontSize: qs.type.kpi.size, fontWeight: qs.type.kpi.weight, lineHeight: 1.25, mt: 0.5, color: g.text }}>{value}</Typography>
+      {extra}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.75, flexWrap: "wrap" }}>
         <Typography sx={{ fontSize: qs.type.body.size, color: qs.color.secondaryForeground }}>Prior Month: {prior}</Typography>
         {change !== null && (
@@ -218,11 +271,11 @@ export function KpiTile({
             sx={{ fontSize: qs.type.body.size, fontWeight: 700, color: ink, display: "inline-flex", alignItems: "center", gap: 0.5 }}
             title={`${word}: ${change} against the prior month`}
           >
-            <span aria-hidden="true" style={{ fontSize: 10 }}>
+            <span aria-hidden="true" style={{ fontSize: v15 ? 15 : 10 }}>
               {arrow}
             </span>
             {change}
-            <Box component="span" sx={{ fontWeight: 400 }}>
+            <Box component="span" sx={{ fontWeight: v15 ? 700 : 400 }}>
               {word}
             </Box>
           </Typography>

@@ -290,6 +290,7 @@ export function ColumnsPanel<T>({
   onToggleHidden,
   onTogglePin,
   onReset,
+  onClearAll,
 }: {
   /** List each group's columns in table order (default: A to Z inside each group). */
   tableOrder?: boolean;
@@ -304,6 +305,8 @@ export function ColumnsPanel<T>({
   onToggleHidden: (key: string) => void;
   onTogglePin: (key: string) => void;
   onReset: () => void;
+  /** Adds a Clear Selections button that unticks every column that can be hidden. */
+  onClearAll?: () => void;
 }) {
   const [find, setFind] = useState("");
   const q = find.trim().toLowerCase();
@@ -466,6 +469,28 @@ export function ColumnsPanel<T>({
         <RestartAltIcon sx={{ fontSize: 15 }} />
         Reset Columns
       </Box>
+      {onClearAll && (
+        <Box
+          component="button"
+          type="button"
+          onClick={onClearAll}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            border: 0,
+            bgcolor: "transparent",
+            cursor: "pointer",
+            color: "ink.500",
+            font: "inherit",
+            fontSize: ".8125rem",
+            p: 0.5,
+            "&:hover": { color: "primary.main" },
+          }}
+        >
+          Clear Selections
+        </Box>
+      )}
     </Stack>
   );
 }

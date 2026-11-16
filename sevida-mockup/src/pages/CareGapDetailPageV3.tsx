@@ -1,7 +1,8 @@
-import { useVersion } from "../version";
+import { getVersion, useVersion } from "../version";
+import { displayName, pcmPerson } from "../v16Data";
 import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Chip, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import {
   Button,
   Card,
@@ -44,7 +45,6 @@ import {
   hashOf,
   measureByCode,
   memberById,
-  primaryCareOf,
   providerName,
   providers,
 } from "../data";
@@ -248,7 +248,87 @@ function OverviewV12({ g }: { g: GapView }) {
   const others = openOf(g.m).filter((x) => x.def.code !== code);
   const left = code === "GSD" ? V11_LEFT_GSD : V3_LEFT[code];
   const who = code === "GSD" ? V11_WHO_GSD : V3_WHO[code];
+  // Version 16 (LPP-16227): a Gap Summary table (Status, Priority, Gap Identified Date, Due Date, Days Remaining) opens the Overview.
+  const summary =
+    getVersion() >= 16 ? (
+      <Card title="Gap Summary">
+        <Table size="small" aria-label="Gap Summary">
+          <TableHead>
+            <TableRow>
+              {["Status", "Priority", "Gap Identified Date", "Due Date", "Days Remaining"].map((h) => (
+                <TableCell key={h} sx={{ fontWeight: 700 }}>
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            <TableRow>
+              <TableCell>{excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}</TableCell>
+              <TableCell>{gapPriority(g) ?? "N/A"}</TableCell>
+              <TableCell>{fmtDate(g.identified)}</TableCell>
+              <TableCell>{g.status === "Open" ? fmtDate(DUE) : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
+    ) : null;
+  // Version 16 (LPP-16227): Gap Summary, Other Open Gaps (chips, Gap Name A to Z), Why The Gap Is Open, How To Close The Gap. No "Gap Considerations" section.
+  if (getVersion() >= 16) {
+    const chips = [...others].sort((a, b) => V3_GAP_LABEL[a.def.code as MeasureCode].localeCompare(V3_GAP_LABEL[b.def.code as MeasureCode]));
+    return (
+      <Stack spacing={2}>
+        {summary}
+        <Card title="Other Open Gaps">
+          {chips.length ? (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+              {chips.map((x) => (
+                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={V3_GAP_LABEL[x.def.code as MeasureCode]} />
+              ))}
+            </Stack>
+          ) : (
+            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+          )}
+        </Card>
+        <Card title={excluded ? "Why The Member Is Excluded" : closed ? "Why The Gap Is Closed" : "Why The Gap Is Open"}>
+          <Stack spacing={0.5}>
+            <Typography>{why}</Typography>
+            <Typography>{evidenceLink}.</Typography>
+          </Stack>
+        </Card>
+        <Card title="How To Close The Gap">
+          <Stack spacing={0.5}>
+            {excluded ? (
+              <Typography>None. The member is excluded from this measure, so no action is needed.</Typography>
+            ) : closed ? (
+              <Typography>None. The gap is closed.</Typography>
+            ) : (
+              <>
+                <Typography>
+                  <b>Recommended action: </b>
+                  <LlmText text={RECOMMENDED_SENTENCE(code, CURRENT_YEAR)} />
+                </Typography>
+                {left.map((t, i) => (
+                  <Typography key={i}>
+                    {i === 0 && <b>{gapShort(code)}: </b>}
+                    {t}
+                  </Typography>
+                ))}
+                <Typography>
+                  <b>What to document: </b>
+                  the service date inside the window above, the code and code system, and the provider who did it. Send it through the claims, EHR or lab feed, or record it as evidence in Sonata. The gap shows as Closed once the evidence is confirmed; doing the activity alone does not close it.
+                </Typography>
+              </>
+            )}
+          </Stack>
+        </Card>
+      </Stack>
+    );
+  }
   return (
+    <Stack spacing={2}>
+      {summary}
     <Card title={excluded ? "Why the Member Is Excluded" : closed ? "Why the Gap Is Closed" : "Why the Gap Is Open"}>
       <Stack spacing={2.5}>
         <Stack spacing={0.5}>
@@ -305,6 +385,7 @@ function OverviewV12({ g }: { g: GapView }) {
         </Stack>
       </Stack>
     </Card>
+    </Stack>
   );
 }
 
@@ -364,25 +445,45 @@ function EvidenceV12({ g }: { g: GapView }) {
             rank: e === g.result.evidence || (imp && (imp.outcome === "decided" || imp.outcome === "counted")) ? 0 : 1,
           };
         })
-        .sort((a, b) => a.rank - b.rank || b.date.getTime() - a.date.getTime()),
+        // Version 16 (LPP-16228): newest Service Date first, then Provider A to Z.
+        .sort((a, b) =>
+          getVersion() >= 16
+            ? b.date.getTime() - a.date.getTime() || a.provider.localeCompare(b.provider)
+            : a.rank - b.rank || b.date.getTime() - a.date.getTime(),
+        ),
     [g.m, code],
   );
   const optional = { group: "Optional", defaultHidden: true } as const;
+  const e16 = getVersion() >= 16;
   const cols: Column<EvRow12>[] = [
     { key: "date", header: "Service Date", help: "The day the care happened. Not the day the record arrived.", accessor: (r) => r.date, render: (r) => fmtDate(r.date), sortable: true, nowrap: true, primary: true },
     { key: "type", header: "Record Type", accessor: (r) => r.type, sortable: true, width: 140, filter: { type: "multiselect", options: Object.values(RECORD_TYPE).map((v) => ({ value: v, label: v })) } },
-    { key: "desc", header: "Description", accessor: (r) => r.desc, width: 300 },
+    {
+      key: "desc",
+      header: "Description",
+      help: e16 ? "What the record says. Select it to open the record on the member's page." : undefined,
+      accessor: (r) => r.desc,
+      width: 300,
+      render: e16 ? (r) => <TableLink to={`/members/${g.m.id}?tab=${r.tab}`}>{r.desc}</TableLink> : undefined,
+    },
     { key: "code", header: "Code", accessor: (r) => r.code, sortable: true, nowrap: true },
     { key: "system", header: "Code System", accessor: (r) => r.system, sortable: true, nowrap: true },
     { key: "result", header: "Result / Value", accessor: (r) => r.result, sortable: true, nowrap: true },
     { key: "prov", header: "Provider", accessor: (r) => r.provider, sortable: true, width: 180 },
     { key: "src", header: "Source", help: "Where the record came from: claims, or the EHR / lab feed.", accessor: (r) => r.source, sortable: true, width: 150 },
-    { key: "role", header: "Evidence Role", help: "How this record relates to the gap: Closes gap, Exclusion or Doesn't qualify.", accessor: (r) => r.role, sortable: true, nowrap: true, filter: { type: "multiselect", options: evidenceRoles.map((v) => ({ value: v, label: v })) } },
-    { key: "reason", header: "Reason", help: "Explains a Doesn't qualify row, for example dated outside the lookback window or code not in the measure's value set.", accessor: (r) => r.reason, render: (r) => r.reason || "–", width: 320 },
+    { key: "role", header: "Evidence Role", help: "How this record relates to the gap: Closes gap, Exclusion or Doesn't qualify.", accessor: (r) => r.role, sortable: true, nowrap: true, filter: { type: "multiselect", options: evidenceRoles.map((v) => ({ value: v, label: v })) }, ...(e16 ? optional : {}) },
+    { key: "reason", header: "Reason", help: "Explains a Doesn't qualify row, for example dated outside the lookback window or code not in the measure's value set.", accessor: (r) => r.reason, render: (r) => r.reason || "–", width: 320, ...(e16 ? optional : {}) },
     { key: "recordId", header: "Record ID / Claim ID", help: "Sample data.", accessor: (r) => r.recordId, nowrap: true, ...optional },
     { key: "received", header: "Received Date", help: "The day the file with this record was received.", accessor: (r) => r.received, render: (r) => (r.received ? fmtDate(r.received) : "–"), sortable: true, nowrap: true, ...optional },
     { key: "valueSet", header: "Value Set", help: "The measure's list of codes this record matched. Sample data.", accessor: (r) => r.valueSet, width: 180, ...optional },
     { key: "clinic", header: "Clinic / Facility", accessor: (r) => r.clinic, width: 200, ...optional },
+    ...(e16
+      ? ([
+          { key: "createdOn", header: "Created On", help: "Date the evidence record was created.", accessor: (r) => r.date, render: (r) => fmtDate(r.date), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", help: "Who or what created the evidence record.", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", help: "Date the evidence record last changed.", accessor: (r) => r.received ?? r.date, render: (r) => fmtDate(r.received ?? r.date), sortable: true, nowrap: true, ...optional },
+        ] as Column<EvRow12>[])
+      : []),
   ];
   return (
     <Stack spacing={2}>
@@ -391,8 +492,10 @@ function EvidenceV12({ g }: { g: GapView }) {
         ariaLabel="Evidence"
         title="Evidence"
         searchPlaceholder="Search by Description, Code or Provider…"
-        storageKey="demo-gap-evidence-v12-a"
-        columns={cols}
+        storageKey={e16 ? "demo-gap-evidence-v16-a" : "demo-gap-evidence-v12-a"}
+        defaultSort={e16 ? { key: "date", direction: "desc" } : undefined}
+        // Version 16 (LPP-16228): the ticket's eight columns, and Created On, Created By and Last Updated in the Columns panel. Nothing else.
+        columns={e16 ? cols.filter((c) => !["role", "reason", "recordId", "received", "valueSet", "clinic"].includes(c.key)) : cols}
         rows={rows}
         getRowId={(r) => r.key}
         paginated={false}
@@ -425,7 +528,7 @@ interface HistRow12 {
 function HistoryV12({ g }: { g: GapView }) {
   const code = g.def.code as MeasureCode;
   const rows = useMemo<HistRow12[]>(() => {
-    const pcmP = primaryCareOf(g.m)?.p;
+    const pcmP = pcmPerson(g.m);
     const pcmNow = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const prioNow = gapPriority(g) ?? "N/A";
     const act = [...g.work.activity].sort((a, b) => a.when.localeCompare(b.when));
@@ -445,7 +548,7 @@ function HistoryV12({ g }: { g: GapView }) {
     // A made-up example: some open gaps moved to a higher priority a few weeks after they were identified.
     if (g.status === "Open" && hashOf(g.id) % 2 === 0 && prioNow !== "Low") {
       const was = prioNow === "High" ? "Medium" : "Low";
-      evs.push({ key: `${g.id}-p`, when: new Date(g.identified.getTime() + 21 * 86_400_000), event: "Priority Changed", details: `Priority changed from ${was} to ${prioNow}. Sample event.`, pcm: pcmNow, closed: null });
+      evs.push({ key: `${g.id}-p`, when: new Date(g.identified.getTime() + 21 * 86_400_000), event: "Priority Changed", details: `Priority changed from ${was} to ${prioNow}.${getVersion() >= 16 ? "" : " Sample event."}`, pcm: pcmNow, closed: null });
     }
     evs.sort((a, b) => a.when.getTime() - b.when.getTime());
     // Status and priority as they were after each event.
@@ -471,9 +574,12 @@ function HistoryV12({ g }: { g: GapView }) {
         source: "Sonata quality run",
       };
     });
+    // Version 16: newest first, and events on the same day A to Z.
+    if (getVersion() >= 16) return built.sort((a, b) => b.when.getTime() - a.when.getTime() || a.event.localeCompare(b.event));
     return built.sort((a, b) => b.when.getTime() - a.when.getTime());
   }, [g, code]);
   const optional = { group: "Optional", defaultHidden: true } as const;
+  const h16 = getVersion() >= 16;
   const cols: Column<HistRow12>[] = [
     { key: "when", header: "Date", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, primary: true },
     { key: "event", header: "Event", help: "Identified, Priority Changed, PCM Changed, Closed, Reopened or Excluded.", accessor: (r) => r.event, sortable: true, nowrap: true, filter: { type: "multiselect", options: ["Identified", "Priority Changed", "PCM Changed", "Closed", "Reopened", "Excluded"].map((v) => ({ value: v, label: v })) } },
@@ -486,17 +592,25 @@ function HistoryV12({ g }: { g: GapView }) {
     { key: "closed", header: "Gap Closed Date", accessor: (r) => r.closed, render: (r) => (r.closed ? fmtDate(r.closed) : "N/A"), nowrap: true, ...optional },
     { key: "action", header: "Recommended Action", accessor: (r) => r.action, render: (r) => (r.action === "N/A" ? "N/A" : <LlmText text={r.action} />), width: 300, ...optional },
     { key: "source", header: "Source / Run Date", help: "What made the change. Sample data.", accessor: (r) => r.source, render: (r) => `${r.source}, ${fmtDate(r.when)}`, width: 220, ...optional },
+    ...(h16
+      ? ([
+          { key: "createdOn", header: "Created On", help: "Date the history entry was created.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", help: "Who or what created the history entry.", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", help: "Date the history entry last changed.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+        ] as Column<HistRow12>[])
+      : []),
   ];
   return (
     <DataTable
       ariaLabel="History"
-      title="History"
-      columns={cols}
+      title={h16 ? "Gap History" : "History"}
+      // Version 16 (LPP-16229): the ticket's six columns, and Created On, Created By and Last Updated in the Columns panel. Nothing else.
+      columns={h16 ? cols.filter((c) => !["my", "due", "closed", "action", "source"].includes(c.key)) : cols}
       rows={rows}
       getRowId={(r) => r.key}
       paginated={false}
       defaultSort={{ key: "when", direction: "desc" }}
-      storageKey="demo-gap-history-v12-a"
+      storageKey={h16 ? "demo-gap-history-v16-a" : "demo-gap-history-v12-a"}
       columnsPanel={{ tableOrder: true, search: false }}
     />
   );
@@ -655,7 +769,7 @@ function History({ g }: { g: GapView }) {
     // Version 11 (LPP-16229): Priority only for an open gap, and the Primary Care Manager on every row.
     const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
     const openPriority = left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
-    const pcmP = primaryCareOf(g.m)?.p;
+    const pcmP = pcmPerson(g.m);
     const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
@@ -809,7 +923,16 @@ export function CareGapDetailPageV3() {
   const label = def ? V3_GAP_LABEL[def.code as MeasureCode] : "Not found";
 
   // Version 8 (LPP-16153): Care Gaps > BCS > Member Name. Earlier versions: Care Gaps > Member Name > Gap Name.
-  const crumbs = v8
+  // Version 16 (LPP-16227 to 16229): Care Gaps > Gap Name > Member Name > Overview / Evidence / History.
+  const v16 = version.id >= 16;
+  const crumbs = v16
+    ? [
+        { label: "Care Gaps", href: "/care-gaps" },
+        { label: def ? label : "Not found", href: "/care-gaps" },
+        ...(m ? [{ label: displayName(m), href: `/members/${m.id}` }] : []),
+        { label: tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
+      ]
+    : v8
     ? [
         { label: v11 ? "Care Gaps List" : "Care Gaps", href: "/care-gaps" },
         { label: def ? gapShort(def.code) : "Not found", href: "/care-gaps" },
@@ -849,7 +972,7 @@ export function CareGapDetailPageV3() {
   // Version 11 summary (LPP-16153 and the Application Tables sheet): Priority, Primary Care Manager and Gap Evidence are new.
   const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
   const priority = v12 ? gapPriority(g) ?? "--" : closed ? "--" : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
-  const pcmP = primaryCareOf(m)?.p;
+  const pcmP = pcmPerson(m);
   const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
   const closeRec = g.work.closed && g.work.evidence.find((x) => x.id === g.work.closed!.evidenceId);
   const evidence =
@@ -860,6 +983,7 @@ export function CareGapDetailPageV3() {
     <PageContainer
       title={v8 ? undefined : `${m.name}: ${label}`}
       breadcrumbs={crumbs}
+      breadcrumbMaxItems={v16 ? 5 : undefined}
       renderLink={renderCrumbLink}
     >
       <Stack spacing={2}>
@@ -867,12 +991,13 @@ export function CareGapDetailPageV3() {
           // LPP-16153: "Care Gap Name: Member Name" and the Open / Closed label (same green and red everywhere).
           <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
-              {label}: {m.name}
+              {label}: {displayName(m)}
             </Typography>
             {excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}
           </Stack>
         )}
         <MemberHeader m={m} year={MY} nameTo={`/members/${m.id}`} />
+        {!v16 && (
         <Card title="Care Gap Summary">
           <Box
             sx={{
@@ -936,6 +1061,7 @@ export function CareGapDetailPageV3() {
             </Field>
           </Box>
         </Card>
+        )}
         <Tabs
           ariaLabel="Care gap sections"
           value={tab}

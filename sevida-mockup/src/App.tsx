@@ -56,6 +56,7 @@ import type { NavKey } from "./roles";
 import { RolePicker } from "./components/RolePicker";
 import { VersionPicker, VersionProvider, isRedesign, useVersion } from "./version";
 import { RunLine } from "./components/RunBits";
+import { FailedRunSwitch } from "./components/FailedRunSwitch";
 import { RunKeyed, RunProvider } from "./runs";
 import { AuditProvider, useAudit, useWho } from "./auditLog";
 import { IdleWatcher, clearReturnPath, readReturnPath } from "./session";
@@ -177,6 +178,11 @@ function activeKeyFor(pathname: string, search = "", versionId = 2) {
   if (isRedesign(versionId) && first === "analytics") {
     const d = dashByCode(pathname.split("/")[2]);
     return d ? `analytics-group-${d.group}` : "analytics-overview";
+  }
+  if (versionId >= 16 && (first === "dashboards" || first === "quicksight")) {
+    // Version 16: the tab is kept in the address (?m=BCS), so the sidebar follows the tab on both routes.
+    const m = (new URLSearchParams(search).get("m") ?? "").replace(/-E$/i, "").toUpperCase();
+    return ["BCS", "CCS", "COL", "GSD", "WCV"].includes(m) ? `analytics-${m}` : "analytics-overview";
   }
   if (versionId >= 3) {
     if (first === "dashboards") return "analytics-overview";
@@ -407,8 +413,8 @@ function Protected() {
       activeKey={activeKeyFor(pathname, search, version.id)}
       headerContent={
         <>
-          <RunLine />
-          <VersionPicker />
+          {version.id >= 16 && /^\/(dashboards|quicksight)/.test(pathname) ? null : <RunLine />}
+          <VersionPicker footer={<FailedRunSwitch />} />
           <RolePicker />
         </>
       }
@@ -531,7 +537,7 @@ function Protected() {
                   />
                 ) : version.id >= 12 ? (
                   // Version 12: one page for the Overview and every measure, one tab bar (Balsamiq board).
-                  <DashboardsV12Page key={new URLSearchParams(search).get("m") ?? ""} />
+                  <DashboardsV12Page key={version.id >= 16 ? "" : (new URLSearchParams(search).get("m") ?? "")} />
                 ) : version.id >= 10 ? (
                   // Version 10: every measure dashboard drawn like the Lucid BCS chart. The key restarts the filters when the measure changes.
                   (() => {
