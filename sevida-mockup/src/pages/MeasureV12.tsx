@@ -177,7 +177,10 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
     return { mid, high, low };
   }, [v15, code, base]);
   const card = (group: Group, title: string, about: string, key: keyof typeof cur, kind: "count" | "rate", upIsGood: boolean, footTitle = title, extra?: ReactNode) => {
-    const ch = changeOf(cur[key], before[key], kind, upIsGood);
+    // Version 16: a rate with nobody eligible is not 0.00%, it is not defined. The tile says N/A and shows no arrow.
+    const noneNow = v16 && kind === "rate" && cur.eligible === 0;
+    const nonePrior = v16 && kind === "rate" && before.eligible === 0;
+    const ch = noneNow || nonePrior ? { text: null as string | null, tone: "neutral" as const, dir: "flat" as const } : changeOf(cur[key], before[key], kind, upIsGood);
     const fmt = (v: number) => (kind === "count" ? n0(v) : pct2(v));
     return (
       <KpiTile
@@ -185,10 +188,10 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         group={group}
         title={title}
         about={about}
-        extra={extra}
+        extra={noneNow ? <span>No eligible members for these filters</span> : extra}
         aboutMin={v15 ? 88 : v13 ? 80 : 64}
-        value={fmt(cur[key])}
-        prior={fmt(before[key])}
+        value={noneNow ? "N/A" : fmt(cur[key])}
+        prior={nonePrior ? "N/A" : fmt(before[key])}
         change={ch.text}
         dir={ch.dir}
         tone={ch.tone}
