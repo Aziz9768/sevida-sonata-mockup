@@ -4,7 +4,7 @@ import { Box, Collapse, Divider, Link, Stack, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { Card, DetailGrid, IconButton, StatusChip } from "sevida-ui";
-import { DEMO_NOW, enrollmentStatusOf, fmtDate, fmtEnd, languageNames } from "../data";
+import { DEMO_NOW, enrollmentStatusOf, fmtDate, fmtEnd, languageNames, NO_PCP } from "../data";
 import { getVersion } from "../version";
 import { memberExtras } from "../recordFields";
 import type { Member } from "../data";
@@ -19,6 +19,8 @@ import {
 } from "../v3Data";
 import { Field } from "./Field";
 import { MemberIdsModalV3 } from "./MemberIdsV3";
+import { clinicOf } from "../v16Data";
+import { pcmOf } from "../v7Data";
 
 /**
  * Version 4 member header: the look of the original header (name, date of birth and status chip on top, a divider, small-capital
@@ -152,6 +154,9 @@ export function MemberHeaderV4({
             <Field label="Gap Data Last Updated">
               {updated ? fmtDate(updated) : "Not received"}
             </Field>
+            {/* Version 16: the member's Primary Care Manager and Clinic, the same as the Members list and Care Gaps. */}
+            {getVersion() >= 16 && <Field label="Primary Care Manager">{pcmOf(m) === NO_PCP ? "Unassigned" : pcmOf(m)}</Field>}
+            {getVersion() >= 16 && <Field label="Clinic">{clinicOf(m)}</Field>}
           </Box>
           <Box
             sx={{

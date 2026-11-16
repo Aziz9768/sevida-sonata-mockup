@@ -6,6 +6,7 @@
 import { DEMO_NOW, hashOf, ethnicityGroupOf, raceGroupOf } from "./data";
 import type { Member, MeasureCode } from "./data";
 import { getVersion } from "./version";
+import { cityOf, stateCodeOf, zipOf } from "./v16Data";
 
 /** The gap names as the sheet writes them (Navigation Menu and Members Page tabs). */
 
@@ -158,14 +159,14 @@ const fmtPhone = (p: string) =>
  */
 export const sampleProfileOf = (m: Member) => {
   const h = hashOf(`${m.id}-profile`);
-  const residential = `${m.street}, ${m.city}, ${m.state} ${m.zip}`;
+  const residential = `${m.street}, ${cityOf(m)}, ${stateCodeOf(m)} ${zipOf(m)}`;
   const adult = DEMO_NOW.getFullYear() - m.dob.getFullYear() >= 18;
   const military = militaryV3(m);
   return {
     residential,
     mailing:
       h % 4 === 0
-        ? `PO Box ${1000 + (h % 8000)}, ${m.city}, ${m.state} ${m.zip}`
+        ? `PO Box ${1000 + (h % 8000)}, ${cityOf(m)}, ${stateCodeOf(m)} ${zipOf(m)}`
         : residential,
     posting: /Active Duty|Guard\/Reserve - Active|Full-Time National Guard/.test(military)
       ? POSTINGS[h % POSTINGS.length]

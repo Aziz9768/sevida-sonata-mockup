@@ -63,6 +63,7 @@ function placeOf(m: Member): Place {
   return list[hashOf(`${m.id}-place`) % list.length];
 }
 export const cityOf = (m: Member) => (v16() ? placeOf(m).city : m.city);
+export const stateCodeOf = (m: Member) => (v16() ? placeOf(m).state : m.state);
 export const stateNameOf = (m: Member) => (v16() ? stateName(placeOf(m).state) : stateName(m.state));
 export const countyOfMember = (m: Member) => (v16() ? placeOf(m).county : countyOf(m));
 export const zipOf = (m: Member) => (v16() ? `${placeOf(m).zip3}${m.zip.slice(3)}` : m.zip);
