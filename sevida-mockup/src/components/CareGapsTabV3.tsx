@@ -158,6 +158,9 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
     const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
+    // Version 16 (LPP-16155): the Evidence column says why the gap is open or closed (up to 2 lines, "…see more") and links to the Evidence tab.
+    const evidenceText = (r: Row) =>
+      r.status === "Closed" && r.closure ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}` : r.explanation;
     const optional = { group: "Optional", defaultHidden: true, searchable: false } as const;
     const cols: Column<Row>[] = [
       {
@@ -214,12 +217,13 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "due",
         header: "Due Date",
-        accessor: (r) => (r.status === "Open" ? dueOf(r) : null),
+        // Version 16: closed gaps keep their due date too ("the date by which action should be taken to close the gap or keep it closed").
+        accessor: (r) => (r.status === "Open" || (getVersion() >= 16 && r.status === "Closed") ? dueOf(r) : null),
         searchable: false,
         sortable: true,
         nowrap: true,
         filter: { type: "dateRange" },
-        render: (r) => (r.status === "Open" ? fmtDate(dueOf(r)) : dash),
+        render: (r) => (r.status === "Open" || (getVersion() >= 16 && r.status === "Closed") ? fmtDate(dueOf(r)) : dash),
       },
       {
         key: "action",
@@ -232,11 +236,22 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "evidence",
         header: "Evidence",
-        help: "Opens the Evidence tab of the care gap: the records that count for the gap, or that closed it.",
-        accessor: (r) => (r.year === MY ? "Evidence" : ""),
+        help: getVersion() >= 16 ? "Why the gap is open or closed." : "Opens the Evidence tab of the care gap: the records that count for the gap, or that closed it.",
+        accessor: (r) => (getVersion() >= 16 ? evidenceText(r) : r.year === MY ? "Evidence" : ""),
         searchable: false,
-        nowrap: true,
-        render: (r) => (r.year === MY ? <TableLink to={`${to(r)}?tab=evidence`}>Evidence</TableLink> : dash),
+        nowrap: getVersion() >= 16 ? undefined : true,
+        width: getVersion() >= 16 ? 280 : undefined,
+        render: (r) =>
+          getVersion() >= 16 ? (
+            <>
+              <LlmText text={evidenceText(r)} />
+              {r.year === MY && <TableLink to={`${to(r)}?tab=evidence`}>Evidence tab</TableLink>}
+            </>
+          ) : r.year === MY ? (
+            <TableLink to={`${to(r)}?tab=evidence`}>Evidence</TableLink>
+          ) : (
+            dash
+          ),
       },
       {
         key: "closedDate",
@@ -304,7 +319,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     const HELP16: Record<string, string> = {
       status: "Open when the member still needs the service, Closed when a record closed the gap, Excluded when the member is out of the measure.",
       found: "The date the gap was identified, from the engine run or the claim that showed it.",
-      due: "The date by which the gap must be closed. Closed gaps show a dash.",
+      due: "The date by which action should be taken to close the gap or keep it closed.",
       action: "What to do next to close the gap. Closed gaps show a dash.",
       closedDate: "The date the gap was closed. Open gaps show a dash.",
     };
