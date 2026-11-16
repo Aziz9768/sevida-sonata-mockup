@@ -105,7 +105,7 @@ export interface DataTableProps<T> {
    * `search`: add a search box at the top of the panel to find a column by name.
    * `groups`: show the groups in exactly this order (groups not named follow, in table order).
    */
-  columnsPanel?: { tableOrder?: boolean; search?: boolean; groups?: string[] };
+  columnsPanel?: { tableOrder?: boolean; search?: boolean; groups?: string[]; clearSelections?: boolean };
   /** Filters panel: Apply first, then Clear Filters (default is Clear Filters, then Apply). */
   applyFirst?: boolean;
   /** Remembers which columns the user showed / hid / reordered, in this browser, under this name. Leave out to not remember. */
@@ -1419,6 +1419,7 @@ export function DataTable<T>({
                 pinnedKeys={config.pinnedKeys}
                 maxPinned={maxPinned}
                 onToggleHidden={config.toggleHidden}
+                onClearAll={columnsPanel?.clearSelections ? config.clearAll : undefined}
                 onTogglePin={config.togglePin}
                 onReset={() => {
                   config.reset();

@@ -7,6 +7,8 @@ import { titleCase } from '../../utils/titleCase';
 export interface PageContainerProps {
   /** Trail above the title. Leave out on a top-level page (it would only repeat the title). */
   breadcrumbs?: BreadcrumbsProps['crumbs'];
+  /** Show every step up to this many before the middle ones fold into a "..." button (default 3). */
+  breadcrumbMaxItems?: number;
   renderLink?: BreadcrumbsProps['renderLink'];
   /** Small content at the far right of the breadcrumb line (for example "Data last updated"). */
   breadcrumbsEnd?: ReactNode;
@@ -27,12 +29,12 @@ export interface PageContainerProps {
  * The frame every page uses: breadcrumb, title, action buttons, then the page's content.
  * It scrolls on its own so a sticky bottom bar and a fixed sidebar keep working.
  */
-export function PageContainer({ breadcrumbs, renderLink, breadcrumbsEnd, title, titleIcon, titleVariant = 'list', actions, subtitle, children }: PageContainerProps) {
+export function PageContainer({ breadcrumbs, breadcrumbMaxItems, renderLink, breadcrumbsEnd, title, titleIcon, titleVariant = 'list', actions, subtitle, children }: PageContainerProps) {
   return (
     <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'auto', bgcolor: 'background.default', px: { xs: 1.5, sm: 2.75 }, py: { xs: 1.5, sm: 2 } }}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', columnGap: 2, rowGap: 0.5, flexWrap: 'wrap' }}>
-          <Breadcrumbs crumbs={breadcrumbs} renderLink={renderLink} />
+          <Breadcrumbs crumbs={breadcrumbs} renderLink={renderLink} maxItems={breadcrumbMaxItems} />
           {breadcrumbsEnd}
         </Box>
       )}

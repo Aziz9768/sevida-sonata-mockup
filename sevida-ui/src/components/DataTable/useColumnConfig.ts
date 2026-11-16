@@ -132,6 +132,13 @@ export function useColumnConfig<T>(
 
   const reset = () => commit(null);
 
+  /** Hide every column that can be hidden at once (the locked ones stay). */
+  const clearAll = () =>
+    commit({
+      ...snapshot(),
+      hidden: all.filter((c) => !isLocked(c)).map((c) => c.key),
+    });
+
   /** Put a whole column setup in place at once (used when a saved view is applied). */
   const apply = (next: Saved) =>
     commit({
@@ -163,6 +170,7 @@ export function useColumnConfig<T>(
     togglePin,
     moveBefore,
     reset,
+    clearAll,
     apply,
     defaultHidden,
     defaultPinned,

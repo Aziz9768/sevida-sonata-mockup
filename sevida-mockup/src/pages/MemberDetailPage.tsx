@@ -1614,11 +1614,19 @@ export function MemberDetailPage() {
     <PageContainer
       // Version 3 has "Gap Data Last Updated" inside the header (sheet wireframe), so it is not repeated here.
       breadcrumbsEnd={v3 ? undefined : <DataFreshness />}
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Members", href: "/members" },
-        { label: m.name },
-      ]}
+      // Version 16 (LPP-16155 to 16163): the trail is Members > Care Gaps, or Members > Member Claims and so on for the other tabs.
+      breadcrumbs={
+        version.id >= 16
+          ? [
+              { label: "Members", href: "/members" },
+              { label: tab === "gaps" ? "Care Gaps" : `Member ${(v3Items.find((t) => t.key === tab)?.label ?? "Details")}` },
+            ]
+          : [
+              { label: "Home", href: "/" },
+              { label: "Members", href: "/members" },
+              { label: m.name },
+            ]
+      }
       renderLink={renderCrumbLink}
     >
       <Stack spacing={2}>

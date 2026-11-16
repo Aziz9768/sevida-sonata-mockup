@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { clinicOf, countyOfMember, countyOptions, stateNameOf, stateOptions } from "../v16Data";
+import { clinicOf, countyOfMember, countyOptions, pcmPerson, stateNameOf, stateOptions } from "../v16Data";
 import type { ReactNode } from "react";
 import { Stack, Typography } from "@mui/material";
 import { StatusChip, Term } from "sevida-ui";
@@ -1568,7 +1568,7 @@ export function useMemberTableColumns(
         return g === "Other" ? "Unknown" : g;
       };
       const pcm = (m: MemberRow) => {
-        const p = primaryCareOf(m)?.p;
+        const p = pcmPerson(m);
         return p ? `${p.name} - NPI: ${p.npi}` : null;
       };
       const lastVisit = (m: MemberRow) => {
@@ -1601,7 +1601,8 @@ export function useMemberTableColumns(
           defaultHidden: true,
           group: "Identifiers",
         },
-        { ...by("tricare"), group: "Identifiers", help: undefined },
+        // Version 16 (LPP-16069): the column is called Member ID.
+        { ...by("tricare"), group: "Identifiers", help: undefined, header: getVersion() >= 16 ? "Member ID" : by("tricare").header },
         {
           ...by("genesisEhr"),
           header: "Genesis MRN",
@@ -1622,7 +1623,8 @@ export function useMemberTableColumns(
         {
           key: "sex",
           filterOrder: 10,
-          header: "Sex",
+          // Version 16 (LPP-16069): the column is called Gender.
+          header: getVersion() >= 16 ? "Gender" : "Sex",
           help: undefined,
           accessor: (m) => sexOf(m),
           sortable: true,
@@ -1682,7 +1684,18 @@ export function useMemberTableColumns(
         { ...allBy("contactResult"), key: "outreachStatus", header: "Outreach Status", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
         { ...allBy("lastContact"), key: "lastOutreach", header: "Last Outreach", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
         // ---- Care Gaps
-        { ...by("openCount"), help: "Number of measures whose criteria have not been met for the member" },
+        {
+          ...by("openCount"),
+          help: "Number of measures whose criteria have not been met for the member",
+          // Version 16 (LPP-16069): the number opens the member's Care Gaps tab.
+          render:
+            getVersion() >= 16
+              ? (m: MemberRow) => {
+                  const n = openOf(m).length;
+                  return n > 0 ? <TableLink to={`/members/${m.id}`}>{n}</TableLink> : n;
+                }
+              : undefined,
+        },
         {
           ...by("gaps"),
           header: "Open Gaps",
@@ -1759,6 +1772,45 @@ export function useMemberTableColumns(
           },
           searchable: false,
         },
+        // ---- Records (Version 16, LPP-16069: hidden by default)
+        ...(getVersion() >= 16
+          ? [
+              {
+                key: "createdOn",
+                header: "Created On",
+                help: "Date the member record was created. Sample data: the demo members have none, so it is made up.",
+                group: "Records",
+                defaultHidden: true,
+                sortable: true,
+                nowrap: true,
+                searchable: false,
+                accessor: (m: MemberRow) => new Date(2024, hashOf(`${m.id}-co`) % 12, 1 + (hashOf(`${m.id}-cd`) % 27)),
+                render: (m: MemberRow) => dateCell(new Date(2024, hashOf(`${m.id}-co`) % 12, 1 + (hashOf(`${m.id}-cd`) % 27))),
+              } as Column<MemberRow>,
+              {
+                key: "createdBy",
+                header: "Created By",
+                help: "Who or what created the member record. Sample data.",
+                group: "Records",
+                defaultHidden: true,
+                sortable: true,
+                searchable: false,
+                accessor: () => "System (Madigan eligibility file)",
+              } as Column<MemberRow>,
+              {
+                key: "lastUpdated",
+                header: "Last Updated",
+                help: "Date the member record last changed. Sample data: the demo members have none, so it is made up.",
+                group: "Records",
+                defaultHidden: true,
+                sortable: true,
+                nowrap: true,
+                searchable: false,
+                accessor: (m: MemberRow) => new Date(2026, hashOf(`${m.id}-lu`) % 9, 1 + (hashOf(`${m.id}-ld`) % 27)),
+                render: (m: MemberRow) => dateCell(new Date(2026, hashOf(`${m.id}-lu`) % 9, 1 + (hashOf(`${m.id}-ld`) % 27))),
+              } as Column<MemberRow>,
+            ]
+          : []),
         // ---- filters with no column of their own
         by("gapStatus"),
         by("ageRange"),

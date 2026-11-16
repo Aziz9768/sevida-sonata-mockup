@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { Box, Chip, Tooltip, Typography } from "@mui/material";
 import { DataTable, StatusChip } from "sevida-ui";
 import type { Column, StatusTone } from "sevida-ui";
-import { fmtDate, hashOf, primaryCareOf, providers } from "../data";
+import { DEMO_NOW, fmtDate, hashOf, providers } from "../data";
 import type { Member } from "../data";
 import { V3_GAP_LABEL, gapShort } from "../v3Data";
 import {
@@ -24,6 +24,7 @@ import {
 import type { RecordTabKey } from "../v8Records";
 import { TableLink } from "./TableLink";
 import { getVersion } from "../version";
+import { clinicOf, pcmPerson } from "../v16Data";
 
 /**
  * Version 8 member sub-tabs (LPP-16154 to LPP-16163): Claims, Diagnoses, Encounters, Immunizations, Labs, Medications,
@@ -175,6 +176,40 @@ const strengthOf = (name: string) => STRENGTH.exec(name)?.[1] ?? DASH;
 const ndcFmt = (code: string) => code.replace(/^(NDC: )?(\d{5})-?(\d{4})-?(\d{2})$/, "$1$2-$3-$4");
 const withText = (code: string, text: string) => (code === DASH || !text ? code : `${code} - ${text}`);
 
+/**
+ * Version 16 (LPP-16156 to 16163, 16360): the default table is exactly the ticket's columns. "Related Care Gap" is not in any ticket, so it moves to the
+ * Columns panel (off). Every tab also offers Created On, Created By and Last Updated there, and every column has an info (i) text.
+ */
+const v16 = () => getVersion() >= 16;
+const HELP16: Record<string, string> = {
+  Provider: "The provider on this record, written Last, First credentials. A dash means the source did not send one.",
+  Source: "The system the record came from.",
+  Status: "The status of the record as the source sent it.",
+  Code: "The code from the standard code system named in the Code System column.",
+  "Code System": "The standard code system the code belongs to (ICD-10-CM, CPT, LOINC, NDC, CVX...).",
+};
+function ticket16<T>(
+  cols12: Column<T>[],
+  tweak: { main?: (c: Column<T>[]) => Column<T>[]; hidden?: (c: Column<T>[]) => Column<T>[] } = {},
+): Column<T>[] {
+  let main = cols12.filter((c) => c.group !== "Optional" && c.key !== "measure");
+  let hidden = cols12.filter((c) => c.group === "Optional" || c.key === "measure");
+  if (tweak.main) main = tweak.main(main);
+  if (tweak.hidden) hidden = tweak.hidden(hidden);
+  const has = (k: string) => [...main, ...hidden].some((c) => c.key === k);
+  // A claim has no created date of its own in the sample data, so its Last Updated date stands in.
+  const dateOf = (r: T, k: "created" | "updated") => ((r as Record<string, unknown>)[k] ?? (r as Record<string, unknown>).updated) as Date;
+  if (!has("created"))
+    hidden.push(col<T>("created", "Created On", (r) => dateOf(r, "created"), { sortable: true, nowrap: true, render: (r) => day(dateOf(r, "created")) }));
+  if (!has("createdBy")) hidden.push(col<T>("createdBy", "Created By", () => "System", { sortable: true }));
+  if (!has("updated"))
+    hidden.push(col<T>("updated", "Last Updated", (r) => dateOf(r, "updated"), { sortable: true, nowrap: true, render: (r) => day(dateOf(r, "updated")) }));
+  return [...main, ...hidden.map((c) => ({ ...c, group: "Optional", defaultHidden: true }))].map((c) => ({
+    ...c,
+    help: c.help ?? HELP16[c.header] ?? `${c.header} of this record.`,
+  }));
+}
+
 interface TableProps<T> {
   tab: V8TabKey;
   m: Member;
@@ -211,7 +246,7 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
       )}
       <DataTable
         ariaLabel={NOUN[tab]}
-        title={`List of ${NOUN[tab]}`}
+        title={v16() ? NOUN[tab] : `List of ${NOUN[tab]}`}
         columns={columns}
         rows={shown}
         getRowId={getRowId}
@@ -219,7 +254,7 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
         pageSize={10}
         searchPlaceholder={search}
         noResultsTitle={`No ${NOUN[tab].toLowerCase()} found`}
-        storageKey={v12() ? `demo-member-${tab}-v12-a` : v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
+        storageKey={v16() ? `demo-member-${tab}-v16-a` : v12() ? `demo-member-${tab}-v12-a` : v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
         toolbar={v12() ? undefined : v11() ? { columns: false } : undefined}
         columnsPanel={v12() ? { tableOrder: true, search: false } : undefined}
       />
@@ -351,9 +386,44 @@ function ClaimsV8({ m }: { m: Member }) {
       ["measure", "Related Care Gap"],
     ],
   );
-  const cols = v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16156): Service Start Date and Service End Date, Claim Type as P / I / D (the full name on hover), Claim Status hidden.
+  const by = (k: string) => cols12.find((c) => c.key === k)!;
+  const cols16 = ticket16<R>(
+    [
+          by("services"),
+          { ...by("from"), header: "Service Start Date" },
+          col<R>("to", "Service End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
+          by("code"),
+          by("system"),
+          col<R>("ctype", "Claim Type", (r) => r.type, {
+            sortable: true,
+            nowrap: true,
+            render: (r) => (
+              <Tooltip title={CLAIM_TYPE_NAME[r.type]} arrow>
+                <span>{r.type}</span>
+              </Tooltip>
+            ),
+          }),
+          by("pos"),
+          by("provider"),
+        ],
+    {
+      hidden: () => [
+        by("id"),
+        by("line"),
+        by("status"),
+        by("pdx"),
+        by("adx"),
+        by("billing"),
+        by("paidOn"),
+        by("updated"),
+        by("measure"),
+      ],
+    },
+  );
+  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return (
-    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={{ key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
+    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={v16() ? { key: "to", direction: "desc" } : { key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
   );
 }
 
@@ -382,7 +452,7 @@ function DiagnosesV8({ m }: { m: Member }) {
     [["name", "Diagnosis"], ["start", "Start Date"], ["code", "Code"], ["ctype", "Code System"], "status", "provider", "source", ["measure", "Related Care Gap"]],
     [["end", "End Date"], col<R>("lastRec", "Last Recorded Date", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) })],
   );
-  const cols = v12() ? cols12 : colsOld;
+  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
   return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -438,7 +508,7 @@ function EncountersV8({ m }: { m: Member }) {
       }),
     ],
   );
-  const cols = v12() ? cols12 : colsOld;
+  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
   return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -483,7 +553,7 @@ function ImmunizationsV8({ m }: { m: Member }) {
     ],
     ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
   );
-  const cols = v12() ? cols12 : colsOld;
+  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
   return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
@@ -566,7 +636,12 @@ function LabsV8({ m }: { m: Member }) {
       "panel",
     ],
   );
-  const cols = v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16159): the reference range is only filled when the result is out of range (the Abnormal Flag says so).
+  const cols16 = ticket16<R>(cols12, {
+    main: (c) =>
+      c.map((x) => (x.key === "range" ? { ...x, render: (r: R) => (r.flag !== DASH ? r.range.replace(" to ", "–") : DASH) } : x)),
+  });
+  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
 }
 
@@ -614,7 +689,29 @@ function MedicationsV8({ m }: { m: Member }) {
     ],
     ["pharmacy", "refills"],
   );
-  const cols = v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel.
+  const doseOf = (r: R) => (/tablet|capsule/i.test(r.name) ? "1 tablet" : /inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe/i.test(r.name) ? "1 injection" : "1 unit");
+  const prescriberOf = (r: R) => providers.find((x) => x.npi === r.prescriberNpi)?.name ?? r.provider;
+  const cols16 = ticket16<R>(cols12, {
+    main: (c) =>
+      c.flatMap((x) =>
+        x.key === "strength"
+          ? [
+              col<R>("strength", "Strength", (r) => strengthOf(r.name), { nowrap: true }),
+              col<R>("dose", "Dose", (r) => doseOf(r), { nowrap: true }),
+            ]
+          : [x],
+      ),
+    hidden: (c) => [
+      ...c.filter((x) => x.key === "measure"),
+      { ...columns.find((x) => x.key === "pharmacy")!, header: "Pharmacy Name" },
+      columns.find((x) => x.key === "pharmacyNpi")!,
+      col<R>("prescriberNpi", "Prescriber NPI", (r) => r.prescriberNpi, { nowrap: true }),
+      col<R>("prescriberName", "Prescriber Name", (r) => prescriberOf(r), { sortable: true }),
+      { ...columns.find((x) => x.key === "refills")!, header: "Refills Remaining" },
+    ],
+  });
+  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
 }
 
@@ -689,7 +786,27 @@ function ObservationsV8({ m }: { m: Member }) {
     ],
     [col<R>("ostatus", "Status", (r) => r.status, { nowrap: true, sortable: true, render: (r) => chip(r.status) }), "source"],
   );
-  const cols = v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16161): the value has its status in small type on a second line; Observation Type is hidden with Status and Source.
+  const cols16 = ticket16<R>(cols12, {
+    main: (c) =>
+      c.map((x) =>
+        x.key === "val"
+          ? {
+              ...x,
+              render: (r: R) => (
+                <>
+                  {obsValue(r)}
+                  <Typography variant="caption" component="div" sx={{ color: "text.secondary" }}>
+                    {r.status}
+                  </Typography>
+                </>
+              ),
+            }
+          : x,
+      ),
+    hidden: (c) => [...c, col<R>("otype", "Observation Type", (r) => r.type, { sortable: true, nowrap: true })],
+  });
+  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Service Type or Service…" providerOf={(r) => r.provider} />;
 }
 
@@ -743,7 +860,7 @@ function ProceduresV8({ m }: { m: Member }) {
     ],
     [["value", "Result"], col<R>("ppos", "Place of Service", (r) => (r.claim !== DASH ? "11 - Office" : r.encounter ? "11 - Office" : DASH), { nowrap: true })],
   );
-  const cols = v12() ? cols12 : colsOld;
+  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
   return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
 }
 
@@ -751,7 +868,36 @@ function ProceduresV8({ m }: { m: Member }) {
 function ProvidersV8({ m }: { m: Member }) {
   type R = ReturnType<typeof provRows>[number];
   // Name A to Z; providers with the same name: the most recent interaction first (the table sort is stable).
-  const rows = useMemo(() => provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime()), [m]);
+  const rows = useMemo(() => {
+    const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime());
+    // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
+    const pcm = v16() ? pcmPerson(m) : undefined;
+    if (pcm && !base.some((r) => r.npi === pcm.npi)) {
+      const [first, ...rest] = pcm.name.split(" ");
+      const last = base.length ? base[0].last : DEMO_NOW;
+      const early = base.length ? new Date(Math.min(...base.map((r) => r.first.getTime()))) : last;
+      base.push({
+        npi: pcm.npi,
+        name: `${rest.join(" ")}, ${first}`,
+        active: "Yes",
+        entity: "I",
+        specialty: "Primary Care",
+        org: clinicOf(m),
+        last,
+        first: early,
+        related: [],
+        prescribing: "N",
+        taxonomy: DASH,
+        orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
+        phone: `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
+        address: "9040 Jackson Ave, Tacoma, WA 98431",
+        created: early,
+        updated: last,
+        source: "MHS GENESIS",
+      });
+    }
+    return base;
+  }, [m]);
   const columns: Column<R>[] = [
     col<R>("name", "Provider", (r) => r.name, { s: true, group: "Provider", sortable: true, alwaysVisible: true, width: 240 }),
     col<R>("npi", "Provider ID", (r) => r.npi, { s: true, group: "Provider", nowrap: true, help: "The provider's NPI." }),
@@ -818,7 +964,8 @@ function ProvidersV8({ m }: { m: Member }) {
         }),
       ])
     : columns;
-  const pcmNpi = primaryCareOf(m)?.p.npi;
+  const k16: Record<string, string> = {};
+  const pcmNpi = pcmPerson(m)?.npi;
   const roleOf = (r: R) => (r.npi === pcmNpi ? "PCM" : "Encounter Provider");
   const cols12 = pick12(
     columns,
@@ -833,6 +980,13 @@ function ProvidersV8({ m }: { m: Member }) {
     ],
     [["active", "Status"], "entity", col<R>("dirId", "Provider Directory ID", (r) => `PD-${String(100000 + (hashOf(r.npi) % 899999))}`, { nowrap: true })],
   );
-  const cols = v12() ? cols12 : colsOld;
-  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
+  // Version 16 (LPP-16163): newest Last Interaction first (then Provider A to Z); the hidden columns are the ticket's nine.
+  const cols16 = ticket16<R>(cols12, {
+    hidden: () =>
+      ["orgNpi", "taxonomy", "phone", "first", "address", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
+        k16[x.key] ? { ...x, header: k16[x.key] } : x,
+      ),
+  });
+  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
+  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v16() ? { key: "last", direction: "desc" } : v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
 }

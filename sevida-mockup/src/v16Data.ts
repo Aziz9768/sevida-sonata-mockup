@@ -43,6 +43,16 @@ const ALL_PLACES = CLINICS.flatMap((c) => c.places);
 
 const v16 = () => getVersion() >= 16;
 
+/**
+ * The primary care manager of a member as a person with a name and an NPI. From Version 16 it is the same manager the dashboards and the member
+ * header show (see pcmOf); before that it is the provider from the member's file, as it always was.
+ */
+export function pcmPerson(m: Member): { name: string; npi: string } | undefined {
+  if (!v16()) return primaryCareOf(m)?.p;
+  const name = pcmOf(m);
+  return name === NO_PCP ? undefined : PCMS.find((p) => p.name === name);
+}
+
 /** The clinic of a member's primary care manager: manager 1 to clinic 1, and so on around the five. Members with no manager have no clinic. */
 function clinicIndex(m: Member): number {
   const i = PCMS.findIndex((p) => p.name === pcmOf(m));

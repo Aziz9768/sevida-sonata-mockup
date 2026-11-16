@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { clinicOf, countyOfMember, stateNameOf } from "../v16Data";
+import { clinicOf, countyOfMember, pcmPerson, stateNameOf } from "../v16Data";
 import { useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
@@ -21,7 +21,7 @@ import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
 import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
-import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, primaryCareOf } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures } from "../data";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -490,7 +490,7 @@ export function CareGapsPageV3() {
       const g = (k: string) => by.get(k)!;
       const sample = " Sample data: the demo members have none, so it is made up.";
       const pcm = (r: GapRow) => {
-        const p = primaryCareOf(r.m)?.p;
+        const p = pcmPerson(r.m);
         return p ? `${p.name} - NPI: ${p.npi}` : null;
       };
       const lastVisit = (r: GapRow) => {
@@ -515,6 +515,9 @@ export function CareGapsPageV3() {
         return rec ? `${evidenceNameOf(rec.kind)} on ${fmtDate(parseDay(rec.date))}` : null;
       };
       const none = { searchable: false } as const;
+      // Version 16 (LPP-16144): info (i) texts only on the columns the ticket names; Closure Source instead of Evidence; the sex column is called Gender.
+      const v16 = versionNo >= 16;
+      const rankOf = (r: GapRow) => ({ High: 0, Medium: 1, Low: 2 } as Record<string, number>)[priorityOf(r) ?? ""] ?? 3;
       return [
         base(g("name"), {
           group: "Identifiers",
@@ -532,36 +535,36 @@ export function CareGapsPageV3() {
         { key: "dodId", header: "DoD ID", help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample, accessor: (r) => String(1000000000 + (hashOf(`${r.m.id}-dod`) % 9000000000)), sortable: true, nowrap: true, defaultHidden: true, group: "Identifiers", ...none },
         base(g("tricare"), { group: "Identifiers", help: undefined }),
         base(g("genesisEhr"), { header: "Genesis MRN", help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.", group: "Identifiers" }),
-        base(g("dob"), { group: "Demographics" }),
+        base(g("dob"), { group: "Demographics", ...(v16 ? { help: undefined } : {}) }),
         base(g("age"), { defaultHidden: false, help: undefined, group: "Demographics" }),
         { key: "ageGroup", header: "Age Group", help: "Age group, from the application's standard ranges.", accessor: (r) => ageGroupFor(ageAtYearEnd(r.m.dob, CURRENT_YEAR)), sortable: true, defaultHidden: true, group: "Demographics", ...none },
-        { key: "sex", header: "Sex", accessor: (r) => (genderV3(r.m) === "Other" ? "Unknown" : genderV3(r.m)), sortable: true, group: "Demographics", filterOrder: 10, filter: { type: "select", ordered: true, options: opt(["Male", "Female", "Unknown"]) }, ...none },
-        base(g("military"), { help: "The member's military status. Madigan does not send this yet, so a dash means no data.", group: "Demographics" }),
+        { key: "sex", header: v16 ? "Gender" : "Sex", accessor: (r) => (genderV3(r.m) === "Other" ? "Unknown" : genderV3(r.m)), sortable: true, group: "Demographics", filterOrder: 10, filter: { type: "select", ordered: true, options: opt(["Male", "Female", "Unknown"]) }, ...none },
+        base(g("military"), { help: v16 ? undefined : "The member's military status. Madigan does not send this yet, so a dash means no data.", group: "Demographics" }),
         base(g("race"), { group: "Demographics" }),
         base(g("ethnicity"), { group: "Demographics" }),
         { key: "state", header: "State", help: "The state the member lives in, from the member file.", accessor: (r) => stateNameOf(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOfMember(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
         base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap", nowrap: true }),
-        base(g("gapStatus"), { group: "Care Gaps" }),
+        base(g("gapStatus"), { group: "Care Gaps", ...(v16 ? { help: "Open when the member still needs the service, Closed when a record closed the gap, Excluded when the member is out of the measure." } : {}) }),
         ...(v12
           ? [
-              { key: "priority", header: "Priority", help: "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => priorityOf(r), render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
+              { key: "priority", header: "Priority", help: "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
             ]
           : []),
-        base(g("found"), { group: "Care Gaps" }),
+        base(g("found"), { group: "Care Gaps", ...(v16 ? { help: "Date on which the gap was identified. Based on the information used to identify it, for example the claim service date, otherwise the date the engine last ran." } : {}) }),
         { key: "gapSource", header: "Gap Source", help: "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
         ...(v12
           ? []
           : [{ key: "priority", header: "Priority", help: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => priorityOf(r), render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", ...none } as Column<GapRow>]),
         base(g("due"), { group: "Care Gaps", filterOrder: 7, filter: { type: "dateRange" }, help: "Date on which the next recommended action is due to close the gap." }),
-        base(g("closedDate"), { group: "Care Gaps", defaultHidden: v12 ? mode !== "closed" : true, filterOrder: 8, filter: { type: "dateRange" } }),
+        base(g("closedDate"), { group: "Care Gaps", defaultHidden: v12 ? mode !== "closed" : true, filterOrder: 8, filter: { type: "dateRange" }, ...(v16 ? { help: "Date the gap was closed. N/A for an open gap." } : {}) }),
         ...(v12
           ? [
               { key: "exclusionReason", header: "Exclusion Reason", help: "Why the member is excluded from the measure, for example hospice or palliative care. Shown for Excluded gaps. Sample data: the dates are made up, the reason comes from the measure result.", accessor: (r: GapRow) => r.g.exclusionReason ?? null, render: (r: GapRow) => r.g.exclusionReason ?? "N/A", sortable: true, defaultHidden: mode !== "excluded", width: 280, group: "Care Gaps", ...none } as Column<GapRow>,
             ]
           : []),
-        { key: "evidence", header: "Evidence", help: "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
+        { key: v16 ? "closureSource" : "evidence", header: v16 ? "Closure Source" : "Evidence", help: v16 ? undefined : "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
         { key: "lastService", header: "Last Service / Result Date", help: "Date on the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Gaps", ...none },
         base(g("missing"), { header: "Recommended Action", group: "Care Gaps", help: "Recommendation on next steps to close the gap." }),
         // ---- Care Team & Engagement
@@ -580,6 +583,8 @@ export function CareGapsPageV3() {
     }
     return cols;
   }, [visible, actionsName, versionNo, v8, v11, v12, mode]);
+  // Version 16: the table opens by Priority (High first), and gaps with the same priority stay in member-name order.
+  const tableRows = useMemo(() => (versionNo >= 16 ? [...rows].sort((a, b) => a.m.name.localeCompare(b.m.name)) : rows), [rows, versionNo]);
 
   // The page opens on the open gaps (the Open Gap column); Gap Status adds the closed ones.
   // Version 8 (LPP-16144): the table shows all the care gaps, open and closed, and the user narrows with Gap Status.
@@ -637,9 +642,9 @@ export function CareGapsPageV3() {
         <DataTable
           ariaLabel="Care gaps"
           columns={columns}
-          rows={rows}
+          rows={tableRows}
           getRowId={(r) => r.id}
-          defaultSort={v12 ? undefined : { key: "found", direction: v8 ? "desc" : "asc" }}
+          defaultSort={versionNo >= 16 ? { key: "priority", direction: "asc" } : v12 ? undefined : { key: "found", direction: v8 ? "desc" : "asc" }}
           noResultsTitle={v8 ? "No care gaps found" : undefined}
           searchOnEnter={v11}
           applyFirst={v11}
@@ -652,8 +657,8 @@ export function CareGapsPageV3() {
           onFiltersChange={setFilters}
           onResultCountChange={setShown}
           key={v12 ? mode : undefined}
-          storageKey={v12 ? `demo-care-gaps-v3-ver12-a-${mode}` : v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
-          savedViews={v12 ? "care-gaps-v12" : v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
+          storageKey={versionNo >= 16 ? `demo-care-gaps-v3-ver16-a-${mode}` : v12 ? `demo-care-gaps-v3-ver12-a-${mode}` : v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
+          savedViews={versionNo >= 16 ? "care-gaps-v16" : v12 ? "care-gaps-v12" : v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader
           // Version 11: always room for about five rows, even on a short screen (the page scrolls instead of squeezing the table).
