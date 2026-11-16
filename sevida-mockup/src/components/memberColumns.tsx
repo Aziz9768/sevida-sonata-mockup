@@ -1761,7 +1761,7 @@ export function useMemberTableColumns(
                 help: "Number of measures whose criteria have been met for the member",
                 group: "Care Gaps",
                 defaultHidden: true,
-                accessor: (m: MemberRow) => (isPast(m) ? 0 : gapsOf(m).filter((g) => g.status === "Closed").length),
+                accessor: (m: MemberRow) => (isPast(m) ? 0 : new Set(gapsOf(m).filter((g) => g.status === "Closed").map((g) => g.def.code)).size),
                 sortable: true,
                 align: "right" as const,
                 nowrap: true,

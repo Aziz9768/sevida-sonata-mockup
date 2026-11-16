@@ -41,6 +41,8 @@ interface Row {
   /** Version 12: Evidence Role and Reason. */
   role?: string;
   roleReason?: string;
+  /** Version 16: GSD's below-8 and above-9 rates. */
+  rate?: "<8" | ">9";
 }
 
 const opt = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
@@ -63,6 +65,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         year: MY,
         code: g.def.code,
         status: g.status,
+        rate: g.rate,
         identified: g.identified,
         explanation: g.result.reason,
         role: gapRole(g).role,
@@ -154,7 +157,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})`;
+    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     const optional = { group: "Optional", defaultHidden: true, searchable: false } as const;
     const cols: Column<Row>[] = [
       {
@@ -351,7 +354,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})`;
+    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     const evidenceOf = (r: Row) =>
       r.status === "Closed" && r.closure
         ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}`

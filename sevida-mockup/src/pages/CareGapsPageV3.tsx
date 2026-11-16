@@ -192,6 +192,7 @@ export function CareGapsPageV3() {
           versionNo >= 4 ? (
             <TableLink to={`/members/${r.m.id}/gaps/${r.g.def.code}`}>
               {V3_GAP_LABEL[r.g.def.code]}
+              {versionNo >= 16 && r.g.rate ? ` (HbA1c ${r.g.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}
             </TableLink>
           ) : (
             <StatusChip
