@@ -116,10 +116,12 @@ export function CareGapsPageV3() {
       (a, b) =>
         order[a.g.status] - order[b.g.status] ||
         priorityRank(gapPriority(a.g)) - priorityRank(gapPriority(b.g)) ||
+        // Version 16 (LPP-16144): then Due Date (the same date for every gap today), then Member Name A to Z.
+        (versionNo >= 16 ? a.m.name.localeCompare(b.m.name) : 0) ||
         b.g.identified.getTime() - a.g.identified.getTime() ||
         a.m.name.localeCompare(b.m.name),
     );
-  }, [gapsOf, excludedOf, visible, v12]);
+  }, [gapsOf, excludedOf, visible, v12, versionNo]);
   // Version 12: the table shows Gap Closed Date when the list is filtered to Closed gaps, and Exclusion Reason when filtered to Excluded.
   const [filters, setFilters] = useState<FilterState>(
     // Version 16 (LPP-16144): the list shows every gap of the year, open and closed, so no status is chosen when the page opens.
@@ -553,25 +555,25 @@ export function CareGapsPageV3() {
         { key: "county", header: "County", help: "The county the member lives in. Madigan does not send this yet.", accessor: (r) => countyOfMember(r.m), sortable: true, defaultHidden: true, group: "Demographics", ...none },
         // ---- Care Gaps (table order); PCM comes last in the table but its group is listed before Care Gaps in the panel
         base(g("measure"), { group: "Care Gaps", defaultPinned: false, alwaysVisible: false, help: "The HEDIS care gap", nowrap: true }),
-        base(g("gapStatus"), { group: "Care Gaps", ...(v16 ? { help: "Open when the member still needs the service, Closed when a record closed the gap, Excluded when the member is out of the measure." } : {}) }),
+        base(g("gapStatus"), { group: "Care Gaps", ...(v16 ? { help: "Indicates whether the care gap is open or closed. Open gaps require actions. Excluded means the member is out of the measure." } : {}) }),
         ...(v12
           ? [
-              { key: "priority", header: "Priority", help: "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
+              { key: "priority", header: "Priority", help: v16 ? "How urgent the gap is, based on how close it is to its due date: High, Medium or Low." : "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
             ]
           : []),
-        base(g("found"), { group: "Care Gaps", ...(v16 ? { help: "Date on which the gap was identified. Based on the information used to identify it, for example the claim service date, otherwise the date the engine last ran." } : {}) }),
-        { key: "gapSource", header: "Gap Source", help: "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
+        base(g("found"), { group: "Care Gaps", ...(v16 ? { help: "Date on which the gap was identified. Based on information used to open the gap - e.g. encounter date if known, otherwise shows the run date when the Gaps in Care engine was last run." } : {}) }),
+        { key: "gapSource", header: "Gap Source", help: v16 ? "Evidence used to open the gap." : "Evidence used to open the gap. Sample text: the real wording comes from the quality engine.", accessor: (r) => SOURCE[r.g.def.code], sortable: true, defaultHidden: true, width: 260, group: "Care Gaps", ...none },
         ...(v12
           ? []
           : [{ key: "priority", header: "Priority", help: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => priorityOf(r), render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", ...none } as Column<GapRow>]),
         base(g("due"), { group: "Care Gaps", filterOrder: 7, filter: { type: "dateRange" }, help: "Date on which the next recommended action is due to close the gap." }),
-        base(g("closedDate"), { group: "Care Gaps", defaultHidden: v12 ? mode !== "closed" : true, filterOrder: 8, filter: { type: "dateRange" }, ...(v16 ? { help: "Date the gap was closed. N/A for an open gap." } : {}) }),
+        base(g("closedDate"), { group: "Care Gaps", defaultHidden: v12 ? mode !== "closed" : true, filterOrder: 8, filter: { type: "dateRange" }, ...(v16 ? { help: "Date on which the gap was closed. Based on information used to close the gap - e.g. encounter date if known, otherwise shows the run date when the Gaps in Care engine was last run." } : {}) }),
         ...(v12
           ? [
               { key: "exclusionReason", header: "Exclusion Reason", help: "Why the member is excluded from the measure, for example hospice or palliative care. Shown for Excluded gaps. Sample data: the dates are made up, the reason comes from the measure result.", accessor: (r: GapRow) => r.g.exclusionReason ?? null, render: (r: GapRow) => r.g.exclusionReason ?? "N/A", sortable: true, defaultHidden: mode !== "excluded", width: 280, group: "Care Gaps", ...none } as Column<GapRow>,
             ]
           : []),
-        { key: v16 ? "closureSource" : "evidence", header: v16 ? "Closure Source" : "Evidence", help: v16 ? undefined : "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
+        { key: v16 ? "closureSource" : "evidence", header: v16 ? "Closure Source" : "Evidence", help: v16 ? "Evidence used to close the gap." : "Evidence used to close the gap. Blank for an open gap.", accessor: (r) => closedEvidence(r), render: (r) => closedEvidence(r) ?? "N/A", sortable: true, defaultHidden: true, width: 240, group: "Care Gaps", ...none },
         { key: "lastService", header: "Last Service / Result Date", help: "Date on the member's last encounter.", accessor: (r) => lastVisit(r), render: (r) => (lastVisit(r) ? fmtDate(lastVisit(r)!) : "–"), sortable: true, nowrap: true, defaultHidden: true, group: "Care Gaps", ...none },
         base(g("missing"), { header: "Recommended Action", group: "Care Gaps", help: "Recommendation on next steps to close the gap." }),
         // ---- Care Team & Engagement
@@ -637,7 +639,7 @@ export function CareGapsPageV3() {
             setFilters((f) => ({ ...f, measure: k === "all" ? [] : [k] }))
           }
           items={[
-            { key: "all", label: "All Measures", count: total, tip: v8 ? "All care gaps" : undefined },
+            { key: "all", label: "All Measures", count: total, tip: versionNo >= 16 ? "All care gaps across all measures" : v8 ? "All care gaps" : undefined },
             ...counts.map(({ def, n }) => ({
               key: def.code,
               label: gapShort(def.code),

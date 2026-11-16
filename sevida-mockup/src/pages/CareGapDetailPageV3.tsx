@@ -2,7 +2,7 @@ import { getVersion, useVersion } from "../version";
 import { displayName, pcmPerson } from "../v16Data";
 import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { Box, Chip, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import {
   Button,
   Card,
@@ -274,6 +274,58 @@ function OverviewV12({ g }: { g: GapView }) {
         </Table>
       </Card>
     ) : null;
+  // Version 16 (LPP-16227): Gap Summary, Other Open Gaps (chips, Gap Name A to Z), Why The Gap Is Open, How To Close The Gap. No "Gap Considerations" section.
+  if (getVersion() >= 16) {
+    const chips = [...others].sort((a, b) => V3_GAP_LABEL[a.def.code as MeasureCode].localeCompare(V3_GAP_LABEL[b.def.code as MeasureCode]));
+    return (
+      <Stack spacing={2}>
+        {summary}
+        <Card title="Other Open Gaps">
+          {chips.length ? (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+              {chips.map((x) => (
+                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={V3_GAP_LABEL[x.def.code as MeasureCode]} />
+              ))}
+            </Stack>
+          ) : (
+            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+          )}
+        </Card>
+        <Card title={excluded ? "Why The Member Is Excluded" : closed ? "Why The Gap Is Closed" : "Why The Gap Is Open"}>
+          <Stack spacing={0.5}>
+            <Typography>{why}</Typography>
+            <Typography>{evidenceLink}.</Typography>
+          </Stack>
+        </Card>
+        <Card title="How To Close The Gap">
+          <Stack spacing={0.5}>
+            {excluded ? (
+              <Typography>None. The member is excluded from this measure, so no action is needed.</Typography>
+            ) : closed ? (
+              <Typography>None. The gap is closed.</Typography>
+            ) : (
+              <>
+                <Typography>
+                  <b>Recommended action: </b>
+                  <LlmText text={RECOMMENDED_SENTENCE(code, CURRENT_YEAR)} />
+                </Typography>
+                {left.map((t, i) => (
+                  <Typography key={i}>
+                    {i === 0 && <b>{gapShort(code)}: </b>}
+                    {t}
+                  </Typography>
+                ))}
+                <Typography>
+                  <b>What to document: </b>
+                  the service date inside the window above, the code and code system, and the provider who did it. Send it through the claims, EHR or lab feed, or record it as evidence in Sonata. The gap shows as Closed once the evidence is confirmed; doing the activity alone does not close it.
+                </Typography>
+              </>
+            )}
+          </Stack>
+        </Card>
+      </Stack>
+    );
+  }
   return (
     <Stack spacing={2}>
       {summary}
@@ -442,7 +494,8 @@ function EvidenceV12({ g }: { g: GapView }) {
         searchPlaceholder="Search by Description, Code or Provider…"
         storageKey={e16 ? "demo-gap-evidence-v16-a" : "demo-gap-evidence-v12-a"}
         defaultSort={e16 ? { key: "date", direction: "desc" } : undefined}
-        columns={cols}
+        // Version 16 (LPP-16228): the ticket's eight columns, and Created On, Created By and Last Updated in the Columns panel. Nothing else.
+        columns={e16 ? cols.filter((c) => !["role", "reason", "recordId", "received", "valueSet", "clinic"].includes(c.key)) : cols}
         rows={rows}
         getRowId={(r) => r.key}
         paginated={false}
@@ -551,7 +604,8 @@ function HistoryV12({ g }: { g: GapView }) {
     <DataTable
       ariaLabel="History"
       title={h16 ? "Gap History" : "History"}
-      columns={cols}
+      // Version 16 (LPP-16229): the ticket's six columns, and Created On, Created By and Last Updated in the Columns panel. Nothing else.
+      columns={h16 ? cols.filter((c) => !["my", "due", "closed", "action", "source"].includes(c.key)) : cols}
       rows={rows}
       getRowId={(r) => r.key}
       paginated={false}

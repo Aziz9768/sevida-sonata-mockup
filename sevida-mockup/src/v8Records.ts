@@ -253,7 +253,7 @@ export interface EncRow {
 /** Version 16 (LPP-16158): the eight statuses of the ticket appear in the sample data; the open ones (Planned to In Progress) only on the most recent visits. */
 const statusV16 = (e: Evt, seed: number): string => {
   const base = STATUS_ENC[e.status] ?? "Completed";
-  if (base !== "Completed") return base;
+  if (base !== "Completed" || e.tag !== "other") return base;
   const roll = seed % 40;
   const recent = DEMO_NOW.getTime() - e.date.getTime() <= 60 * DAY;
   if (roll === 0 || roll === 1) return "Canceled";
@@ -520,7 +520,17 @@ export const immRows = (m: Member): ImmRow[] => {
     key,
     date,
     vaccine,
-    status: status === "completed" ? "Completed" : status === "not-done" ? "Not Done" : status.charAt(0).toUpperCase() + status.slice(1),
+    // Version 16 (LPP-16360): the three statuses of the ticket (Completed, Not Done, Entered in Error) appear in the sample data.
+    status:
+      getVersion() >= 16 && status === "completed" && h(`${m.id}${key}imm`) % 12 < 2
+        ? h(`${m.id}${key}imm`) % 12 === 0
+          ? "Not Done"
+          : "Entered in Error"
+        : status === "completed"
+          ? "Completed"
+          : status === "not-done"
+            ? "Not Done"
+            : status.charAt(0).toUpperCase() + status.slice(1),
     code: `CVX: ${cvx}`,
     provider: lastFirst(providerName(npi)),
     measures,
@@ -565,7 +575,15 @@ export interface ObsRow {
   created: Date;
   updated: Date;
   source: string;
+  /** Version 16 (LPP-16161): the unit on its own, for the Unit column. */
+  unit: string;
 }
+/** Version 16 (LPP-16161): the SNOMED CT code of a vital sign, used for some of the sample rows. */
+const SCT: Record<string, string> = { "8480-6": "271649006", "8462-4": "271650006", "29463-7": "27113001", "8302-2": "50373000", "39156-5": "60621009", "8867-4": "364075005" };
+const OBS_STATUS16 = ["Preliminary", "Amended", "Corrected", "Registered", "Cancelled", "Entered in Error"];
+/** Flag (High / Low / Abnormal) for the sample vitals; the sample data carries none. */
+const obsFlag16 = (code: string, v: number): "H" | "L" | "A" | "" =>
+  code === "8480-6" ? (v >= 120 ? "H" : v < 90 ? "L" : "") : code === "8462-4" ? (v >= 80 ? "H" : v < 60 ? "L" : "") : code === "8867-4" ? (v > 100 ? "H" : v < 60 ? "L" : "") : code === "39156-5" ? (v >= 25 ? "H" : v < 18.5 ? "L" : "") : "";
 export const obsRows = (m: Member): ObsRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
@@ -578,29 +596,55 @@ export const obsRows = (m: Member): ObsRow[] => {
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
         .filter((x) => x.d <= 14 * DAY)
         .sort((a, b) => a.d - b.d)[0];
-      const vital = VITAL.includes(e.code);
+      const vital = VITAL.includes(e.code) || e.code === "9843-4";
+      const v16 = getVersion() >= 16;
+      const roll = v16 ? h(`${m.id}${e.code}${e.date.getTime()}obs`) % 20 : 0;
+      // Version 16 (LPP-16161): the name without the result, the value with its unit and flag, the code system (LOINC / SNOMED CT), the claim status.
+      const parsed = /^(.*?)[:\s]+(-?\d+(?:\.\d+)?)\s*(\S+)?$/.exec(e.text);
+      const coded = /^([^:]+):\s*(.+)$/.exec(e.text);
+      const num = e.value ?? (parsed ? Number(parsed[2]) : undefined);
+      const unit16 = e.value !== undefined ? (e.tag === "hba1c" ? "%" : (e.unit ?? "")) : (parsed?.[3] ?? "");
+      const f16 = (num !== undefined ? obsFlag16(e.code, num) : "") || (e.flag && e.flag !== "Normal" ? e.flag.charAt(0) : "");
+      const value16 =
+        num !== undefined
+          ? `${num}${unit16 ? ` ${unit16}` : ""}${f16 ? ` (${f16})` : ""}`
+          : coded
+            ? coded[2].charAt(0).toUpperCase() + coded[2].slice(1)
+            : DASH;
+      const name16 = parsed && e.value === undefined ? parsed[1] : coded ? coded[1] : e.text;
+      const sct = v16 && SCT[e.code] && roll % 4 === 0;
       return {
         key: evKey(e),
         e,
         date: e.date,
         end: null,
-        type: vital ? "Vital Signs" : e.tag === "hba1c" ? "Laboratory" : "Exam",
-        service: e.text.replace(/ \d+(\.\d+)?.*$/, "").replace(/,.*$/, ""),
-        value:
-          e.value === undefined
+        type: v16
+          ? e.code === "76689-9"
+            ? "Social History"
+            : e.tag === "hba1c" || e.code === "29771-3"
+              ? "Laboratory"
+              : vital
+                ? "Vital Signs"
+                : "Exam"
+          : vital ? "Vital Signs" : e.tag === "hba1c" ? "Laboratory" : "Exam",
+        service: v16 ? name16 : e.text.replace(/ \d+(\.\d+)?.*$/, "").replace(/,.*$/, ""),
+        value: v16
+          ? value16
+          : e.value === undefined
             ? (/\d/.test(e.text) ? e.text.replace(/^[^\d]*/, "") : DASH) + flag
             : `${e.value}${unit ? ` ${unit}` : ""}${flag}`,
-        status: OBS_STATUS[e.status] ?? "Final",
-        code: `L: ${e.code}`,
+        status: v16 ? (h(`${m.id}${e.code}${e.date.getTime()}os`) % 6 === 0 ? OBS_STATUS16[h(`${e.code}${e.date.getTime()}os2`) % OBS_STATUS16.length] : "Final") : (OBS_STATUS[e.status] ?? "Final"),
+        code: sct ? `SCT: ${SCT[e.code]}` : `L: ${e.code}`,
         provider: providerCell(m, e),
         measures: measuresOf(m, e),
         related: near ? { label: VISIT_TYPE(near.v), date: near.v.date, tab: "encounters" } : null,
-        claimStatus: DASH,
+        claimStatus: v16 ? (roll < 12 ? "Active" : roll === 12 ? "Cancelled" : roll === 13 ? "Draft" : roll === 14 ? "Entered in Error" : DASH) : DASH,
         payment: DASH,
         paid: DASH,
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        source: v16 ? "MHS GENESIS" : sourceName(e),
+        unit: v16 ? unit16 : unit,
       };
     });
 };
@@ -649,7 +693,17 @@ export const procRows = (m: Member): ProcRow[] => {
             : e.tag === "colonoscopy" || e.tag === "sigmoidoscopy"
               ? "Body site: Colon"
               : DASH,
-        status: e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed",
+        status:
+          getVersion() >= 16
+            ? (() => {
+                // Version 16 (LPP-16162): all seven statuses of the ticket appear in the sample.
+                const base = e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed";
+                if (base !== "Completed" || e.tag !== "other") return base;
+                const roll = seed % 20;
+                const recent = DEMO_NOW.getTime() - e.date.getTime() < 45 * DAY;
+                return recent && roll < 4 ? (roll < 2 ? "In Progress" : "On Hold") : roll === 4 ? "Unknown" : roll === 5 ? "Entered in Error" : roll === 6 ? "Stopped" : base;
+              })()
+            : e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed",
         provider: providerCell(m, e),
         code: `${e.system}: ${e.code}`,
         measures: measuresOf(m, e),
@@ -660,7 +714,7 @@ export const procRows = (m: Member): ProcRow[] => {
         paid: isClaim ? (e.status === "denied" ? money(0) : money(50 + (seed % 20000) / 100)) : DASH,
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
 };

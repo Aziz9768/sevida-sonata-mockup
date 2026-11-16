@@ -163,7 +163,7 @@ function pick12<T>(all: Column<T>[], spec: Spec<T>, optional: Spec<T> = []): Col
 /** "CPT: 96372" becomes the code and its system. */
 const codeOf = (c: string) => (c.includes(": ") ? c.slice(c.indexOf(": ") + 2) : c);
 const systemOf = (c: string) => (c.includes(": ") ? c.slice(0, c.indexOf(": ")) : DASH);
-const SYSTEM_NAME: Record<string, string> = { L: "LOINC", "L:": "LOINC" };
+const SYSTEM_NAME: Record<string, string> = { L: "LOINC", "L:": "LOINC", SCT: "SNOMED CT" };
 const systemName = (s: string) => SYSTEM_NAME[s] ?? s;
 /** The place-of-service code that goes with a clinic or a hospital name (sample). */
 const posOf = (place: string): string =>
@@ -602,7 +602,8 @@ function EncountersV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ immunizations */
 function ImmunizationsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof immRows>[number];
-  const rows = useMemo(() => immRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16360): Administered Date, most recent first; the same date: Vaccine A to Z.
+  const rows = useMemo(() => immRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.vaccine.localeCompare(b.vaccine) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Administered Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, primary: true, render: (r) => day(r.date) }),
     col<R>("vaccine", "Vaccine", (r) => r.vaccine, { s: true, group: "Clinical", sortable: true, width: 260 }),
@@ -640,12 +641,26 @@ function ImmunizationsV8({ m }: { m: Member }) {
     ],
     ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
   );
-  // Version 16 (LPP-16360): the code is written with its system, "CVX: 208".
-  const cols = v16()
-    ? ticket16<R>(cols12, { main: (c) => mapKey(c, "ccode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code)}: ${codeOf(r.code)}` })) })
-    : v12()
-      ? cols12
-      : colsOld;
+  // Version 16 (LPP-16360): the code is written with its system, "CVX: 208". Hidden: Source, Created On, Created By, Last Updated (no Related Care Gap, no Lot Number,
+  // no Year of Immunization). The info texts are the ticket's; the Provider and Source texts of the ticket still say "medication" (copied), so they say vaccine here.
+  const I16: Record<string, string> = {
+    vaccine: "The name of the vaccination.",
+    date: "Date the vaccine was given. If date is unknown, refer to Year of Immunization.",
+    dose: "The dose quantity given.",
+    ccode: "CVX code of the vaccine.",
+    status: "Status of the vaccination record: Completed, Not Done or Entered in Error.",
+    provider: "The provider who administered the vaccine.",
+    source: "The system or data feed this immunization record was received from.",
+    created: "The date this record was first received.",
+    updated: "The date this record was last changed.",
+  };
+  const cols16 = v16()
+    ? ticket16<R>(cols12, {
+        main: (c) => mapKey(c, "ccode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code)}: ${codeOf(r.code)}` })),
+        hidden: (h) => h.filter((c) => c.key === "source"),
+      }).map((c) => (I16[c.key] ? { ...c, help: I16[c.key] } : c))
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
   return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
 }
 
@@ -887,7 +902,8 @@ function MedicationsV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ observations */
 function ObservationsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof obsRows>[number];
-  const rows = useMemo(() => obsRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16161): Observation Date, most recent first; the same date: Observation A to Z.
+  const rows = useMemo(() => obsRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.service.localeCompare(b.service) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Observation Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, alwaysVisible: true, render: (r) => day(r.date) }),
     col<R>("type", "Service Type", (r) => r.type, { s: true, group: "Clinical", sortable: true, alwaysVisible: true, nowrap: true }),
@@ -955,39 +971,78 @@ function ObservationsV8({ m }: { m: Member }) {
     ],
     [col<R>("ostatus", "Status", (r) => r.status, { nowrap: true, sortable: true, render: (r) => chip(r.status) }), "source"],
   );
-  // Version 16 (LPP-16161): the value has its status in small type on a second line; Observation Type is hidden with Status and Source.
+  // Version 16 (LPP-16161): the value is "7.2 % (H)" with its status in small type on a second line; the code carries its system (LOINC / SNOMED CT);
+  // Status is the status of the associated claim. Hidden: Created On, Created By, Last Updated, Observation Type, Status, Source (no Related Care Gap).
+  const O16: Record<string, string> = {
+    service: "The name of what was observed or measured.",
+    date: "The date the observation was made or recorded.",
+    val: "The result of the observation, any flag showing it is outside the normal range (High, Low or Abnormal), and the status of the result (Registered, Preliminary, Final, Amended, Corrected, Cancelled or Entered in Error).",
+    unit: "The unit the result is measured in. A dash means the result has no unit.",
+    type: "The group the observation belongs to, such as Vital Signs, Laboratory or Exam.",
+    ocode: "The standard code that identifies the observation, and the coding system it comes from (e.g. LOINC or SNOMED CT).",
+    osys: "The coding system the observation code comes from: LOINC or SNOMED CT.",
+    provider: "The provider who ordered the service.",
+    created: "The date this record was first received.",
+    createdBy: "Who or what created this record.",
+    updated: "The date this record was last changed.",
+    otype: "The category of observation: Vital Signs, Laboratory, Survey, Exam, Social History, Imaging, Procedure, Therapy or Activity.",
+    ostatus: "The status of the associated claim record, as reported by the source: Active, Cancelled, Draft or Entered in Error.",
+    source: "The system or data feed this observation was received from.",
+  };
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
-      mapKey(c, "ocode", (x) => ({
-        ...x,
-        width: 320,
-        nowrap: false,
-        render: (r: R) => withText(r.code.startsWith("L: ") ? `LOINC: ${r.code.slice(3)}` : r.code, r.service),
-      })).map((x) =>
-        x.key === "val"
+      c.map((x) =>
+        x.key === "service"
           ? {
               ...x,
               render: (r: R) => (
-                <>
-                  {obsValue(r)}
-                  <Typography variant="caption" component="div" sx={{ color: "text.secondary" }}>
-                    {r.status}
-                  </Typography>
-                </>
+                <Tooltip title={r.service} arrow>
+                  <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {r.service}
+                  </Box>
+                </Tooltip>
               ),
             }
-          : x,
+          : x.key === "ocode"
+            ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(`${systemName(systemOf(r.code))}: ${codeOf(r.code)}`, r.service) }
+            : x.key === "val"
+              ? {
+                  ...x,
+                  accessor: (r: R) => r.value,
+                  render: (r: R) =>
+                    r.value === DASH ? (
+                      DASH
+                    ) : (
+                      <>
+                        {r.value}
+                        <Typography variant="caption" component="div" sx={{ color: "text.secondary" }}>
+                          {r.status}
+                        </Typography>
+                      </>
+                    ),
+                }
+              : x.key === "unit"
+                ? { ...x, accessor: (r: R) => r.unit, render: (r: R) => r.unit || DASH }
+                : x,
       ),
-    hidden: (c) => [...c, col<R>("otype", "Observation Type", (r) => r.type, { sortable: true, nowrap: true })],
-  });
+    hidden: () => [
+      col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
+      col<R>("createdBy", "Created By", () => "System", { sortable: true }),
+      col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
+      col<R>("otype", "Observation Type", (r) => r.type, { sortable: true, nowrap: true }),
+      col<R>("ostatus", "Status", (r) => r.claimStatus, { nowrap: true, sortable: true, render: (r) => chip(r.claimStatus) }),
+      col<R>("source", "Source", (r) => r.source, { sortable: true }),
+    ],
+  }).map((c) => (O16[c.key] ? { ...c, help: O16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
-  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Service Type or Service…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Observation or Code…" : "Search by Service Type or Service…"} providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ procedures */
 function ProceduresV8({ m }: { m: Member }) {
   type R = ReturnType<typeof procRows>[number];
-  const rows = useMemo(() => procRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16162): Service Date, most recent first; the same date: Procedure A to Z.
+  const rows = useMemo(() => procRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.name.localeCompare(b.name) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Service Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, alwaysVisible: true, render: (r) => day(r.date) }),
     col<R>("name", "Procedure", (r) => r.name, { s: true, group: "Clinical", sortable: true, alwaysVisible: true, width: 280 }),
@@ -1034,13 +1089,58 @@ function ProceduresV8({ m }: { m: Member }) {
     ],
     [["value", "Result"], col<R>("ppos", "Place of Service", (r) => (r.claim !== DASH ? "11 - Office" : r.encounter ? "11 - Office" : DASH), { nowrap: true })],
   );
-  // Version 16 (LPP-16162): "CPT: 77067 - bilateral screening mammography".
-  const cols = v16()
-    ? ticket16<R>(cols12, { main: (c) => mapKey(c, "pcode", (x) => ({ ...x, width: 320, nowrap: false, render: (r: R) => withText(r.code, r.name) })) })
-    : v12()
-      ? cols12
-      : colsOld;
-  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Procedure…" providerOf={(r) => r.provider} />;
+  // Version 16 (LPP-16162): the code is written "CPT: 77067 - description"; the name has at most 2 lines. Hidden: Created On, Created By, Last Updated, Result,
+  // Place of Service (no Related Care Gap). The info texts are the ticket's.
+  const posOfProc = (r: R) =>
+    /colonoscopy|sigmoidoscopy/i.test(r.name)
+      ? "24 - Ambulatory Surgical Center"
+      : /mammogra/i.test(r.name) || hashOf(r.key) % 5 === 0
+        ? "22 - On Campus Outpatient Hospital"
+        : "11 - Office";
+  const P16: Record<string, string> = {
+    name: "The name of the procedure performed.",
+    date: "The date the procedure was performed.",
+    pcode: "The code for this procedure, and the coding system it comes from (e.g. CPT, HCPCS, SNOMED CT or ICD-10-PCS).",
+    psys: "The coding system the procedure code comes from: CPT, HCPCS, SNOMED CT or ICD-10-PCS.",
+    status: "Where the procedure is in its lifecycle, as reported by the source: In Progress, Not Done, On Hold, Stopped, Completed, Entered in Error or Unknown.",
+    provider: "The provider who performed the procedure.",
+    source: "The system or data feed this procedure was received from.",
+    created: "The date this record was first received.",
+    createdBy: "Who or what created this record.",
+    updated: "The date this record was last changed.",
+    value: "A detail recorded about the procedure, such as the body site or outcome, where applicable.",
+    ppos: "The place where the procedure was done, with its place-of-service code.",
+  };
+  const cols16 = v16()
+    ? ticket16<R>(cols12, {
+        main: (c) =>
+          c.map((x) =>
+            x.key === "pcode"
+              ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(r.code, r.name) }
+              : x.key === "name"
+                ? {
+                    ...x,
+                    render: (r: R) => (
+                      <Tooltip title={r.name} arrow>
+                        <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          {r.name}
+                        </Box>
+                      </Tooltip>
+                    ),
+                  }
+                : x,
+          ),
+        hidden: (h) => [
+          col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
+          col<R>("createdBy", "Created By", () => "System", { sortable: true }),
+          col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
+          ...h.filter((c) => c.key === "value"),
+          col<R>("ppos", "Place of Service", posOfProc, { nowrap: true }),
+        ],
+      }).map((c) => (P16[c.key] ? { ...c, help: P16[c.key] } : c))
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
+  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Procedure or Code…" : "Search by Procedure…"} providerOf={(r) => r.provider} />;
 }
 
 /* ------------------------------------------------------------------ providers */
@@ -1048,7 +1148,7 @@ function ProvidersV8({ m }: { m: Member }) {
   type R = ReturnType<typeof provRows>[number];
   // Name A to Z; providers with the same name: the most recent interaction first (the table sort is stable).
   const rows = useMemo(() => {
-    const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime());
+    const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime() || (v16() ? a.name.localeCompare(b.name) : 0));
     // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
     const pcm = v16() ? pcmPerson(m) : undefined;
     if (pcm && !base.some((r) => r.npi === pcm.npi)) {
@@ -1075,7 +1175,7 @@ function ProvidersV8({ m }: { m: Member }) {
         source: "MHS GENESIS",
       });
     }
-    return base;
+    return v16() ? base.sort((a, b) => b.last.getTime() - a.last.getTime() || a.name.localeCompare(b.name)) : base;
   }, [m]);
   const columns: Column<R>[] = [
     col<R>("name", "Provider", (r) => r.name, { s: true, group: "Provider", sortable: true, alwaysVisible: true, width: 240 }),
@@ -1143,7 +1243,6 @@ function ProvidersV8({ m }: { m: Member }) {
         }),
       ])
     : columns;
-  const k16: Record<string, string> = {};
   const pcmNpi = pcmPerson(m)?.npi;
   const roleOf = (r: R) => (r.npi === pcmNpi ? "PCM" : "Encounter Provider");
   const cols12 = pick12(
@@ -1159,13 +1258,86 @@ function ProvidersV8({ m }: { m: Member }) {
     ],
     [["active", "Status"], "entity", col<R>("dirId", "Provider Directory ID", (r) => `PD-${String(100000 + (hashOf(r.npi) % 899999))}`, { nowrap: true })],
   );
-  // Version 16 (LPP-16163): newest Last Interaction first (then Provider A to Z); the hidden columns are the ticket's nine.
+  // Version 16 (LPP-16163): newest Last Interaction first (then Provider A to Z); the hidden columns are the ticket's nine, in the ticket's order. The specialty is
+  // written as the ticket does ("Family Medicine"), the role is PCM or the kind of specialist, the related records are comma separated links, and the search
+  // covers the provider name and NPI only.
+  const specialty16 = (t: string) => (t === DASH ? DASH : t.replace(/ \(PCP\)$/, "").replace(/^Family medicine$/, "Family Medicine").replace(/^Family nurse practitioner$/, "Family Nurse Practitioner"));
+  const ROLE16: Record<string, string> = {
+    "Family medicine (PCP)": "Primary Care Provider",
+    "Family nurse practitioner (PCP)": "Primary Care Provider",
+    "OB/GYN": "OB/GYN",
+    Radiology: "Radiologist",
+    Gastroenterology: "Gastroenterologist",
+    Dentist: "Dentist",
+    Hospital: "Facility",
+    Clinic: "Facility",
+  };
+  const role16 = (r: R) => (r.npi === pcmNpi ? "PCM" : (ROLE16[r.specialty] ?? "Encounter Provider"));
+  const taxonomy16 = (r: R): string[] => {
+    if (r.taxonomy === DASH) return [];
+    const extra = r.entity === "I" && hashOf(r.npi) % 4 === 0 ? ["207R00000X"] : [];
+    return [r.taxonomy, ...extra.filter((x) => x !== r.taxonomy)];
+  };
+  const PV16: Record<string, string> = {
+    name: "The provider's name.",
+    npi: "The provider's National Provider Identifier (NPI).",
+    role: "The provider's role for this member, such as PCM or the kind of specialist (Cardiologist, Radiologist...).",
+    specialty: "The provider's primary specialty.",
+    org: "The practice, clinic or facility the provider belongs to.",
+    last: "The most recent date this provider appears on any of the member's records.",
+    related: "The member's records that include this provider. Click a record type to see them.",
+    created: "The date this record was first received.",
+    createdBy: "Who or what created this record.",
+    updated: "The date this record was last changed.",
+    orgNpi: "The National Provider Identifier (NPI) of the provider's organization.",
+    taxonomy: "The standard code for the provider's type and specialty.",
+    phone: "The provider's phone number.",
+    address: "The provider's practice address.",
+    first: "The earliest date this provider appears on any of the member's records.",
+    source: "The system or data feed this provider's information was received from.",
+  };
   const cols16 = ticket16<R>(cols12, {
-    hidden: () =>
-      ["orgNpi", "taxonomy", "phone", "first", "address", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
-        k16[x.key] ? { ...x, header: k16[x.key] } : x,
+    main: (c) =>
+      c.map((x) =>
+        x.key === "role"
+          ? { ...x, accessor: (r: R) => role16(r), render: (r: R) => role16(r) }
+          : x.key === "specialty"
+            ? { ...x, s: false, accessor: (r: R) => specialty16(r.specialty), render: (r: R) => specialty16(r.specialty) }
+            : x.key === "org"
+              ? { ...x, s: false }
+              : x.key === "related"
+                ? {
+                    ...x,
+                    width: 260,
+                    render: (r: R) =>
+                      r.related.length === 0 ? (
+                        DASH
+                      ) : (
+                        <>
+                          {r.related.map((y, i) => (
+                            <span key={y.tab}>
+                              {i > 0 && ", "}
+                              <TableLink to={`/members/${m.id}?tab=${y.tab}&provider=${encodeURIComponent(r.name)}`}>
+                                {y.label} ({y.n})
+                              </TableLink>
+                            </span>
+                          ))}
+                        </>
+                      ),
+                  }
+                : x,
       ),
-  });
+    hidden: () => [
+      col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
+      col<R>("createdBy", "Created By", () => "System", { sortable: true }),
+      col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
+      ...["orgNpi", "taxonomy", "phone", "first", "address", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
+        x.key === "taxonomy"
+          ? { ...x, accessor: (r: R) => taxonomy16(r).join(", "), render: (r: R) => (taxonomy16(r).length ? lines(taxonomy16(r)) : DASH) }
+          : x,
+      ),
+    ],
+  }).map((c) => (PV16[c.key] ? { ...c, help: PV16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
-  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v16() ? { key: "last", direction: "desc" } : v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
+  return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v16() ? { key: "last", direction: "desc" } : v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v16() ? "Search by Provider or NPI…" : v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
 }
