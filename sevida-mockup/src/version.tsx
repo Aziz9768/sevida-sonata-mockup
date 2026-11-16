@@ -316,6 +316,7 @@ export const VERSIONS: VersionInfo[] = [
       "HEDIS Inputs and DCS: sample dates are on or before the run date (16 Oct 2026, 2:00 AM). Admin: the run history uses the same style as the headers (two decimals, '16th Oct, 2026 @ 2:00 AM CST', '1st Jan 2026') The Measure dropdown is gone: one table lists every measure, with a Measure column (one row per run and measure).",
       "Measure pages: the Age Range filter uses the age on 31 Dec of the measurement year, like Min / Max and Gaps By Age, so every member in the numbers can be reached by an Age Range choice (BCS: 10 women who are 39 now and turn 40 this year were missing).",
       "Measure pages: when no one is eligible for the chosen filters the Measure Rate tile says N/A (with 'No eligible members for these filters' and no arrow) instead of 0.00%.",
+      "Measure pages: Age Range, Race and Ethnicity show the first chosen value and '+2' while closed, so the filter row keeps one height. A stray 'All' no longer sits under a chosen value. (The sevida-ui AutocompleteField got one optional prop, limitTags; every other screen is unchanged.)",
     ],
   },
 ];

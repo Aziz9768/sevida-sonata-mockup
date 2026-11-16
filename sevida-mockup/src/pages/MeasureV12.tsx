@@ -270,9 +270,11 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
 
   const clear = () => setS(emptyMeasure());
   const filtered = JSON.stringify(f) !== JSON.stringify(emptyFilters()) || s.pop !== "eligible";
+  // Version 16: while the field is not being used, the chips stay on one line (first chip, then "+2"), so the filter row keeps one height.
+  const oneLine = { "&:not(:focus-within) .MuiAutocomplete-inputRoot": { flexWrap: "nowrap" }, "&:not(:focus-within) .MuiAutocomplete-tag": { minWidth: 0, maxWidth: "calc(100% - 44px)" } };
   const multi = (key: "ageGroup" | "race" | "ethnicity", label: string, values: { value: string; label: string }[]) => (
-    <Box sx={whiteAll}>
-      <AutocompleteField multiple label={label} placeholder={ALL} options={values} value={f[key]} onChange={(v) => set(key, v as never)} />
+    <Box sx={v16 ? { ...whiteAll, ...oneLine } : whiteAll}>
+      <AutocompleteField multiple label={label} placeholder={v16 && f[key].length ? "" : ALL} limitTags={v16 ? 1 : undefined} options={values} value={f[key]} onChange={(v) => set(key, v as never)} />
     </Box>
   );
   const sources = sourceFiles(code);
