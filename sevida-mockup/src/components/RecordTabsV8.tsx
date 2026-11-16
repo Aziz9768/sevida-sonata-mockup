@@ -392,7 +392,22 @@ function ClaimsV8({ m }: { m: Member }) {
   const by = (k: string) => cols12.find((c) => c.key === k)!;
   const cols16 = ticket16<R>(
     [
-          by("services"),
+          {
+            ...by("services"),
+            header: "Procedure/Service",
+            // LPP-16156: one line per service line, each at most 2 lines, then "…" with the full text in a tooltip.
+            render: (r: R) => (
+              <>
+                {r.lines.map((l, i) => (
+                  <Tooltip key={i} title={l.text} arrow>
+                    <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {l.text}
+                    </Box>
+                  </Tooltip>
+                ))}
+              </>
+            ),
+          },
           { ...by("from"), header: "Service Start Date" },
           col<R>("to", "Service End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
           // LPP-16156: the Code is the ICD-10-CM diagnosis code or codes, one per line with the description; with no diagnosis it is the service code.
@@ -420,14 +435,10 @@ function ClaimsV8({ m }: { m: Member }) {
     {
       hidden: () => [
         by("id"),
-        by("line"),
+        { ...by("line"), header: "Line Number" },
         by("status"),
         by("pdx"),
-        by("adx"),
-        by("billing"),
-        by("paidOn"),
         by("updated"),
-        by("measure"),
       ],
     },
   );

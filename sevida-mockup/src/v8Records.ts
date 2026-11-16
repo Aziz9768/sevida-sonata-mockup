@@ -127,6 +127,11 @@ export const claimRows = (m: Member): ClaimRow[] => {
       const hit = DX_BY_TAG.find(([re]) => re.test(x.tag));
       if (hit && !dx.some((d) => d.code === hit[1])) dx.push({ code: hit[1], text: hit[2] });
     }
+    // Version 16 (LPP-16156): every professional or institutional claim carries a diagnosis, so the Code column shows ICD-10-CM codes (sample data).
+    if (getVersion() >= 16 && type !== "D" && dx.length === 0) {
+      const lab = g.some((x) => x.tag && /lab|a1c|cbc|panel/i.test(x.tag)) || g.every((x) => /^8\d{4}$/.test(x.code));
+      dx.push(lab ? { code: "Z01.89", text: "Encounter for other specified special examinations" } : { code: "Z00.00", text: "Encounter for general adult medical examination without abnormal findings" });
+    }
     const p = e0.provider ? providerName(e0.provider) : undefined;
     return {
       id: `${e0.date.getFullYear()}${pad(e0.date.getMonth() + 1)}${pad(e0.date.getDate())}${pad(10000 + (seed % 89999), 5)}`,
