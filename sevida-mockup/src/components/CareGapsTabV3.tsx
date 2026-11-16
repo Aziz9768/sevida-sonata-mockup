@@ -338,6 +338,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       <DataTable
         ariaLabel="Care gaps"
         title={v16 ? `Member's Open and Closed Care Gaps in the current Measurement Year, ${MY}` : "List of Care Gaps"}
+        // Version 16 (LPP-16155): the title keeps the ticket's wording, with a lowercase "current".
+        titleAsWritten={v16}
         columns={v16 ? cols16 : cols}
         rows={sorted}
         getRowId={(r) => r.id}

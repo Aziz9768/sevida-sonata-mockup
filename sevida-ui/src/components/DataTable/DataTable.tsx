@@ -84,6 +84,8 @@ export interface DataTableProps<T> {
     boolean | { search?: boolean; filters?: boolean; columns?: boolean };
   /** Heading at the top left of the table, e.g. "Members". The number of rows is added for you: "Members (25)". */
   title?: ReactNode;
+  /** Keep the title exactly as written instead of Title Case (for a sentence-style heading). */
+  titleAsWritten?: boolean;
   /** Extra buttons on the right of the toolbar (Export, Add...). */
   toolbarActions?: ReactNode;
   /**
@@ -214,6 +216,7 @@ export function DataTable<T>({
   ariaLabel,
   toolbar = true,
   title,
+  titleAsWritten,
   onResultCountChange,
   toolbarActions,
   exportFile,
@@ -680,6 +683,7 @@ export function DataTable<T>({
     (showSearch || toolbarActions || title || showSheet) && (
       <TableToolbar
         title={title}
+        titleAsWritten={titleAsWritten}
         total={total}
         showSearch={showSearch}
         search={search}
