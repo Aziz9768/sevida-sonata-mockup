@@ -1620,7 +1620,8 @@ export function MemberDetailPage() {
         version.id >= 16
           ? [
               { label: "Members", href: "/members" },
-              { label: tab === "gaps" ? "Care Gaps" : `Member ${(v3Items.find((t) => t.key === tab)?.label ?? "Details")}` },
+              // LPP-16156 writes the Claims trail as "Members > Member Care Gaps" (most likely a copy of the Care Gaps ticket); the mockup follows the ticket word for word.
+              { label: tab === "gaps" ? "Care Gaps" : tab === "claims" ? "Member Care Gaps" : `Member ${(v3Items.find((t) => t.key === tab)?.label ?? "Details")}` },
             ]
           : [
               { label: "Home", href: "/" },

@@ -429,7 +429,7 @@ function ClaimsV8({ m }: { m: Member }) {
               </Tooltip>
             ),
           }),
-          by("pos"),
+          { ...by("pos"), help: "Where the service was provided: the place of service code and its name, for example 11 - Office." },
           by("provider"),
         ],
     {
@@ -437,7 +437,9 @@ function ClaimsV8({ m }: { m: Member }) {
         by("id"),
         { ...by("line"), header: "Line Number" },
         by("status"),
-        by("pdx"),
+        // LPP-16156 lists "End Date" among the hidden columns: the last day of the claim, the same date as Service End Date.
+        col<R>("endDate", "End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to), help: "The last date services on this claim were provided. The same date as Service End Date." }),
+        { ...by("pdx"), help: "The main diagnosis on the claim: the first diagnosis in sequence, with its ICD-10-CM code and description." },
         by("updated"),
       ],
     },
