@@ -243,8 +243,8 @@ const AGE_RANGE_YEARS: [number, number][] = [
 /** The labels of the age ranges that overlap ages lo to hi. */
 export const ageRangesBetween = (lo: number, hi: number) =>
   AGE_RANGES.filter((_, i) => AGE_RANGE_YEARS[i][1] >= lo && AGE_RANGE_YEARS[i][0] <= hi).map((r) => r.label);
-export const ageRangeOf = (dob: Date) => {
-  const p = ageParts(dob);
+export const ageRangeOf = (dob: Date, now: Date = DEMO_NOW) => {
+  const p = ageParts(dob, now);
   return AGE_RANGES.find((r) => r.test(p))?.label ?? "";
 };
 

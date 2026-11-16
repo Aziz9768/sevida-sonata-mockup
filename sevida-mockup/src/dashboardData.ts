@@ -157,7 +157,8 @@ export const bandsFor = (code: MeasureCode, year: number): { label: string; lo: 
 };
 export const ageGroupOf = (m: Member, year: number, code?: MeasureCode) => {
   // Version 12: the age ranges of the Members list, for every measure.
-  if (v12()) return ageRangeOf(m.dob);
+  // Version 16: on a measure page the Age Range is the age on 31 Dec of the measurement year (the age the measure itself uses), so it agrees with Min / Max and Gaps By Age.
+  if (v12()) return getVersion() >= 16 && code ? ageRangeOf(m.dob, new Date(year, 11, 31)) : ageRangeOf(m.dob);
   if (getVersion() >= 7 && code) {
     const age = ageAtYearEnd(m.dob, year);
     return bandsFor(code, year).find((b) => age >= b.lo && age <= b.hi)?.label ?? "";

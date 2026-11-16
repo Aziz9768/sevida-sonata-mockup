@@ -314,6 +314,7 @@ export const VERSIONS: VersionInfo[] = [
       "Navigation: the breadcrumb is 'Analytics / BCS' (no 'Overview' step). The chosen tab is kept in the address (#/dashboards?m=BCS), so refresh and the Back button work. Primary Care Manager and Military Status stay when you move between tabs, and Clear All clears them everywhere.",
       "CCS, COL, GSD and WCV tabs (checked against BCS): the first column of Gaps By Age starts at the measure's youngest age (COL 45-49, CCS 21-29, GSD 18-19, WCV 3-9). The Age Range filter lists only the ranges that apply to the measure. BCS and CCS list only All and Female in the Sex filter. About This Measure has one bullet per rule for every measure, like BCS. The rate tile's footer uses the tile's name ('CCS Measure Rate on the last Run Date...').",
       "HEDIS Inputs and DCS: sample dates are on or before the run date (16 Oct 2026, 2:00 AM). Admin: the run history uses the same style as the headers (two decimals, '16th Oct, 2026 @ 2:00 AM CST', '1st Jan 2026') The Measure dropdown is gone: one table lists every measure, with a Measure column (one row per run and measure).",
+      "Measure pages: the Age Range filter uses the age on 31 Dec of the measurement year, like Min / Max and Gaps By Age, so every member in the numbers can be reached by an Age Range choice (BCS: 10 women who are 39 now and turn 40 this year were missing).",
     ],
   },
 ];
