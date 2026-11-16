@@ -61,7 +61,7 @@ export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
 const GREEN = ["Active", "Completed", "Paid", "Final", "Yes"];
 const RED = ["Denied", "Canceled", "Cancelled", "Not Done", "Stopped", "Discontinued"];
 const tone = (s: string): StatusTone =>
-  GREEN.includes(s) ? "success" : RED.includes(s) ? "danger" : s === "Inactive" || s === "Resolved" ? "neutral" : "warning";
+  GREEN.includes(s) ? "success" : RED.includes(s) ? "danger" : s === "Inactive" || s === "Resolved" || s === "Remission" ? "neutral" : "warning";
 const chip = (s: string): ReactNode => (s === DASH ? DASH : <StatusChip tone={tone(s)} label={s} />);
 
 const day = (d: Date | null | undefined) => (d ? fmtDate(d) : DASH);
@@ -453,7 +453,8 @@ function ClaimsV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ diagnoses */
 function DiagnosesV8({ m }: { m: Member }) {
   type R = ReturnType<typeof dxRows>[number];
-  const rows = useMemo(() => dxRows(m).sort((a, b) => b.start.getTime() - a.start.getTime()), [m]);
+  // Version 16 (LPP-16157): Start Date, most recent first; the same date: Diagnosis A to Z.
+  const rows = useMemo(() => dxRows(m).sort((a, b) => b.start.getTime() - a.start.getTime() || (v16() ? a.name.localeCompare(b.name) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("start", "Diagnosis Start Date", (r) => r.start, { group: "Clinical", sortable: true, nowrap: true, primary: true, render: (r) => day(r.start) }),
     col<R>("name", "Diagnosis", (r) => r.name, { s: true, group: "Clinical", sortable: true, width: 260 }),
@@ -475,7 +476,41 @@ function DiagnosesV8({ m }: { m: Member }) {
     [["name", "Diagnosis"], ["start", "Start Date"], ["code", "Code"], ["ctype", "Code System"], "status", "provider", "source", ["measure", "Related Care Gap"]],
     [["end", "End Date"], col<R>("lastRec", "Last Recorded Date", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) })],
   );
-  const cols = v16() ? ticket16<R>(cols12) : v12() ? cols12 : colsOld;
+  // Version 16 (LPP-16157): the seven ticket columns; End Date, Created On, Created By and Last Updated are hidden; the info texts are the ticket's.
+  const D16: Record<string, string> = {
+    name: "The description of the diagnosis.",
+    start: "The date the condition started or was first diagnosed.",
+    code: "The code(s) for this diagnosis.",
+    status: "Whether the condition is currently active, in remission, or resolved, as reported by the source.",
+    provider: "The provider who made or recorded the diagnosis.",
+    source: "The system or data feed this diagnosis was received from.",
+    end: 'The date the condition ended or was resolved. "--" means it is ongoing.',
+    created: "The date this record was first received.",
+    updated: "The date this record was last changed.",
+  };
+  const cols16 = v16()
+    ? ticket16<R>(cols12)
+        .filter((c) => c.key !== "measure" && c.key !== "lastRec")
+        .map((c) =>
+          c.key === "name"
+            ? {
+                ...c,
+                help: D16.name,
+                // Description, at most 2 lines, then "…" with the full text in a tooltip.
+                render: (r: R) => (
+                  <Tooltip title={r.name} arrow>
+                    <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {r.name}
+                    </Box>
+                  </Tooltip>
+                ),
+              }
+            : D16[c.key]
+              ? { ...c, help: D16[c.key] }
+              : c,
+        )
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
   return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
 }
 

@@ -178,7 +178,7 @@ export interface DxRow {
   end: Date | null;
   name: string;
   codes: Array<{ code: string; system: string }>;
-  status: "Active" | "Resolved" | "Inactive";
+  status: "Active" | "Resolved" | "Inactive" | "Recurrence" | "Relapse" | "Remission";
   provider: string;
   measures: string[];
   created: Date;
@@ -190,22 +190,26 @@ export const dxRows = (m: Member): DxRow[] =>
     .filter((e) => v3TabOf(e) === "diagnoses")
     .map((e) => {
       const acute = ACUTE.includes(e.code);
+      // Version 16 (LPP-16157): the six statuses of the ticket appear in the sample data. Most long-term conditions stay Active.
+      const roll = getVersion() >= 16 && !acute ? h(`${m.id}${e.code}${e.date.getTime()}`) % 20 : 99;
+      const chronic = roll === 0 ? ("Recurrence" as const) : roll === 1 ? ("Relapse" as const) : roll <= 3 ? ("Remission" as const) : roll === 4 ? ("Inactive" as const) : ("Active" as const);
       return {
         key: evKey(e),
         e,
         start: e.date,
-        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : null,
+        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : chronic === "Inactive" ? addDays(e.date, 60 + (h(e.code) % 90)) : null,
         name: e.text,
         codes: [
           { code: e.code, system: e.system === "ICD-10" ? "ICD-10-CM" : e.system },
           ...(SNOMED[e.code] ? [{ code: SNOMED[e.code], system: "SNOMED CT" }] : []),
         ],
-        status: acute ? ("Resolved" as const) : ("Active" as const),
+        status: acute ? ("Resolved" as const) : chronic,
         provider: providerCell(m, e),
         measures: measuresOf(m, e),
         created: createdOn(e),
         updated: updatedOn(e),
-        source: sourceName(e),
+        // Version 16 (LPP-16157): for the Madigan POC every diagnosis comes from the Encounters (the EHR feed); claim diagnoses come with the full product.
+        source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
 
