@@ -1577,7 +1577,9 @@ export function useMemberTableColumns(
           .map((e) => e.date.getTime());
         return days.length ? new Date(Math.max(...days)) : null;
       };
-      const gapLine = (g: GapView) => `${gapShort(g.def.code)} - ${V3_GAP_LABEL[g.def.code]} (${CURRENT_YEAR})`;
+      // Version 16: the label already starts with the code, so the code is not repeated ("BCS - Breast Cancer Screening (2026)").
+      const gapLine = (g: GapView) =>
+        getVersion() >= 16 ? `${V3_GAP_LABEL[g.def.code]} (${CURRENT_YEAR})` : `${gapShort(g.def.code)} - ${V3_GAP_LABEL[g.def.code]} (${CURRENT_YEAR})`;
       const lines = (xs: string[]) => (
         <Stack spacing={0.5} alignItems="flex-start">
           {xs.map((x) => (
@@ -1748,6 +1750,25 @@ export function useMemberTableColumns(
           filter: { type: "multiselect", options: v3GapOptions },
           searchable: false,
         },
+        // Version 16 (SevidaLite count ticket): the closed count, one per measure, the same rule as the Closed Gap Name filter.
+        ...(getVersion() >= 16
+          ? [
+              {
+                key: "closedCount",
+                filterOrder: 2.6,
+                header: "# Closed Gaps",
+                filterLabel: "# Closed Gaps",
+                help: "Number of measures whose criteria have been met for the member",
+                group: "Care Gaps",
+                defaultHidden: true,
+                accessor: (m: MemberRow) => (isPast(m) ? 0 : gapsOf(m).filter((g) => g.status === "Closed").length),
+                sortable: true,
+                align: "right" as const,
+                nowrap: true,
+                filter: { type: "numberCompare" as const },
+              },
+            ]
+          : []),
         {
           key: "earliestDue",
           filterOrder: 9,

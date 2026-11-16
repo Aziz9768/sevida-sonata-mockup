@@ -1242,6 +1242,7 @@ export function MemberHeader({
       <MemberHeaderV4
         m={m}
         openGaps={sum.open}
+        closedGaps={version.id >= 16 ? sum.closed : undefined}
         updated={newestReceived()}
         nameTo={nameTo}
         measuresMet={sum.scored > 0 ? `${sum.met} of ${sum.scored}` : undefined}

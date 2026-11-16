@@ -32,6 +32,7 @@ import { pcmOf } from "../v7Data";
 export function MemberHeaderV4({
   m,
   openGaps,
+  closedGaps,
   updated,
   nameTo,
   measuresMet,
@@ -39,6 +40,8 @@ export function MemberHeaderV4({
 }: {
   m: Member;
   openGaps: number;
+  /** Version 16: the number of measures with a closed care gap (SevidaLite count ticket). */
+  closedGaps?: number;
   updated?: Date;
   /** Version 8: "3 of 4". */
   measuresMet?: string;
@@ -150,6 +153,13 @@ export function MemberHeaderV4({
                 openGaps
               )}
             </Field>
+            {getVersion() >= 16 && closedGaps !== undefined && (
+              <Field label="Closed Care Gaps">
+                <Link component={RouterLink} to={`/members/${m.id}?tab=gaps`} underline="always" color="secondary" variant="inherit">
+                  {closedGaps}
+                </Link>
+              </Field>
+            )}
             {v8 && <Field label="Measures Met">{measuresMet ?? "–"}</Field>}
             <Field label="Gap Data Last Updated">
               {updated ? fmtDate(updated) : "Not received"}
