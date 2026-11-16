@@ -343,6 +343,14 @@ export const labRows = (m: Member): LabRow[] => {
     .map((e) => {
       const unit = e.tag === "hba1c" ? "%" : (e.unit ?? "");
       const prelim = e.status === "preliminary";
+      // Version 16 (LPP-16159): the sample also has Low and Abnormal flags (the ticket lists High, Low and Abnormal). Display only: the quality measures read the record itself.
+      const range = e.refRange ? /^\s*(-?[\d.]+)\s*(?:to|–|-)\s*(-?[\d.]+)/.exec(e.refRange) : null;
+      const roll = getVersion() >= 16 && range && e.tag !== "hba1c" && e.value !== undefined && (!e.flag || e.flag === "Normal") ? h(`${m.id}${e.code}${e.date.getTime()}lab`) % 14 : 99;
+      const lo = range ? Number(range[1]) : 0;
+      const hi = range ? Number(range[2]) : 0;
+      const okRoll = roll === 0 && lo <= 0 ? 99 : roll;
+      const shownValue = okRoll === 0 ? Math.round(lo * 0.85 * 10) / 10 : okRoll === 1 ? Math.round(hi * 1.25 * 10) / 10 : e.value;
+      const shownFlag = okRoll === 0 ? "Low" : okRoll === 1 ? "Abnormal" : e.flag;
       const near = visits
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
         .filter((x) => x.d <= 14 * DAY)
@@ -352,9 +360,9 @@ export const labRows = (m: Member): LabRow[] => {
         e,
         date: e.date,
         test: e.text.replace(/,? ?\d+(\.\d+)?%.*$/, "").replace(/ \(preliminary\)$/, ""),
-        result: e.value === undefined ? DASH : `${e.value}${unit ? ` ${unit}` : ""}`,
+        result: shownValue === undefined ? DASH : `${shownValue}${unit ? ` ${unit}` : ""}`,
         range: e.refRange ? (/[A-Za-z%]/.test(e.refRange.replace(/ to /, "")) || !unit ? e.refRange : `${e.refRange} ${unit}`) : DASH,
-        flag: e.flag && e.flag !== "Normal" ? e.flag : DASH,
+        flag: shownFlag && shownFlag !== "Normal" ? shownFlag : DASH,
         resulted: prelim ? null : (e.resultedOn ?? addDays(e.date, 1 + (h(e.code + e.date.getTime()) % 3))),
         panel: PANEL[e.code] ?? DASH,
         loinc: e.code,

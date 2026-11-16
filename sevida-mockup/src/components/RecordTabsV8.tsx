@@ -652,7 +652,8 @@ function ImmunizationsV8({ m }: { m: Member }) {
 /* ------------------------------------------------------------------ labs */
 function LabsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof labRows>[number];
-  const rows = useMemo(() => labRows(m).sort((a, b) => b.date.getTime() - a.date.getTime()), [m]);
+  // Version 16 (LPP-16159): Collection Date, most recent first; the same date: Test A to Z.
+  const rows = useMemo(() => labRows(m).sort((a, b) => b.date.getTime() - a.date.getTime() || (v16() ? a.test.localeCompare(b.test) : 0)), [m]);
   const columns: Column<R>[] = [
     col<R>("date", "Collection Date", (r) => r.date, { group: "Clinical", sortable: true, nowrap: true, alwaysVisible: true, render: (r) => day(r.date) }),
     col<R>("test", "Test", (r) => r.test, { s: true, group: "Clinical", sortable: true, alwaysVisible: true, width: 240 }),
@@ -729,20 +730,53 @@ function LabsV8({ m }: { m: Member }) {
     ],
   );
   // Version 16 (LPP-16159): the reference range is only filled when the result is out of range (the Abnormal Flag says so).
-  const cols16 = ticket16<R>(cols12, {
-    main: (c) =>
-      mapKey(
-        mapKey(
-          mapKey(c, "range", (x) => ({ ...x, render: (r: R) => (r.flag !== DASH ? r.range.replace(" to ", "–") : DASH) })),
-          "res",
-          // "7.2 %": the value with its unit (the Unit column stays too).
-          (x) => ({ ...x, render: (r: R) => (unitOf(r) ? `${valueOf(r)} ${unitOf(r)}` : valueOf(r)) }),
-        ),
-        "lcode",
-        (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.test) }),
-      ),
-  });
-  const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
+  // Hidden: Resulting Date, Panel Status, Source, Created On, Created By, Last Updated (no Related Care Gap, no Panel). The info texts are the ticket's.
+  const L16: Record<string, string> = {
+    test: "The name of the lab test.",
+    date: "The date the sample was collected from the member.",
+    res: "The result value and its unit.",
+    range: "The normal range for this test, as reported by the lab.",
+    flag: "Shows if the result is outside the reference range: High, Low or Abnormal. Blank means the result is within range.",
+    lcode: "The standard LOINC code that identifies the lab test.",
+    provider: "The provider who ordered the lab.",
+    resulted: "The date the lab result was reported.",
+    source: "The system or data feed this lab result was received from.",
+    unit: "The unit the result is measured in.",
+    pstatus: "Whether the lab result is Final or Preliminary.",
+    created: "The date this record was first received.",
+    updated: "The date this record was last changed.",
+  };
+  const cols16 = v16()
+    ? ticket16<R>(cols12, {
+        main: (c) =>
+          mapKey(
+            mapKey(
+              mapKey(
+                mapKey(c, "range", (x) => ({ ...x, render: (r: R) => (r.flag !== DASH ? r.range.replace(" to ", "–") : DASH) })),
+                "res",
+                // "7.2 %": the value with its unit (the Unit column stays too).
+                (x) => ({ ...x, render: (r: R) => (unitOf(r) ? `${valueOf(r)} ${unitOf(r)}` : valueOf(r)) }),
+              ),
+              "lcode",
+              (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.test) }),
+            ),
+            "test",
+            // Name of the test, at most 2 lines, then "…" with the full text in a tooltip.
+            (x) => ({
+              ...x,
+              render: (r: R) => (
+                <Tooltip title={r.test} arrow>
+                  <Box component="span" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {r.test}
+                  </Box>
+                </Tooltip>
+              ),
+            }),
+          ),
+        hidden: (h) => ["resulted", "pstatus", "source"].flatMap((k) => h.filter((c) => c.key === k).map((c) => (k === "pstatus" ? { ...c, header: "Panel Status" } : c))),
+      }).map((c) => (L16[c.key] ? { ...c, help: L16[c.key] } : c))
+    : null;
+  const cols = cols16 ?? (v12() ? cols12 : colsOld);
   return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
 }
 
