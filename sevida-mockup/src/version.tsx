@@ -312,6 +312,7 @@ export const VERSIONS: VersionInfo[] = [
       "BCS and CCS count Female members only (11 of the 17 members with unknown sex drop out of the two measures, as the specification says).",
       "Measure tabs: Top n titles use the board's wording ('... Primary Care Managers With Most Open Gaps'). Long names on the Race and Military Status charts wrap onto as many lines as they need (up to 5 on a narrow screen) instead of being cut. About This Measure starts with 'Specification: NCQA HEDIS MY 2026 · Value sets: version 2026-07'. Bars can be reached with the keyboard and show a focus ring.",
       "Navigation: the breadcrumb is 'Analytics / BCS' (no 'Overview' step). The chosen tab is kept in the address (#/dashboards?m=BCS), so refresh and the Back button work. Primary Care Manager and Military Status stay when you move between tabs, and Clear All clears them everywhere.",
+      "CCS, COL, GSD and WCV tabs (checked against BCS): the first column of Gaps By Age starts at the measure's youngest age (COL 45-49, CCS 21-29, GSD 18-19, WCV 3-9). The Age Range filter lists only the ranges that apply to the measure. BCS and CCS list only All and Female in the Sex filter. About This Measure has one bullet per rule for every measure, like BCS. The rate tile's footer uses the tile's name ('CCS Measure Rate on the last Run Date...').",
       "HEDIS Inputs and DCS: sample dates are on or before the run date (16 Oct 2026, 2:00 AM). Admin: the run history uses the same style as the headers (two decimals, '16th Oct, 2026 @ 2:00 AM CST', '1st Jan 2026').",
     ],
   },

@@ -6,11 +6,11 @@ import { QsSheet, QsText, QsTile } from "../quicksight/kit";
 import { QsRateBars, closedColor, QsRateColumns, QsRateLines } from "../quicksight/kitV12";
 import { qs } from "../quicksight/qsTheme";
 import { ALL, optionsOf } from "../sharedFilters";
-import { CURRENT_YEAR, DEMO_NOW, NO_PCP, a1cBandOf, fmtDate, resultsFor } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, ageBandsOf, measureFor, measures, NO_PCP, a1cBandOf, fmtDate, resultsFor } from "../data";
 import type { MeasureCode, MeasureState } from "../data";
 import { SEX_V12, bandsFor, emptyFilters, facetOptions, filterMembers, gapsByManager, groupRates, inputsFor, kpisFor, providerOf, runInfo, timeframeOptions, timeframeRows, yearLines } from "../dashboardData";
 import type { DashFilters, Dimension, Timeframe } from "../dashboardData";
-import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, gapShort, militaryOptions } from "../v3Data";
+import { V3_DEFINITION, V3_EXCLUSIONS, V3_MET, ageRangesBetween, gapShort, militaryOptions } from "../v3Data";
 import { ordDate } from "./QuickSightDashboardPage";
 import { useRun } from "../runs";
 import { getVersion } from "../version";
@@ -91,6 +91,11 @@ function aboutBullets(code: MeasureCode): string[] {
       "Excluded: frailty together with advanced illness (including dementia medication fills in the year or the year before).",
       "Excluded: palliative care during the measurement year (diagnosis or encounter). The demo reads it from diag.",
     ];
+  // Version 16: the other four measures are written like BCS, one bullet per rule, from the same rules the mockup uses to decide each result.
+  if (getVersion() >= 16) {
+    const rules = measureFor(measures.find((m) => m.code === code)!, CURRENT_YEAR).rules;
+    return [`Who's Included: ${V3_DEFINITION[code]}`, ...rules.slice(1).map((r) => r.text)];
+  }
   const excluded = code === "GSD" ? "Hospice, death, palliative care, age 66+ in an I-SNP or long-term institution, age 66+ with frailty and advanced illness." : V3_EXCLUSIONS[code];
   return [`Who's Included: ${V3_DEFINITION[code]}`, `Met when: ${V3_MET[code]}`, `Excluded: ${excluded}`];
 }
@@ -339,7 +344,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
         </Box>
         {/* The board's note under Age Range: "User can select range or enter min / max". Min and Max sit beside the range list, not under it. */}
         <Box sx={{ display: "flex", gap: 1, alignItems: "start", minWidth: 0 }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>{multi("ageGroup", "Age Range", optionsOf(options.ageGroup))}</Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>{multi("ageGroup", "Age Range", optionsOf(v16 ? ageRangesBetween(...ageBandsOf(YEAR)[code]) : options.ageGroup))}</Box>
           <Box sx={{ width: 68, flex: "none", ...whiteAll }}>
             <TextField
               label="Min"
@@ -360,7 +365,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
           </Box>
         </Box>
         <Box sx={whiteAll}>
-          <SelectField label="Sex" value={f.sex} onChange={(v) => set("sex", v)} options={[{ value: "", label: ALL }, ...optionsOf(options.sex)]} />
+          <SelectField label="Sex" value={f.sex} onChange={(v) => set("sex", v)} options={[{ value: "", label: ALL }, ...optionsOf(v16 && (code === "BCS-E" || code === "CCS-E") ? options.sex.filter((x) => x === "Female") : options.sex)]} />
         </Box>
         {multi("race", "Race", optionsOf(options.race))}
         {multi("ethnicity", "Ethnicity", optionsOf(options.ethnicity))}
@@ -403,7 +408,7 @@ export function MeasureV12({ code, s, setS }: { code: MeasureCode; s: MeasureV12
             </Box>
           </Box>
         ))}
-        {card("met", `${short} Measure Rate`, v13 ? "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population." : "Numerator: Closed Gaps Count\nDenominator: Eligible Population", "rate", "rate", true, "Closed Gaps Rate")}
+        {card("met", `${short} Measure Rate`, v13 ? "Percentage of Eligible Population members whose gap is closed. Numerator: Closed Gaps Count. Denominator: Eligible Population." : "Numerator: Closed Gaps Count\nDenominator: Eligible Population", "rate", "rate", true, v16 ? `${short} Measure Rate` : "Closed Gaps Rate")}
         {card("notMet", "Open Gaps Count", v13 ? `Eligible Population members whose ${short} gap is open as of the most recent Run Date.` : "All Eligible Population members who have an open gap as of the most recent Run Date.", "open", "count", false, undefined, gsdWhy && (
           <Box sx={{ mt: 0.5, display: "grid", gap: 0.25, fontSize: qs.type.small.size, color: qs.color.secondaryForeground }}>
             <Box>

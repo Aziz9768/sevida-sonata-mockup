@@ -148,8 +148,9 @@ export const ageBands = AGE_GROUPS;
 export const bandsFor = (code: MeasureCode, year: number): { label: string; lo: number; hi: number }[] => {
   const [lo, hi] = ageBandsOf(year)[code];
   const out: { label: string; lo: number; hi: number }[] = [];
-  for (let s = Math.floor(lo / 10) * 10; s <= hi; s += 10) {
-    const e = Math.min(s + 9, hi);
+  // Version 16: the first band starts at the measure's youngest age (COL 45-49, CCS 21-29, GSD 18-19, WCV 3-9), not at the round number below it.
+  for (let s = getVersion() >= 16 ? lo : Math.floor(lo / 10) * 10; s <= hi; s = Math.floor(s / 10) * 10 + 10) {
+    const e = Math.min(Math.floor(s / 10) * 10 + 9, hi);
     out.push({ label: `${s}-${e}`, lo: s, hi: e });
   }
   return out;
