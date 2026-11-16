@@ -21,7 +21,7 @@ import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
 import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
-import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures } from "../data";
+import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, v3Extra } from "../data";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -97,7 +97,12 @@ export function CareGapsPageV3() {
   // Version 12 (Application Tables): Excluded status + Exclusion Reason, one shared Priority, opens on the open gaps sorted by Priority then Due Date.
   const v12 = versionNo >= 12;
   const { gapsOf, excludedOf } = useGaps();
-  const { visible } = useRole();
+  const { visible: visibleBase, canSee } = useRole();
+  // Version 16 (SevidaLite count ticket): the Members list also shows the 4 infant demo members, so the Care Gaps list must show their gaps too, or the counts disagree.
+  const visible = useMemo(
+    () => (versionNo >= 16 ? [...visibleBase, ...v3Extra.filter(canSee)] : visibleBase),
+    [visibleBase, canSee, versionNo],
+  );
   const rows = useMemo<GapRow[]>(() => {
     const all = visible.flatMap((m) => {
       const gaps = v12 ? [...gapsOf(m), ...excludedOf(m)] : gapsOf(m);
