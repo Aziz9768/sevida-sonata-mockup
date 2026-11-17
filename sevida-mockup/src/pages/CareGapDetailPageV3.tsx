@@ -52,7 +52,7 @@ import type { Evt, MeasureCode } from "../data";
 import {
   MISSING_SHORT,
   RECOMMENDED_SENTENCE,
-  V3_GAP_LABEL,
+  cgLabel,
   V3_LEFT,
   V3_WHO,
   gapShort,
@@ -292,7 +292,7 @@ function OverviewV12({ g }: { g: GapView }) {
     ) : null;
   // Version 16 (LPP-16227): Gap Summary, Other Open Gaps (chips, Gap Name A to Z), Why The Gap Is Open, How To Close The Gap. No "Gap Considerations" section.
   if (getVersion() >= 16) {
-    const chips = [...others].sort((a, b) => V3_GAP_LABEL[a.def.code as MeasureCode].localeCompare(V3_GAP_LABEL[b.def.code as MeasureCode]));
+    const chips = [...others].sort((a, b) => cgLabel(a.def.code as MeasureCode).localeCompare(cgLabel(b.def.code as MeasureCode)));
     return (
       <Stack spacing={2}>
         {summary}
@@ -300,7 +300,7 @@ function OverviewV12({ g }: { g: GapView }) {
           {chips.length ? (
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               {chips.map((x) => (
-                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={V3_GAP_LABEL[x.def.code as MeasureCode]} />
+                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={cgLabel(x.def.code as MeasureCode)} />
               ))}
             </Stack>
           ) : (
@@ -391,7 +391,7 @@ function OverviewV12({ g }: { g: GapView }) {
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               {others.map((x) => (
                 <TableLink key={x.id} to={`/members/${g.m.id}/gaps/${x.def.code}`}>
-                  {V3_GAP_LABEL[x.def.code as MeasureCode]}
+                  {cgLabel(x.def.code as MeasureCode)}
                 </TableLink>
               ))}
             </Stack>
@@ -673,7 +673,7 @@ function Evidence({ g }: { g: GapView }) {
       ),
     [g.m, code],
   );
-  const gapLabel = V3_GAP_LABEL[code as MeasureCode];
+  const gapLabel = cgLabel(code as MeasureCode);
   const cols: Column<EvRow>[] = [
     {
       key: "date",
@@ -800,7 +800,7 @@ function History({ g }: { g: GapView }) {
     const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
-      gap: V3_GAP_LABEL[code],
+      gap: cgLabel(code),
       identified: g.identified,
       due: DUE,
       closed: null,
@@ -814,7 +814,7 @@ function History({ g }: { g: GapView }) {
       return [
         {
           key: "closed",
-          gap: V3_GAP_LABEL[code],
+          gap: cgLabel(code),
           identified: g.identified,
           due: null,
           closed: on,
@@ -947,7 +947,7 @@ export function CareGapDetailPageV3() {
     ? get(m, def.code as MeasureCode) ??
       (version.id >= 12 ? excludedOf(m).find((x) => x.def.code === def.code) ?? null : null)
     : null;
-  const label = def ? V3_GAP_LABEL[def.code as MeasureCode] : "Not found";
+  const label = def ? cgLabel(def.code as MeasureCode) : "Not found";
 
   // Version 8 (LPP-16153): Care Gaps > BCS > Member Name. Earlier versions: Care Gaps > Member Name > Gap Name.
   // Version 16 (LPP-16227 to 16229): Care Gaps > Gap Name > Member Name > Overview / Evidence / History.

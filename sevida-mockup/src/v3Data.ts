@@ -22,6 +22,15 @@ export const V3_GAP_LABEL: Record<MeasureCode, string> = {
     return `WCV ${getVersion() >= 8 ? "-" : "·"} Child and Adolescent Well-Care Visits`;
   },
 };
+/** Version 16 (Care Gaps tickets): on the Care Gaps screens the WCV gap name is "WCV - Well Child Visit" (the tab hover keeps the full HEDIS name). */
+export const cgLabel = (code: string): string =>
+  getVersion() >= 16 && code === "WCV" ? "WCV - Well Child Visit" : V3_GAP_LABEL[code as MeasureCode];
+export const cgGapOptions = (Object.keys(V3_GAP_LABEL) as MeasureCode[]).map((c) => ({
+  value: c,
+  get label() {
+    return cgLabel(c);
+  },
+}));
 /** BCS-E is written BCS in the sheet. */
 export const gapShort = (code: string) => code.replace(/-E$/, "");
 export const v3GapOptions = (Object.keys(V3_GAP_LABEL) as MeasureCode[]).map(

@@ -66,8 +66,18 @@ export const gapStatusTone: Record<GapStatus, StatusTone> = {
  * Version 12: ONE sample priority for a gap, used by the Care Gaps list, the member's Care Gaps tab and the Care Gap Details page
  * (before, the list and the other two disagreed for the same gap). Open gaps only; the tier rules are still to be confirmed.
  */
-export const gapPriority = (g: { id: string; status: GapStatus }): "High" | "Medium" | "Low" | null =>
-  g.status === "Open" ? (["High", "Medium", "Low"] as const)[hashOf(g.id) % 3] : null;
+/** The Care Gaps tickets say one row per gap, so GSD is one gap per member. Set to true to bring back the two-rate rows (HbA1c below 8% and above 9%). */
+const GSD_TWO_RATES = false;
+export const gapPriority = (g: { id: string; status: GapStatus; due?: Date }): "High" | "Medium" | "Low" | null => {
+  if (g.status !== "Open") return null;
+  // Version 16 (Care Gaps tickets): Priority follows the days left until the due date. 45 days or fewer is High, 46 to 90 is Medium, more than 90 is Low.
+  if (getVersion() >= 16) {
+    const due = g.due ?? new Date(DEMO_NOW.getFullYear(), 11, 31);
+    const left = Math.round((due.getTime() - DEMO_NOW.getTime()) / 86400000);
+    return left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+  }
+  return (["High", "Medium", "Low"] as const)[hashOf(g.id) % 3];
+};
 export const priorityRank = (p: string | null) => (p === "High" ? 0 : p === "Medium" ? 1 : p === "Low" ? 2 : 3);
 
 export type EvidenceStatus =
@@ -1531,7 +1541,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
         // Version 16: GSD has two rates (below 8%, above 9%). HbA1c 8% to 9% leaves the below-8 rate open and meets the above-9 rate,
         // so the member has an open and a closed GSD gap. Each is counted once per measure (see summaryOf and the Members list).
         .flatMap((g) => {
-          if (getVersion() < 16 || g.def.code !== "GSD" || g.status === "Closed" || a1cBandOf(g.m) !== "8% to 9%") return [g];
+          if (!GSD_TWO_RATES || getVersion() < 16 || g.def.code !== "GSD" || g.status === "Closed" || a1cBandOf(g.m) !== "8% to 9%") return [g];
           const closed: GapView = {
             ...g,
             id: `${g.id}:gt9`,

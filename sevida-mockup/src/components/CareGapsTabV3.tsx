@@ -21,7 +21,7 @@ import {
 import type { GapStatus } from "../careGaps";
 import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, resultsFor } from "../data";
 import type { Member, MeasureCode } from "../data";
-import { RECOMMENDED_SENTENCE, V3_GAP_LABEL, v3GapOptions } from "../v3Data";
+import { RECOMMENDED_SENTENCE, cgGapOptions, cgLabel } from "../v3Data";
 import { getVersion } from "../version";
 import { GapStatusChip } from "./GapStatusChip";
 import { LlmText } from "./LlmText";
@@ -155,12 +155,12 @@ export function CareGapsTabV3({ m }: { m: Member }) {
   if (getVersion() >= 12) {
     const dash = "--";
     const dueOf = (r: Row) => new Date(r.year, 11, 31);
-    const prio = (r: Row) => gapPriority({ id: r.id, status: r.status });
+    const prio = (r: Row) => gapPriority({ id: r.id, status: r.status, due: dueOf(r) });
     const pcm = (() => {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
+    const nameOf = (r: Row) => `${cgLabel(r.code)} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     // Version 16 (LPP-16155): the Evidence column says why the gap is open or closed (up to 2 lines, "…see more") and links to the Evidence tab.
     const evidenceText = (r: Row) =>
       r.rate === ">9"
@@ -178,7 +178,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         defaultPinned: true,
         searchable: true,
         width: 300,
-        filter: { type: "multiselect", options: v3GapOptions },
+        filter: { type: "multiselect", options: cgGapOptions },
         filterAccessor: (r) => r.code,
         render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
       },
@@ -200,7 +200,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "priority",
         header: "Priority",
-        help: "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
+        help: getVersion() >= 16 ? "How urgent an open gap is, based on the days left until the due date. High: 45 days or fewer. Medium: 46 to 90 days. Low: more than 90 days. The same value as on the Care Gaps list." : "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
         accessor: (r) => priorityRank(prio(r)),
         filterAccessor: (r) => prio(r) ?? "N/A",
         filter: { type: "multiselect", options: opt(["High", "Medium", "Low"]) },
@@ -392,7 +392,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
+    const nameOf = (r: Row) => `${cgLabel(r.code)} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     const evidenceOf = (r: Row) =>
       r.status === "Closed" && r.closure
         ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}`
@@ -407,7 +407,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         defaultPinned: true,
         searchable: true,
         width: 300,
-        filter: { type: "multiselect", options: v3GapOptions },
+        filter: { type: "multiselect", options: cgGapOptions },
         filterAccessor: (r) => r.code,
         render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
       },
@@ -537,13 +537,13 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "name",
         header: "Gap Name",
-        accessor: (r) => V3_GAP_LABEL[r.code],
+        accessor: (r) => cgLabel(r.code),
         sortable: true,
         primary: true,
         defaultPinned: true,
         alwaysVisible: true,
         width: 260,
-        render: (r) => <TableLink to={to(r)}>{V3_GAP_LABEL[r.code]}</TableLink>,
+        render: (r) => <TableLink to={to(r)}>{cgLabel(r.code)}</TableLink>,
       },
       {
         key: "status",
@@ -632,7 +632,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     // Gap Name A to Z; gaps with the same name: newest identification date first (the table sort is stable).
     const sorted = [...rows].sort((a, b) => b.identified.getTime() - a.identified.getTime());
     // Search: the measure's name or its abbreviation. The name column is the only searched one.
-    const named = v8cols.map((c) => (c.key === "name" ? { ...c, searchable: true, accessor: (r: Row) => `${V3_GAP_LABEL[r.code]} ${r.code}` } : c));
+    const named = v8cols.map((c) => (c.key === "name" ? { ...c, searchable: true, accessor: (r: Row) => `${cgLabel(r.code)} ${r.code}` } : c));
     return (
       <DataTable
         ariaLabel="Care gaps"
@@ -664,18 +664,18 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       key: "name",
       header: "Gap Name",
       help: "The measure the gap belongs to, for example BCS - Breast Cancer Screening.",
-      accessor: (r) => V3_GAP_LABEL[r.code],
+      accessor: (r) => cgLabel(r.code),
       sortable: true,
       primary: true,
       width: 240,
       filterOrder: 2,
-      filter: { type: "multiselect", options: v3GapOptions },
+      filter: { type: "multiselect", options: cgGapOptions },
       filterAccessor: (r) => r.code,
       render: (r) =>
         r.year === MY ? (
-          <TableLink to={to(r)}>{V3_GAP_LABEL[r.code]}</TableLink>
+          <TableLink to={to(r)}>{cgLabel(r.code)}</TableLink>
         ) : (
-          V3_GAP_LABEL[r.code]
+          cgLabel(r.code)
         ),
     },
     {
