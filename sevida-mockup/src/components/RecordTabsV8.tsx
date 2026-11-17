@@ -666,7 +666,7 @@ function ImmunizationsV8({ m }: { m: Member }) {
     [
       ["vaccine", "Vaccine"],
       ["date", "Administered Date"],
-      col<R>("dose", "Dose", (r) => r.vaccine, { nowrap: true, render: (r) => (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
+      col<R>("dose", "Dose", (r) => r.dose ?? r.vaccine, { nowrap: true, render: (r) => r.dose ?? (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
       col<R>("ccode", "Code", (r) => codeOf(r.code), { nowrap: true }),
       col<R>("csys", "Code System", (r) => systemOf(r.code), { nowrap: true }),
       "status",
@@ -675,27 +675,35 @@ function ImmunizationsV8({ m }: { m: Member }) {
     ],
     ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
   );
-  // Version 16 (LPP-16360): the code is written with its system, "CVX: 208". Hidden: Source, Created On, Created By, Last Updated (no Related Care Gap, no Lot Number,
-  // no Year of Immunization). The info texts are the ticket's; the Provider and Source texts of the ticket still say "medication" (copied), so they say vaccine here.
+  // Version 16 (LPP-16360): the Code is written as the ticket's "C: ####" (the first letter of the code system, then the code), and the Code System has its own column.
+  // Hidden: Created On, Created By, Last Updated, Source (the ticket's order), then Year of Immunization, which the Administered Date text points to.
+  // The info texts are the ticket's words; Code System, Created On, Created By and Last Updated have no text in the ticket, so they have no (i).
   const I16: Record<string, string> = {
     vaccine: "The name of the vaccination.",
     date: "Date the vaccine was given. If date is unknown, refer to Year of Immunization.",
     dose: "The dose quantity given.",
     ccode: "CVX code of the vaccine.",
-    status: "Status of the vaccination record: Completed, Not Done or Entered in Error.",
-    provider: "The provider who administered the vaccine.",
-    source: "The system or data feed this immunization record was received from.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
+    status: "Status of the vaccination record.",
+    provider: "The provider who prescribed the medication.",
+    source: "The system or data feed this medication record was received from.",
+    year: "The year the vaccine was given. Use it when the exact administered date is unknown.",
   };
+  const NO_HELP = ["csys", "created", "createdBy", "updated"];
   const cols16 = v16()
     ? ticket16<R>(cols12, {
-        main: (c) => mapKey(c, "ccode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code)}: ${codeOf(r.code)}` })),
-        hidden: (h) => h.filter((c) => c.key === "source"),
-      }).map((c) => (I16[c.key] ? { ...c, help: I16[c.key] } : c))
+        main: (c) => mapKey(mapKey(c, "ccode", (x) => ({ ...x, searchable: true, render: (r: R) => `${systemOf(r.code).charAt(0)}: ${codeOf(r.code)}` })), "vaccine", (x) => ({ ...x, searchable: true })),
+        hidden: (h) => h.filter((c) => c.key === "source" || c.key === "year"),
+      })
+        .map((c) => (NO_HELP.includes(c.key) ? { ...c, help: "" } : I16[c.key] ? { ...c, help: I16[c.key] } : c))
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "source", "year"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Vaccine or Code…" : v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: doses and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ labs */

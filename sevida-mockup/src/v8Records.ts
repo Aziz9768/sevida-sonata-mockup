@@ -749,11 +749,20 @@ export interface ImmRow {
   status: string;
   code: string;
   provider: string;
+  /** Version 16 (LPP-16360): the dose given, a number and a unit (sample). */
+  dose?: string;
   measures: string[];
   created: Date;
   updated: Date;
   source: string;
 }
+/** Version 16: the dose of a vaccine, made up the same way every time. A child under three gets the small flu dose, and the rotavirus vaccine is a drink. */
+const doseOf = (vaccine: string, ageDays: number, key: string): string => {
+  if (/rotavirus/i.test(vaccine)) return "2 mL";
+  if (/covid/i.test(vaccine)) return h(key) % 2 ? "0.3 mL" : "0.5 mL";
+  if (/influenza/i.test(vaccine) && ageDays < 3 * 365) return "0.25 mL";
+  return "0.5 mL";
+};
 const IMM_FILL = {
   infant: [["Hepatitis B vaccine, pediatric", "08"], ["Rotavirus vaccine, pentavalent", "116"], ["DTaP vaccine", "20"]],
   child: [["Influenza vaccine, seasonal, injectable", "141"], ["MMR vaccine", "03"], ["DTaP vaccine", "20"]],
@@ -764,10 +773,10 @@ export const immRows = (m: Member): ImmRow[] => {
     key,
     date,
     vaccine,
-    // Version 16 (LPP-16360): the three statuses of the ticket (Completed, Not Done, Entered in Error) appear in the sample data.
+    // Version 16 (LPP-16360): the three statuses of the ticket (Completed, Not Done, Entered in Error) appear in the sample data, as a small share of the records.
     status:
-      getVersion() >= 16 && status === "completed" && h(`${m.id}${key}imm`) % 12 < 2
-        ? h(`${m.id}${key}imm`) % 12 === 0
+      getVersion() >= 16 && status === "completed" && h(`${m.id}${key}imm`) % 30 < 2
+        ? h(`${m.id}${key}imm`) % 30 === 0
           ? "Not Done"
           : "Entered in Error"
         : status === "completed"
@@ -776,7 +785,8 @@ export const immRows = (m: Member): ImmRow[] => {
             ? "Not Done"
             : status.charAt(0).toUpperCase() + status.slice(1),
     code: `CVX: ${cvx}`,
-    provider: lastFirst(providerName(npi)),
+    provider: missing(`${m.id}${key}ipv`, 30) ? DASH : lastFirst(providerName(npi)),
+    dose: getVersion() >= 16 ? doseOf(vaccine, (date.getTime() - m.dob.getTime()) / DAY, `${m.id}${key}dose`) : undefined,
     measures,
     created: createdOn(e),
     updated: updatedOn(e),
