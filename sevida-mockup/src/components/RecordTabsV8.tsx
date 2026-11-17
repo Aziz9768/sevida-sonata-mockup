@@ -1041,18 +1041,14 @@ function ObservationsV8({ m }: { m: Member }) {
     service: "The name of what was observed or measured.",
     date: "The date the observation was made or recorded.",
     val: "The result of the observation, any flag showing it is outside the normal range (High, Low or Abnormal), and the status of the result (Registered, Preliminary, Final, Amended, Corrected, Cancelled or Entered in Error).",
-    unit: "The unit the result is measured in. A dash means the result has no unit.",
-    type: "The group the observation belongs to, such as Vital Signs, Laboratory or Exam.",
     ocode: "The standard code that identifies the observation, and the coding system it comes from (e.g. LOINC or SNOMED CT).",
-    osys: "The coding system the observation code comes from: LOINC or SNOMED CT.",
     provider: "The provider who ordered the service.",
-    created: "The date this record was first received.",
-    createdBy: "Who or what created this record.",
-    updated: "The date this record was last changed.",
     otype: "The category of observation: Vital Signs, Laboratory, Survey, Exam, Social History, Imaging, Procedure, Therapy or Activity.",
     ostatus: "The status of the associated claim record, as reported by the source: Active, Cancelled, Draft or Entered in Error.",
     source: "The system or data feed this observation was received from.",
   };
+  // The ticket gives Unit, Category, Code System, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["unit", "type", "osys", "created", "createdBy", "updated"];
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
       c.map((x) =>
@@ -1068,13 +1064,14 @@ function ObservationsV8({ m }: { m: Member }) {
               ),
             }
           : x.key === "ocode"
-            ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(`${systemName(systemOf(r.code))}: ${codeOf(r.code)}`, r.service) }
+            ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(`${systemName(systemOf(r.code))}: ${codeOf(r.code)}`, r.codeText ?? r.service) }
             : x.key === "val"
               ? {
                   ...x,
+                  alwaysVisible: true,
                   accessor: (r: R) => r.value,
                   render: (r: R) =>
-                    r.value === DASH ? (
+                    r.value === DASH && r.status === "Final" ? (
                       DASH
                     ) : (
                       <>
@@ -1087,7 +1084,9 @@ function ObservationsV8({ m }: { m: Member }) {
                 }
               : x.key === "unit"
                 ? { ...x, accessor: (r: R) => r.unit, render: (r: R) => r.unit || DASH }
-                : x,
+                : x.key === "type"
+                  ? { ...x, alwaysVisible: false }
+                  : x,
       ),
     hidden: () => [
       col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
@@ -1097,9 +1096,9 @@ function ObservationsV8({ m }: { m: Member }) {
       col<R>("ostatus", "Status", (r) => r.claimStatus, { nowrap: true, sortable: true, render: (r) => chip(r.claimStatus) }),
       col<R>("source", "Source", (r) => r.source, { sortable: true }),
     ],
-  }).map((c) => (O16[c.key] ? { ...c, help: O16[c.key] } : c));
+  }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : O16[c.key] ? { ...c, help: O16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
-  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Observation or Code…" : "Search by Service Type or Service…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Observation or Code…" : "Search by Service Type or Service…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: results, claim statuses and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ procedures */

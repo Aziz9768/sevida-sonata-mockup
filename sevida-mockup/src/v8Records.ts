@@ -931,14 +931,21 @@ export interface ObsRow {
   source: string;
   /** Version 16 (LPP-16161): the unit on its own, for the Unit column. */
   unit: string;
+  /** Version 16: the code's own name, shown after the code. */
+  codeText?: string;
 }
+/** Version 16: units written the way people read them. */
+const UNIT16: Record<string, string> = { "mm[Hg]": "mmHg", "/min": "bpm", "kg/m2": "kg/m²" };
+/** Version 16: a vital sign is written with the digits a real device gives (blood pressure, pulse and height in whole numbers). */
+const roundObs16 = (code: string, v: number) => (["8480-6", "8462-4", "8867-4", "8302-2"].includes(code) ? Math.round(v) : Math.round(v * 10) / 10);
+const OBS_CODE_NAME: Record<string, string> = { "39156-5": "Body mass index (BMI) [Ratio]", "72166-2": "Tobacco smoking status", "44261-6": "Patient Health Questionnaire 9 item (PHQ-9) total score [Reported]" };
 /** Version 16 (LPP-16161): the SNOMED CT code of a vital sign, used for some of the sample rows. */
 const SCT: Record<string, string> = { "8480-6": "271649006", "8462-4": "271650006", "29463-7": "27113001", "8302-2": "50373000", "39156-5": "60621009", "8867-4": "364075005" };
 const OBS_STATUS16 = ["Preliminary", "Amended", "Corrected", "Registered", "Cancelled", "Entered in Error"];
 /** Flag (High / Low / Abnormal) for the sample vitals; the sample data carries none. */
 const obsFlag16 = (code: string, v: number): "H" | "L" | "A" | "" =>
   code === "8480-6" ? (v >= 120 ? "H" : v < 90 ? "L" : "") : code === "8462-4" ? (v >= 80 ? "H" : v < 60 ? "L" : "") : code === "8867-4" ? (v > 100 ? "H" : v < 60 ? "L" : "") : code === "39156-5" ? (v >= 25 ? "H" : v < 18.5 ? "L" : "") : "";
-export const obsRows = (m: Member): ObsRow[] => {
+const obsBase = (m: Member): ObsRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
   return all
@@ -957,11 +964,17 @@ export const obsRows = (m: Member): ObsRow[] => {
       const parsed = /^(.*?)[:\s]+(-?\d+(?:\.\d+)?)\s*(\S+)?$/.exec(e.text);
       const coded = /^([^:]+):\s*(.+)$/.exec(e.text);
       const num = e.value ?? (parsed ? Number(parsed[2]) : undefined);
-      const unit16 = e.value !== undefined ? (e.tag === "hba1c" ? "%" : (e.unit ?? "")) : (parsed?.[3] ?? "");
-      const f16 = (num !== undefined ? obsFlag16(e.code, num) : "") || (e.flag && e.flag !== "Normal" ? e.flag.charAt(0) : "");
+      const unitRaw = e.value !== undefined ? (e.tag === "hba1c" ? "%" : (e.unit ?? "")) : (parsed?.[3] ?? "");
+      const unit16 = UNIT16[unitRaw] ?? unitRaw;
+      const numR = num !== undefined && v16 ? roundObs16(e.code, num) : num;
+      const f16 = (numR !== undefined ? obsFlag16(e.code, numR) : "") || (e.flag && e.flag !== "Normal" ? e.flag.charAt(0) : "");
+      const status16 = h(`${m.id}${e.code}${e.date.getTime()}os`) % 16 === 0 ? OBS_STATUS16[h(`${e.code}${e.date.getTime()}os2`) % OBS_STATUS16.length] : "Final";
+      const noValue = status16 === "Registered" || status16 === "Cancelled";
       const value16 =
-        num !== undefined
-          ? `${num}${unit16 ? ` ${unit16}` : ""}${f16 ? ` (${f16})` : ""}`
+        noValue
+          ? DASH
+          : numR !== undefined
+          ? `${numR}${unit16 ? ` ${unit16}` : ""}${f16 ? ` (${f16})` : ""}`
           : coded
             ? coded[2].charAt(0).toUpperCase() + coded[2].slice(1)
             : DASH;
@@ -987,12 +1000,14 @@ export const obsRows = (m: Member): ObsRow[] => {
           : e.value === undefined
             ? (/\d/.test(e.text) ? e.text.replace(/^[^\d]*/, "") : DASH) + flag
             : `${e.value}${unit ? ` ${unit}` : ""}${flag}`,
-        status: v16 ? (h(`${m.id}${e.code}${e.date.getTime()}os`) % 6 === 0 ? OBS_STATUS16[h(`${e.code}${e.date.getTime()}os2`) % OBS_STATUS16.length] : "Final") : (OBS_STATUS[e.status] ?? "Final"),
+        status: v16 ? status16 : (OBS_STATUS[e.status] ?? "Final"),
+        codeText: v16 ? OBS_CODE_NAME[e.code] : undefined,
         code: sct ? `SCT: ${SCT[e.code]}` : `L: ${e.code}`,
-        provider: providerCell(m, e),
+        provider: missing(`${m.id}opv${e.code}${e.date.getTime()}`, 25) ? DASH : providerCell(m, e),
         measures: measuresOf(m, e),
         related: near ? { label: VISIT_TYPE(near.v), date: near.v.date, tab: "encounters" } : null,
-        claimStatus: v16 ? (roll < 12 ? "Active" : roll === 12 ? "Cancelled" : roll === 13 ? "Draft" : roll === 14 ? "Entered in Error" : DASH) : DASH,
+        // Version 16: only a few observations (a lab, for example) have a claim; most come from the clinic's record and have none.
+        claimStatus: v16 ? (() => { const r100 = h(`${m.id}${e.code}${e.date.getTime()}obc`) % 100; return r100 < 30 ? "Active" : r100 < 32 ? "Cancelled" : r100 < 33 ? "Draft" : r100 < 35 ? "Entered in Error" : DASH; })() : DASH,
         payment: DASH,
         paid: DASH,
         created: createdOn(e),
@@ -1001,6 +1016,54 @@ export const obsRows = (m: Member): ObsRow[] => {
         unit: v16 ? unit16 : unit,
       };
     });
+};
+
+/**
+ * Version 16 (LPP-16161): the Observation Type values of the ticket show up in the sample data beyond vital signs and labs:
+ * the smoking status (Social History) and the depression questionnaire (Survey) are recorded at the member's latest completed visit.
+ */
+export const obsRows = (m: Member): ObsRow[] => {
+  const base = obsBase(m);
+  if (getVersion() < 16) return base;
+  const visit = encRows(m)
+    .filter((r) => r.status === "Completed" && r.date <= DEMO_NOW)
+    .sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+  const t = base[0]?.e ?? visit?.e;
+  const age = DEMO_NOW.getFullYear() - m.dob.getFullYear();
+  if (!visit || !t || age < 18) return base;
+  const extra: ObsRow[] = [];
+  const add = (code: string, name: string, type: string, value: string, unit: string, flag: string) => {
+    const e: Evt = { ...t, date: visit.date, code, text: name, tag: "other", value: undefined, unit: "", flag: undefined, status: "final" };
+    extra.push({
+      key: evKey(e),
+      e,
+      date: visit.date,
+      end: null,
+      type,
+      service: name,
+      value: flag ? `${value}${unit ? ` ${unit}` : ""} (${flag})` : `${value}${unit ? ` ${unit}` : ""}`,
+      status: "Final",
+      code: `L: ${code}`,
+      codeText: OBS_CODE_NAME[code],
+      provider: visit.provider,
+      measures: [],
+      related: { label: visit.type, date: visit.date, tab: "encounters" },
+      claimStatus: DASH,
+      payment: DASH,
+      paid: DASH,
+      created: visit.created,
+      updated: visit.updated,
+      source: "MHS GENESIS",
+      unit,
+    });
+  };
+  const sm = h(`${m.id}smoke16`) % 100;
+  add("72166-2", "Tobacco smoking status", "Social History", sm < 62 ? "Never smoker" : sm < 87 ? "Former smoker" : "Current every day smoker", "", "");
+  if (h(`${m.id}phq16`) % 3 === 0) {
+    const score = h(`${m.id}phq16s`) % 14;
+    add("44261-6", "PHQ-9 total score", "Survey", String(score), "points", score >= 10 ? "H" : "");
+  }
+  return [...base, ...extra];
 };
 
 /* ------------------------------------------------------------------ procedures (LPP-16162) */
