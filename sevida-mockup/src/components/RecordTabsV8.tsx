@@ -770,7 +770,7 @@ function LabsV8({ m }: { m: Member }) {
     [
       "test",
       ["date", "Collection Date"],
-      col<R>("res", "Result", (r) => valueOf(r), { nowrap: true }),
+      col<R>("res", "Result", (r) => valueOf(r), { nowrap: true, alwaysVisible: true }),
       col<R>("unit", "Unit", (r) => unitOf(r), { nowrap: true, render: (r) => unitOf(r) || DASH }),
       col<R>("range", "Reference Range", (r) => r.range, { nowrap: true, render: (r) => r.range.replace(" to ", "–") }),
       col<R>("flag", "Abnormal Flag", (r) => r.flag, { nowrap: true, sortable: true }),
@@ -798,11 +798,9 @@ function LabsV8({ m }: { m: Member }) {
     provider: "The provider who ordered the lab.",
     resulted: "The date the lab result was reported.",
     source: "The system or data feed this lab result was received from.",
-    unit: "The unit the result is measured in.",
-    pstatus: "Whether the lab result is Final or Preliminary.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
   };
+  // The ticket gives Unit, Code System, Panel Status, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["unit", "lsys", "pstatus", "created", "createdBy", "updated"];
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
@@ -815,7 +813,7 @@ function LabsV8({ m }: { m: Member }) {
                 (x) => ({ ...x, render: (r: R) => (unitOf(r) ? `${valueOf(r)} ${unitOf(r)}` : valueOf(r)) }),
               ),
               "lcode",
-              (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.test) }),
+              (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.loincText ?? r.test) }),
             ),
             "test",
             // Name of the test, at most 2 lines, then "…" with the full text in a tooltip.
@@ -831,10 +829,18 @@ function LabsV8({ m }: { m: Member }) {
             }),
           ),
         hidden: (h) => ["resulted", "pstatus", "source"].flatMap((k) => h.filter((c) => c.key === k).map((c) => (k === "pstatus" ? { ...c, header: "Panel Status" } : c))),
-      }).map((c) => (L16[c.key] ? { ...c, help: L16[c.key] } : c))
+      })
+        .map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : L16[c.key] ? { ...c, help: L16[c.key] } : c))
+        // The hidden columns follow the ticket's order.
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "pstatus", "resulted", "source"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Test, Code or Provider…" : "Search by Test, LOINC Code or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: reference ranges, resulting dates and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ medications */

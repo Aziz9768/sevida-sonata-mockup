@@ -560,11 +560,38 @@ const CPT_OF_LAB: Record<string, string> = {
   "718-7": "85018",
   "3016-3": "84443",
 };
+/** Version 16 (LPP-16159): the test name people know, and the LOINC name that goes after the code. */
+const LAB_NAME: Record<string, string> = {
+  "4548-4": "Hemoglobin A1c",
+  "2160-0": "Creatinine",
+  "2345-7": "Glucose",
+  "2085-9": "HDL Cholesterol",
+  "2089-1": "LDL Cholesterol",
+  "718-7": "Hemoglobin",
+  "5671-3": "Lead",
+  "3016-3": "Thyroid Stimulating Hormone (TSH)",
+  "30167-1": "High-Risk HPV DNA Test",
+  "20454-5": "Urine Protein (Dipstick)",
+};
+const LOINC_NAME: Record<string, string> = {
+  "4548-4": "Hemoglobin A1c/Hemoglobin.total in Blood",
+  "2160-0": "Creatinine [Mass/volume] in Serum or Plasma",
+  "2345-7": "Glucose [Mass/volume] in Serum or Plasma",
+  "2085-9": "Cholesterol in HDL [Mass/volume] in Serum or Plasma",
+  "2089-1": "Cholesterol in LDL [Mass/volume] in Serum or Plasma",
+  "718-7": "Hemoglobin [Mass/volume] in Blood",
+  "5671-3": "Lead [Mass/volume] in Blood",
+  "3016-3": "Thyrotropin [Units/volume] in Serum or Plasma",
+  "30167-1": "High-risk HPV DNA test",
+  "20454-5": "Protein [Presence] in Urine by Test strip",
+};
 export interface LabRow {
   key: string;
   e: Evt;
   date: Date;
   test: string;
+  /** Version 16: the LOINC name shown after the code. */
+  loincText?: string;
   result: string;
   range: string;
   flag: string;
@@ -579,7 +606,7 @@ export interface LabRow {
   updated: Date;
   source: string;
 }
-export const labRows = (m: Member): LabRow[] => {
+const labBase = (m: Member): LabRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
   return all
@@ -589,12 +616,13 @@ export const labRows = (m: Member): LabRow[] => {
       const prelim = e.status === "preliminary";
       // Version 16 (LPP-16159): the sample also has Low and Abnormal flags (the ticket lists High, Low and Abnormal). Display only: the quality measures read the record itself.
       const range = e.refRange ? /^\s*(-?[\d.]+)\s*(?:to|–|-)\s*(-?[\d.]+)/.exec(e.refRange) : null;
-      const roll = getVersion() >= 16 && range && e.tag !== "hba1c" && e.value !== undefined && (!e.flag || e.flag === "Normal") ? h(`${m.id}${e.code}${e.date.getTime()}lab`) % 14 : 99;
+      const roll = getVersion() >= 16 && range && e.tag !== "hba1c" && e.value !== undefined && (!e.flag || e.flag === "Normal") ? h(`${m.id}${e.code}${e.date.getTime()}lab`) % 36 : 99;
       const lo = range ? Number(range[1]) : 0;
       const hi = range ? Number(range[2]) : 0;
-      const okRoll = roll === 0 && lo <= 0 ? 99 : roll;
+      // A high HDL is good news, so it is never shown as High.
+      const okRoll = (roll === 0 && lo <= 0) || (roll === 1 && e.code === "2085-9") ? 99 : roll;
       const shownValue = okRoll === 0 ? Math.round(lo * 0.85 * 10) / 10 : okRoll === 1 ? Math.round(hi * 1.25 * 10) / 10 : e.value;
-      const shownFlag = okRoll === 0 ? "Low" : okRoll === 1 ? "Abnormal" : e.flag;
+      const shownFlag = okRoll === 0 ? "Low" : okRoll === 1 ? "High" : e.flag;
       const near = visits
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
         .filter((x) => x.d <= 14 * DAY)
@@ -603,14 +631,16 @@ export const labRows = (m: Member): LabRow[] => {
         key: evKey(e),
         e,
         date: e.date,
-        test: e.text.replace(/,? ?\d+(\.\d+)?%.*$/, "").replace(/ \(preliminary\)$/, ""),
-        result: shownValue === undefined ? DASH : `${shownValue}${unit ? ` ${unit}` : ""}`,
+        test: getVersion() >= 16 && LAB_NAME[e.code] ? LAB_NAME[e.code] : e.text.replace(/,? ?\d+(\.\d+)?%.*$/, "").replace(/ \(preliminary\)$/, ""),
+        loincText: getVersion() >= 16 ? LOINC_NAME[e.code] : undefined,
+        // Version 16: a text result is shown as sent ("Negative").
+        result: shownValue === undefined ? (getVersion() >= 16 && /, negative$/i.test(e.text) ? "Negative" : DASH) : `${shownValue}${unit ? ` ${unit}` : ""}`,
         range: e.refRange ? (/[A-Za-z%]/.test(e.refRange.replace(/ to /, "")) || !unit ? e.refRange : `${e.refRange} ${unit}`) : DASH,
         flag: shownFlag && shownFlag !== "Normal" ? shownFlag : DASH,
         resulted: prelim ? null : (e.resultedOn ?? addDays(e.date, 1 + (h(e.code + e.date.getTime()) % 3))),
         panel: PANEL[e.code] ?? DASH,
         loinc: e.code,
-        provider: providerCell(m, e),
+        provider: missing(`${m.id}lpv${e.code}${e.date.getTime()}`, 25) ? DASH : providerCell(m, e),
         measures: measuresOf(m, e),
         encounter: near ? { label: VISIT_TYPE(near.v), date: near.v.date } : null,
         cpt: CPT_OF_LAB[e.code] ?? DASH,
@@ -619,6 +649,50 @@ export const labRows = (m: Member): LabRow[] => {
         source: sourceName(e),
       };
     });
+};
+
+/**
+ * Version 16 (LPP-16159): all three flags and both panel statuses of the ticket show up in the sample data: some members have a dipstick urine protein
+ * that came back positive (Abnormal, a text result), and some have a lab collected in the last three days with no result yet (Preliminary, "--").
+ */
+export const labRows = (m: Member): LabRow[] => {
+  const base = labBase(m);
+  if (getVersion() < 16) return base;
+  const t = base[0];
+  if (!t) return base;
+  const extra: LabRow[] = [];
+  const mk = (code: string, date: Date, result: string, range: string, flag: string, prelim: boolean, unit: string): LabRow => {
+    const e: Evt = { ...t.e, date, code, text: LAB_NAME[code], status: prelim ? "preliminary" : "final", value: undefined, flag: undefined, refRange: undefined, resultedOn: undefined, unit, tag: "other" };
+    return {
+      key: evKey(e),
+      e,
+      date,
+      test: LAB_NAME[code],
+      loincText: LOINC_NAME[code],
+      result,
+      range,
+      flag,
+      resulted: prelim ? null : addDays(date, 1),
+      panel: DASH,
+      loinc: code,
+      provider: t.provider,
+      measures: [],
+      encounter: null,
+      cpt: DASH,
+      created: createdOn(e),
+      updated: updatedOn(e),
+      source: "MHS GENESIS",
+    };
+  };
+  const today = new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate());
+  if (h(`${m.id}ua16`) % 15 === 0) {
+    const d = addDays(today, -(40 + (h(`${m.id}ua16d`) % 200)));
+    extra.push(mk("20454-5", d, "Positive", "Negative", "Abnormal", false, ""));
+  }
+  if (h(`${m.id}pend16`) % 18 === 1) {
+    extra.push(mk("2345-7", addDays(today, -(1 + (h(`${m.id}pend16d`) % 3))), DASH, DASH, DASH, true, "mg/dL"));
+  }
+  return [...base, ...extra];
 };
 
 /* ------------------------------------------------------------------ medications (LPP-16160) and immunizations */
