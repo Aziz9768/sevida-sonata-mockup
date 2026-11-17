@@ -14,6 +14,11 @@ const DAY = 86_400_000;
 export const addDays = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
 const h = (s: string) => hashOf(s);
+/** Version 16: a small share of sample records come without a value ("--" if not sent), the same ones every time. */
+const missing = (key: string, oneIn: number) => getVersion() >= 16 && h(key) % oneIn === 0;
+/** Version 16 (LPP-16156, LPP-16157): the ticket's names for the diagnosis code systems. */
+export const dxSystem = () => (getVersion() >= 16 ? "ICD-10 Diagnosis" : "ICD-10-CM");
+const snomedName = () => (getVersion() >= 16 ? "SNOMED" : "SNOMED CT");
 
 /** Every record the files hold for the member, plus the routine demo records that fill each tab (see v3Filler). */
 export const allRecords = (m: Member): Evt[] => [...memberForYear(m, MY).events, ...v3Filler(m)];
@@ -219,7 +224,7 @@ const claimsV16 = (m: Member, base: ClaimRow[]): ClaimRow[] => {
     const status = roll < 3 ? "Cancelled" : roll === 3 ? "Entered-in-Error" : roll < 6 ? "Draft" : "Active";
     const unpaid = status !== "Active";
     const noEnd = r.type !== "I" && h(`ne16${r.id}`) % 50 === 0;
-    const noProvider = !org && h(`np16${r.id}`) % 50 === 1;
+    const noProvider = !org && h(`np16${r.id}`) % 25 === 1;
     return {
       ...r,
       id: idFor(from, seed),
@@ -357,11 +362,11 @@ const dxBase = (m: Member): DxRow[] =>
         end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : visitCode ? e.date : chronic === "Inactive" ? addDays(e.date, 60 + (h(e.code) % 90)) : null,
         name: e.text,
         codes: [
-          { code: e.code, system: e.system === "ICD-10" ? "ICD-10-CM" : e.system },
-          ...(SNOMED[e.code] ? [{ code: SNOMED[e.code], system: "SNOMED CT" }] : []),
+          { code: e.code, system: e.system === "ICD-10" ? dxSystem() : e.system },
+          ...(SNOMED[e.code] ? [{ code: SNOMED[e.code], system: snomedName() }] : []),
         ],
         status: acute ? ("Resolved" as const) : chronic,
-        provider: providerCell(m, e),
+        provider: missing(`${m.id}dxp${e.code}${e.date.getTime()}`, 30) ? DASH : providerCell(m, e),
         measures: measuresOf(m, e),
         created: createdOn(e),
         updated: updatedOn(e),
@@ -390,7 +395,7 @@ export const dxRows = (m: Member): DxRow[] => {
     start: enc.date,
     end: enc.date,
     name: text,
-    codes: [{ code, system: "ICD-10-CM" }],
+    codes: [{ code, system: dxSystem() }],
     status: "Resolved" as const,
     provider: enc.provider,
     measures: [],
@@ -461,7 +466,7 @@ const encBase = (m: Member): EncRow[] => {
         e,
         date: e.date,
         end: getVersion() >= 16 && !["Planned", "Arrived", "Triaged", "In Progress"].includes(statusV16(e, seed)) ? e.date : null,
-        type: VISIT_TYPE(e),
+        type: missing(`${m.id}ety${seed}`, 60) ? DASH : VISIT_TYPE(e),
         status: getVersion() >= 16 ? statusV16(e, seed) : STATUS_ENC[e.status] ?? "Completed",
         // Version 16 (LPP-16158): every visit shows a primary diagnosis; with no diagnosis near the date it is the routine-exam code for the member's age.
         diagnoses:
@@ -474,8 +479,8 @@ const encBase = (m: Member): EncRow[] => {
                   : { code: "Z00.00", text: "Encounter for general adult medical examination without abnormal findings" }),
               ]
             : near.map((x) => ({ code: x.code, text: x.text })),
-        provider: providerCell(m, e),
-        place: e.telehealth
+        provider: missing(`${m.id}epv${seed}`, 30) ? DASH : providerCell(m, e),
+        place: missing(`${m.id}epl${seed}`, 40) ? DASH : e.telehealth
           ? "Telehealth (member's home)"
           : getVersion() >= 16
             ? // Version 16: a children's clinic only for children, internal medicine only for adults.

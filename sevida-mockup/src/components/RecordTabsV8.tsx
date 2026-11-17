@@ -12,6 +12,7 @@ import {
   DASH,
   addDays,
   claimRows,
+  dxSystem,
   dxRows,
   encRows,
   immRows,
@@ -298,7 +299,7 @@ const CLAIM_HELP16: Record<string, string> = {
   services: "What was done for the member: the name of each service on the claim, one per line.",
   from: "The first day services on this claim were provided.",
   to: "The last day services on this claim were provided. A dash means the source did not send one.",
-  code: "The ICD-10-CM diagnosis code or codes on the claim, one per line. A claim with no diagnosis, such as a dental claim, shows its service codes.",
+  code: "The ICD-10 diagnosis code or codes on the claim, one per line. A claim with no diagnosis, such as a dental claim, shows its service codes.",
   ctype: "P is Professional, I is Institutional and D is Dental. Hover over the letter to see the full name.",
   provider: "The billing provider who submitted the claim.",
   id: "The number the payer gave this claim.",
@@ -435,9 +436,9 @@ function ClaimsV8({ m }: { m: Member }) {
             width: 260,
             render: (r) => lines(r.diagnoses.length ? r.diagnoses.map((d) => `${d.code} - ${d.text}`) : r.lines.map((l) => `${l.code} - ${l.text}`)),
           }),
-          col<R>("system", "Code System", (r) => (r.diagnoses.length ? "ICD-10-CM" : r.lines.map((l) => l.system)), {
+          col<R>("system", "Code System", (r) => (r.diagnoses.length ? dxSystem() : r.lines.map((l) => l.system)), {
             width: 120,
-            render: (r) => (r.diagnoses.length ? "ICD-10-CM" : lines(r.lines.map((l) => l.system))),
+            render: (r) => (r.diagnoses.length ? dxSystem() : lines(r.lines.map((l) => l.system))),
           }),
           col<R>("ctype", "Claim Type", (r) => r.type, {
             sortable: true,
@@ -599,7 +600,6 @@ function EncountersV8({ m }: { m: Member }) {
     type: "The kind of visit, such as an office visit, wellness visit or telehealth visit.",
     date: "The date the encounter took place.",
     status: "Where the encounter is in its lifecycle, as reported by the source: Planned, Arrived, Triaged, In Progress, On Leave, Completed, Canceled or Entered in Error.",
-    dx: "The main diagnosis recorded for this encounter, with its ICD-10-CM code and description.",
     pos: "Where the encounter took place.",
     facility: "The clinic or facility where the member was seen.",
     provider: "The provider who saw the member at this encounter.",
@@ -621,7 +621,7 @@ function EncountersV8({ m }: { m: Member }) {
         ],
       })
         // The ticket gives Primary Diagnosis, Clinic / Facility and Created By no info text, so they have no (i). The hidden columns follow the ticket's order.
-        .map((c) => (c.key === "dx" || c.key === "facility" || c.key === "createdBy" ? { ...c, help: "" } : E16[c.key] ? { ...c, help: E16[c.key] } : c))
+        .map((c) => (c.key === "dx" || c.key === "facility" || c.key === "createdBy" || c.key === "created" || c.key === "updated" ? { ...c, help: "" } : E16[c.key] ? { ...c, help: E16[c.key] } : c))
         .sort((a, b) => {
           const ORDER = ["created", "createdBy", "updated", "end", "source"];
           const ia = ORDER.indexOf(a.key);
