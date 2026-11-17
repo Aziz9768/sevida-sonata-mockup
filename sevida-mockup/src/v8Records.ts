@@ -938,7 +938,15 @@ export interface ObsRow {
 const UNIT16: Record<string, string> = { "mm[Hg]": "mmHg", "/min": "bpm", "kg/m2": "kg/m²" };
 /** Version 16: a vital sign is written with the digits a real device gives (blood pressure, pulse and height in whole numbers). */
 const roundObs16 = (code: string, v: number) => (["8480-6", "8462-4", "8867-4", "8302-2"].includes(code) ? Math.round(v) : Math.round(v * 10) / 10);
-const OBS_CODE_NAME: Record<string, string> = { "39156-5": "Body mass index (BMI) [Ratio]", "72166-2": "Tobacco smoking status", "44261-6": "Patient Health Questionnaire 9 item (PHQ-9) total score [Reported]" };
+const OBS_CODE_NAME: Record<string, string> = {
+  "39156-5": "Body mass index (BMI) [Ratio]",
+  "72166-2": "Tobacco smoking status",
+  "44261-6": "Patient Health Questionnaire 9 item (PHQ-9) total score [Reported]",
+  "10230-1": "Left ventricular Ejection fraction",
+  "19926-5": "FEV1/FVC",
+  "3151-8": "Inhaled oxygen flow rate",
+  "55423-8": "Number of steps in unspecified time Pedometer",
+};
 /** Version 16 (LPP-16161): the SNOMED CT code of a vital sign, used for some of the sample rows. */
 const SCT: Record<string, string> = { "8480-6": "271649006", "8462-4": "271650006", "29463-7": "27113001", "8302-2": "50373000", "39156-5": "60621009", "8867-4": "364075005" };
 const OBS_STATUS16 = ["Preliminary", "Amended", "Corrected", "Registered", "Cancelled", "Entered in Error"];
@@ -1032,12 +1040,13 @@ export const obsRows = (m: Member): ObsRow[] => {
   const age = DEMO_NOW.getFullYear() - m.dob.getFullYear();
   if (!visit || !t || age < 18) return base;
   const extra: ObsRow[] = [];
-  const add = (code: string, name: string, type: string, value: string, unit: string, flag: string) => {
-    const e: Evt = { ...t, date: visit.date, code, text: name, tag: "other", value: undefined, unit: "", flag: undefined, status: "final" };
+  const add = (code: string, name: string, type: string, value: string, unit: string, flag: string, daysBefore = 0) => {
+    const date = addDays(visit.date, -daysBefore);
+    const e: Evt = { ...t, date, code, text: name, tag: "other", value: undefined, unit: "", flag: undefined, status: "final" };
     extra.push({
       key: evKey(e),
       e,
-      date: visit.date,
+      date,
       end: null,
       type,
       service: name,
@@ -1051,8 +1060,8 @@ export const obsRows = (m: Member): ObsRow[] => {
       claimStatus: DASH,
       payment: DASH,
       paid: DASH,
-      created: visit.created,
-      updated: visit.updated,
+      created: createdOn(e),
+      updated: updatedOn(e),
       source: "MHS GENESIS",
       unit,
     });
@@ -1063,6 +1072,18 @@ export const obsRows = (m: Member): ObsRow[] => {
     const score = h(`${m.id}phq16s`) % 14;
     add("44261-6", "PHQ-9 total score", "Survey", String(score), "points", score >= 10 ? "H" : "");
   }
+  // The other Observation Types of the ticket: Activity (a step count), Imaging (an ejection fraction from an echocardiogram), Procedure (a breathing test)
+  // and Therapy (oxygen flow for an older member). Each one only for the members it is realistic for.
+  if (h(`${m.id}act16`) % 4 === 0) add("55423-8", "Number of steps", "Activity", (3000 + (h(`${m.id}act16s`) % 9000)).toLocaleString("en-US"), "steps", "", 1);
+  if (age >= 55 && h(`${m.id}img16`) % 3 === 0) {
+    const ef = 48 + (h(`${m.id}img16s`) % 20);
+    add("10230-1", "Left ventricular ejection fraction", "Imaging", String(ef), "%", ef < 50 ? "L" : "", 12);
+  }
+  if (h(`${m.id}pft16`) % 7 === 0) {
+    const r = 66 + (h(`${m.id}pft16s`) % 20);
+    add("19926-5", "FEV1/FVC ratio", "Procedure", String(r), "%", r < 70 ? "L" : "", 20);
+  }
+  if (age >= 60 && h(`${m.id}pft16`) % 7 !== 0 && h(`${m.id}o216`) % 2 === 0) add("3151-8", "Inhaled oxygen flow rate", "Therapy", String(2 + (h(`${m.id}o216s`) % 3)), "L/min", "", 0);
   return [...base, ...extra];
 };
 
