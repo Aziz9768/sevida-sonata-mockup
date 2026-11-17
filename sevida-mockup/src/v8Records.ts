@@ -1042,7 +1042,7 @@ export const obsRows = (m: Member): ObsRow[] => {
   const extra: ObsRow[] = [];
   const add = (code: string, name: string, type: string, value: string, unit: string, flag: string, daysBefore = 0) => {
     const date = addDays(visit.date, -daysBefore);
-    const e: Evt = { ...t, date, code, text: name, tag: "other", value: undefined, unit: "", flag: undefined, status: "final" };
+    const e: Evt = { ...t, date, code, text: name, tag: "other", value: undefined, unit: "", flag: undefined, status: "final", identifiedOn: undefined };
     extra.push({
       key: evKey(e),
       e,
@@ -1108,10 +1108,14 @@ export interface ProcRow {
   updated: Date;
   source: string;
 }
+/** Version 16 (LPP-16162): who performed a procedure that a family doctor would not (Grace Kim is the radiologist, Daniel Okafor the surgeon-gynecologist of the sample). */
+const procPerformer16 = (e: Evt): string | null =>
+  e.code === "71046" ? lastFirst(providerName("1000000210")) : e.tag === "mastectomy" ? lastFirst(providerName("1000000129")) : null;
+
 export const procRows = (m: Member): ProcRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
-  return all
+  const rows = all
     .filter((e) => v3TabOf(e) === "procedures" && e.kind !== "Vaccine")
     .map((e) => {
       const near = visits
@@ -1130,20 +1134,37 @@ export const procRows = (m: Member): ProcRow[] => {
             ? `Body site: ${e.side === "LT" ? "Left breast" : e.side === "RT" ? "Right breast" : "Both breasts"}`
             : e.tag === "colonoscopy" || e.tag === "sigmoidoscopy"
               ? "Body site: Colon"
-              : DASH,
+              : getVersion() >= 16
+                ? e.tag === "mastectomy"
+                  ? `Body site: ${e.side === "LT" ? "Left breast" : "Right breast"}`
+                  : e.code === "71046"
+                    ? "Body site: Chest"
+                    : e.code === "92551"
+                      ? `Outcome: ${seed % 12 === 0 ? "Refer" : "Pass"}`
+                      : e.code === "88175"
+                        ? "Outcome: Negative for intraepithelial lesion"
+                        : DASH
+                : DASH,
         status:
           getVersion() >= 16
             ? (() => {
                 // Version 16 (LPP-16162): all seven statuses of the ticket appear in the sample.
                 const base = e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed";
                 if (base !== "Completed" || e.tag !== "other") return base;
-                const roll = seed % 20;
-                const recent = DEMO_NOW.getTime() - e.date.getTime() < 45 * DAY;
-                return recent && roll < 4 ? (roll < 2 ? "In Progress" : "On Hold") : roll === 4 ? "Unknown" : roll === 5 ? "Entered in Error" : roll === 6 ? "Stopped" : base;
+                // Every status of the ticket appears, the unusual ones for a few records only. A procedure still in progress or on hold is a recent one.
+                const roll = seed % 40;
+                const recent = DEMO_NOW.getTime() - e.date.getTime() < 90 * DAY && !["36415", "36416", "93000"].includes(e.code);
+                return recent && roll < 8 ? (roll < 4 ? "In Progress" : "On Hold") : roll === 8 ? "Unknown" : roll === 9 ? "Entered in Error" : roll === 10 ? "Stopped" : roll === 11 ? "Not Done" : base;
               })()
             : e.status === "not-done" ? "Not Done" : e.status === "cancelled" ? "Stopped" : "Completed",
-        provider: providerCell(m, e),
-        code: `${e.system}: ${e.code}`,
+        provider:
+          getVersion() >= 16
+            ? (procPerformer16(e) ?? (e.tag === "other" && missing(`${m.id}prp${seed}`, 25) ? DASH : providerCell(m, e)))
+            : providerCell(m, e),
+        code:
+          getVersion() >= 16 && e.tag === "mastectomy"
+            ? `ICD-10-PCS: ${e.side === "LT" ? "0HTU0ZZ" : "0HTT0ZZ"}`
+            : `${e.system}: ${e.code}`,
         measures: measuresOf(m, e),
         encounter: near ? { label: VISIT_TYPE(near.v), date: near.v.date } : null,
         claim: isClaim ? `${e.date.getFullYear()}${pad(e.date.getMonth() + 1)}${pad(e.date.getDate())}${pad(10000 + (seed % 89999), 5)}` : DASH,
@@ -1155,6 +1176,40 @@ export const procRows = (m: Member): ProcRow[] => {
         source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
+  if (getVersion() < 16) return rows;
+  // Version 16: only a completed procedure has a result (a body site or an outcome).
+  for (const r of rows) if (r.status !== "Completed") r.value = DASH;
+  // Version 16 (LPP-16162): the ticket's other code systems. A depression screening (HCPCS) goes with each PHQ-9 questionnaire of the Observations tab, and a
+  // smoking cessation education (SNOMED CT) with each "Current every day smoker" status, both done at the same visit.
+  const obs = obsRows(m);
+  const extra: ProcRow[] = [];
+  const add = (o: ObsRow, code: string, system: string, name: string, value: string) => {
+    const e: Evt = { ...o.e, code, system, text: name, kind: "EHR procedure", file: "proc", tag: "other", identifiedOn: undefined };
+    extra.push({
+      key: evKey(e),
+      e,
+      date: o.date,
+      name,
+      value,
+      status: "Completed",
+      provider: o.provider,
+      code: `${system}: ${code}`,
+      measures: [],
+      encounter: o.related ? { label: o.related.label, date: o.related.date } : null,
+      claim: DASH,
+      claimStatus: DASH,
+      payment: DASH,
+      paid: DASH,
+      created: createdOn(e),
+      updated: updatedOn(e),
+      source: "MHS GENESIS",
+    });
+  };
+  const phq = obs.find((o) => o.e.code === "44261-6");
+  if (phq) add(phq, "G0444", "HCPCS", "Annual depression screening, 5 to 15 minutes", `PHQ-9 score: ${parseInt(phq.value, 10)}`);
+  const smoker = obs.find((o) => o.e.code === "72166-2" && /^Current/.test(o.value));
+  if (smoker) add(smoker, "225323000", "SNOMED CT", "Smoking cessation education", DASH);
+  return [...rows, ...extra];
 };
 
 /* ------------------------------------------------------------------ providers (LPP-16163) */

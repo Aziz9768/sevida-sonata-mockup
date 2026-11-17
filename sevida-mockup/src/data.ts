@@ -2241,7 +2241,7 @@ const v3Filled = new Map<string, Evt[]>();
  * They never change a measure result, and Versions 1 and 2 never see them.
  */
 export function v3Filler(member: Member): Evt[] {
-  const hit = v3Filled.get(member.id);
+  const hit = v3Filled.get(`${member.id}:${getVersion() >= 16}`);
   if (hit) return hit;
   const have = new Map<V3Tab, number>();
   for (const e of member.events) have.set(v3TabOf(e), (have.get(v3TabOf(e)) ?? 0) + 1);
@@ -2301,8 +2301,15 @@ export function v3Filler(member: Member): Evt[] {
 
   const procList = {
     infant: [['90460', 'Immunization administration, first component'], ['36416', 'Collection of capillary blood specimen'], ['92551', 'Screening test, pure tone, air only']],
-    child: [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']],
-    adult: [['36415', 'Collection of venous blood by venipuncture'], ['93000', 'Electrocardiogram, routine, with interpretation and report'], ['71046', 'Radiologic examination, chest, 2 views'], ['97110', 'Therapeutic exercises, each 15 minutes'], ['96372', 'Therapeutic injection, subcutaneous or intramuscular']],
+    // Version 16: a developmental screening is for children under 5 (older ones get a behavioral assessment) and spirometry needs a child of 5 or more.
+    child:
+      getVersion() >= 16
+        ? age < 5
+          ? [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture']]
+          : [['96127', 'Brief emotional/behavioral assessment, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']]
+        : [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']],
+    // Version 16: physical therapy (97110) is not done in a family doctor's office, so an earwax removal takes its place.
+    adult: [['36415', 'Collection of venous blood by venipuncture'], ['93000', 'Electrocardiogram, routine, with interpretation and report'], ['71046', 'Radiologic examination, chest, 2 views'], getVersion() >= 16 ? ['69210', 'Removal of impacted earwax (cerumen) with instruments, one ear'] : ['97110', 'Therapeutic exercises, each 15 minutes'], ['96372', 'Therapeutic injection, subcutaneous or intramuscular']],
   }[band];
   for (let i = 0; i < need('procedures'); i++) {
     const [code, text] = procList[(Math.floor(h('proc') * procList.length) + i) % procList.length];
@@ -2331,7 +2338,7 @@ export function v3Filler(member: Member): Evt[] {
       out.push(claim(day('clm', i), code, 'CPT', text, 'other', { provider: pcp }));
     }
   }
-  v3Filled.set(member.id, out);
+  v3Filled.set(`${member.id}:${getVersion() >= 16}`, out);
   return out;
 }
 

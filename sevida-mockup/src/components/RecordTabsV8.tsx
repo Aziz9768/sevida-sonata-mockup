@@ -1157,9 +1157,12 @@ function ProceduresV8({ m }: { m: Member }) {
   const posOfProc = (r: R) =>
     /colonoscopy|sigmoidoscopy/i.test(r.name)
       ? "24 - Ambulatory Surgical Center"
-      : /mammogra/i.test(r.name) || hashOf(r.key) % 5 === 0
-        ? "22 - On Campus Outpatient Hospital"
-        : "11 - Office";
+      : /mastectomy/i.test(r.name)
+        ? "21 - Inpatient Hospital"
+        : /mammogra|radiologic/i.test(r.name) || (/venipuncture|electrocardiogram|spirometry/i.test(r.name) && hashOf(r.key) % 6 === 0)
+          ? "22 - On Campus Outpatient Hospital"
+          : "11 - Office";
+  const NO_HELP16 = ["psys", "created", "createdBy", "updated", "ppos"];
   const P16: Record<string, string> = {
     name: "The name of the procedure performed.",
     date: "The date the procedure was performed.",
@@ -1198,12 +1201,12 @@ function ProceduresV8({ m }: { m: Member }) {
           col<R>("createdBy", "Created By", () => "System", { sortable: true }),
           col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
           ...h.filter((c) => c.key === "value"),
-          col<R>("ppos", "Place of Service", posOfProc, { nowrap: true }),
+          col<R>("ppos", "Place of Service", posOfProc, { width: 260 }),
         ],
-      }).map((c) => (P16[c.key] ? { ...c, help: P16[c.key] } : c))
+      }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : P16[c.key] ? { ...c, help: P16[c.key] } : c))
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Procedure or Code…" : "Search by Procedure…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Procedure or Code…" : "Search by Procedure…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: results, places of service and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ providers */
