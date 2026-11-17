@@ -20,12 +20,14 @@ import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { MemberHeader } from "./MemberDetailPage";
 import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
-import { tabKeyOfRecord } from "../v8Records";
+import { DASH, createdOn, dxSystem, providerCell, tabKeyOfRecord, updatedOn } from "../v8Records";
 import {
   arrivedOn,
   fmtDay,
   fmtWhen,
   evidenceRoles,
+  gapDaysLeft,
+  gapDueOf,
   gapPriority,
   gapStatusTone,
   recordRole,
@@ -52,7 +54,7 @@ import type { Evt, MeasureCode } from "../data";
 import {
   MISSING_SHORT,
   RECOMMENDED_SENTENCE,
-  V3_GAP_LABEL,
+  cgLabel,
   V3_LEFT,
   V3_WHO,
   gapShort,
@@ -106,6 +108,9 @@ const V11_LEFT_GSD = ["A glycemic status assessment (HbA1c) during the measureme
 
 /** "47 Days (12/31/2026)": time left to the due date (LPP-16153 / Mansi). */
 const timeLeft = () => `${daysToDue()} Days (${fmtDate(DUE)})`;
+/** Version 16: each open gap has its own due date. */
+const dueFor = (g: { id: string }) => (getVersion() >= 16 ? gapDueOf(g.id) : DUE);
+const daysLeft = (g: { id: string }) => (getVersion() >= 16 ? gapDaysLeft(gapDueOf(g.id)) : daysToDue());
 
 function Overview({ g }: { g: GapView }) {
 
@@ -192,7 +197,7 @@ function Overview({ g }: { g: GapView }) {
               ? "N/A"
               : "Closed"
             : v8 && !v11
-              ? fmtDate(DUE)
+              ? fmtDate(dueFor(g))
               : timeLeft()}
         </Field>
       </Stack>
@@ -241,7 +246,23 @@ function OverviewV12({ g }: { g: GapView }) {
       ? closedRec
         ? `The gap was closed on ${fmtDay(g.work.closed.on)} by a ${closedRec.kind.toLowerCase()} record dated ${fmtDate(parseDayLocal(closedRec.date))} (${closedRec.source}).`
         : `The gap was closed on ${fmtDay(g.work.closed.on)}: ${g.work.closed.reason}`
-      : `No qualifying ${service} was found for the ${MY} measurement period. Records that count: ${windows}. ${lastLine}`;
+      : getVersion() >= 16
+        ? // Version 16 (LPP-16227): specific and data driven, in the ticket's words: what was looked for, between which dates, and the last record on record.
+          (() => {
+            const long = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+            const START: Partial<Record<MeasureCode, Date>> = { "BCS-E": new Date(MY - 2, 9, 1), "CCS-E": new Date(MY - 2, 0, 1), GSD: new Date(MY, 0, 1), WCV: new Date(MY, 0, 1) };
+            const start = START[code];
+            const found =
+              code === "COL-E"
+                ? `No colorectal cancer screening found: no colonoscopy since Jan 1, ${MY - 9}, no CT colonography or flexible sigmoidoscopy since Jan 1, ${MY - 4}, no stool DNA test since Jan 1, ${MY - 2} and no FIT in ${MY}.`
+                : `No ${service} found between ${start ? long(start) : `Jan 1, ${MY}`} and ${long(DEMO_NOW)}.`;
+            const lastOn =
+              last?.origin === "file" || last?.origin === "recorded"
+                ? `Last ${service} on record: ${long(last.date)}${last.origin === "file" && last.e.value !== undefined ? ` (${last.e.value}${last.e.unit ? ` ${last.e.unit}` : last.e.tag === "hba1c" ? "%" : ""})` : ""}.`
+                : `No ${service} on record.`;
+            return `${found} ${lastOn}`;
+          })()
+        : `No qualifying ${service} was found for the ${MY} measurement period. Records that count: ${windows}. ${lastLine}`;
   const sub = (title: string) => (
     <Typography sx={{ fontSize: ".8125rem", fontWeight: 700, color: "text.secondary" }}>{title}</Typography>
   );
@@ -252,7 +273,7 @@ function OverviewV12({ g }: { g: GapView }) {
   const summary =
     getVersion() >= 16 ? (
       <Card title="Gap Summary">
-        <Table size="small" aria-label="Gap Summary">
+        <Table size="small" aria-label="Gap Summary" sx={{ "& .MuiTableCell-root": { fontFamily: "inherit" } }}>
           <TableHead>
             <TableRow>
               {["Status", "Priority", "Gap Identified Date", "Due Date", "Days Remaining"].map((h) => (
@@ -267,8 +288,8 @@ function OverviewV12({ g }: { g: GapView }) {
               <TableCell>{excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}</TableCell>
               <TableCell>{gapPriority(g) ?? "N/A"}</TableCell>
               <TableCell>{fmtDate(g.identified)}</TableCell>
-              <TableCell>{g.status === "Open" ? fmtDate(DUE) : "N/A"}</TableCell>
-              <TableCell>{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? fmtDate(dueFor(g)) : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? `${daysLeft(g)} Days` : "N/A"}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -276,7 +297,7 @@ function OverviewV12({ g }: { g: GapView }) {
     ) : null;
   // Version 16 (LPP-16227): Gap Summary, Other Open Gaps (chips, Gap Name A to Z), Why The Gap Is Open, How To Close The Gap. No "Gap Considerations" section.
   if (getVersion() >= 16) {
-    const chips = [...others].sort((a, b) => V3_GAP_LABEL[a.def.code as MeasureCode].localeCompare(V3_GAP_LABEL[b.def.code as MeasureCode]));
+    const chips = [...others].sort((a, b) => cgLabel(a.def.code as MeasureCode).localeCompare(cgLabel(b.def.code as MeasureCode)));
     return (
       <Stack spacing={2}>
         {summary}
@@ -284,11 +305,11 @@ function OverviewV12({ g }: { g: GapView }) {
           {chips.length ? (
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               {chips.map((x) => (
-                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={V3_GAP_LABEL[x.def.code as MeasureCode]} />
+                <Chip key={x.id} clickable component="a" href={`#/members/${g.m.id}/gaps/${x.def.code}`} label={cgLabel(x.def.code as MeasureCode)} />
               ))}
             </Stack>
           ) : (
-            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+            <Typography sx={{ color: "text.secondary" }}>{displayName(g.m)} has no other open gaps.</Typography>
           )}
         </Card>
         <Card title={excluded ? "Why The Member Is Excluded" : closed ? "Why The Gap Is Closed" : "Why The Gap Is Open"}>
@@ -375,12 +396,12 @@ function OverviewV12({ g }: { g: GapView }) {
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
               {others.map((x) => (
                 <TableLink key={x.id} to={`/members/${g.m.id}/gaps/${x.def.code}`}>
-                  {V3_GAP_LABEL[x.def.code as MeasureCode]}
+                  {cgLabel(x.def.code as MeasureCode)}
                 </TableLink>
               ))}
             </Stack>
           ) : (
-            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+            <Typography sx={{ color: "text.secondary" }}>{displayName(g.m)} has no other open gaps.</Typography>
           )}
         </Stack>
       </Stack>
@@ -400,6 +421,8 @@ interface EvRow12 {
   result: string;
   provider: string;
   source: string;
+  created: Date;
+  updated: Date;
   recordId: string;
   received: Date | null;
   valueSet: string;
@@ -432,10 +455,12 @@ function EvidenceV12({ g }: { g: GapView }) {
             tab,
             desc: e.text,
             code: e.code,
-            system: e.system,
-            result: e.value !== undefined ? `${e.value}${e.unit ? ` ${e.unit}` : e.tag === "hba1c" ? "%" : ""}` : "–",
-            provider: providerName(e.provider),
-            source: e.supplemental ? "EHR / lab feed" : "Claims",
+            system: getVersion() >= 16 && e.system === "ICD-10" ? dxSystem() : e.system,
+            created: createdOn(e),
+            updated: updatedOn(e),
+            result: e.value !== undefined ? `${e.value}${e.unit ? ` ${e.unit}` : e.tag === "hba1c" ? "%" : ""}` : getVersion() >= 16 ? DASH : "–",
+            provider: getVersion() >= 16 ? providerCell(g.m, e) : providerName(e.provider),
+            source: getVersion() >= 16 ? "MHS GENESIS" : e.supplemental ? "EHR / lab feed" : "Claims",
             recordId: `REC-${(hashOf(`${e.file}${e.code}${e.date.toISOString()}`) % 900000) + 100000}`,
             received: arrivedOn(e) ?? null,
             valueSet: `${gapShort(code as MeasureCode)} ${e.tag}`,
@@ -479,9 +504,9 @@ function EvidenceV12({ g }: { g: GapView }) {
     { key: "clinic", header: "Clinic / Facility", accessor: (r) => r.clinic, width: 200, ...optional },
     ...(e16
       ? ([
-          { key: "createdOn", header: "Created On", help: "Date the evidence record was created.", accessor: (r) => r.date, render: (r) => fmtDate(r.date), sortable: true, nowrap: true, ...optional },
-          { key: "createdBy", header: "Created By", help: "Who or what created the evidence record.", accessor: () => "System", sortable: true, ...optional },
-          { key: "lastUpdated", header: "Last Updated", help: "Date the evidence record last changed.", accessor: (r) => r.received ?? r.date, render: (r) => fmtDate(r.received ?? r.date), sortable: true, nowrap: true, ...optional },
+          { key: "createdOn", header: "Created On", accessor: (r) => r.created, render: (r) => fmtDate(r.created), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", accessor: (r) => r.updated, render: (r) => fmtDate(r.updated), sortable: true, nowrap: true, ...optional },
         ] as Column<EvRow12>[])
       : []),
   ];
@@ -543,7 +568,14 @@ function HistoryV12({ g }: { g: GapView }) {
       } else if (a.kind === "Closed")
         evs.push({ key: a.id, when, event: "Closed", details: a.text, pcm: pcmNow, closed: when });
       else if (a.kind === "Status" && /reopened/i.test(a.text))
-        evs.push({ key: a.id, when, event: "Reopened", details: a.text, pcm: pcmNow, closed: null });
+        evs.push({ key: a.id, when, event: getVersion() >= 16 ? "Opened" : "Reopened", details: a.text, pcm: pcmNow, closed: null });
+    }
+    // Version 16 (LPP-16229): about one open gap in nine was closed by a claim that the payer later reversed, so the gap was opened again (the Opened event of the ticket).
+    // The Evidence tab shows no record for it, because the claim no longer counts.
+    if (getVersion() >= 16 && g.status === "Open" && hashOf(`${g.id}reopen`) % 9 === 0 && g.identified.getTime() + 16 * 86_400_000 < DEMO_NOW.getTime()) {
+      const closedOn = new Date(g.identified.getTime() + 8 * 86_400_000);
+      evs.push({ key: `${g.id}-c`, when: closedOn, event: "Closed", details: `Gap closed by a claim for ${serviceName[code]}.`, pcm: pcmNow, closed: closedOn });
+      evs.push({ key: `${g.id}-o`, when: new Date(g.identified.getTime() + 15 * 86_400_000), event: "Opened", details: "Gap opened again: the payer reversed the claim that closed it.", pcm: pcmNow, closed: null });
     }
     // A made-up example: some open gaps moved to a higher priority a few weeks after they were identified.
     if (g.status === "Open" && hashOf(g.id) % 2 === 0 && prioNow !== "Low") {
@@ -557,7 +589,7 @@ function HistoryV12({ g }: { g: GapView }) {
     const wasPrio = prioNow === "High" ? "Medium" : "Low";
     const built: HistRow12[] = evs.map((e) => {
       if (e.event === "Closed") status = "Closed";
-      else if (e.event === "Reopened" || e.event === "Identified") status = "Open";
+      else if (e.event === "Reopened" || e.event === "Opened" || e.event === "Identified") status = "Open";
       else if (e.event === "Excluded") status = "Excluded";
       const priority = status !== "Open" ? "N/A" : change && e.when < change.when ? wasPrio : prioNow;
       return {
@@ -568,7 +600,7 @@ function HistoryV12({ g }: { g: GapView }) {
         priority,
         details: e.details,
         pcm: e.pcm,
-        due: status === "Open" ? DUE : null,
+        due: status === "Open" ? dueFor(g) : null,
         closed: e.closed,
         action: status === "Open" ? RECOMMENDED_SENTENCE(code, CURRENT_YEAR) : "N/A",
         source: "Sonata quality run",
@@ -582,7 +614,7 @@ function HistoryV12({ g }: { g: GapView }) {
   const h16 = getVersion() >= 16;
   const cols: Column<HistRow12>[] = [
     { key: "when", header: "Date", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, primary: true },
-    { key: "event", header: "Event", help: "Identified, Priority Changed, PCM Changed, Closed, Reopened or Excluded.", accessor: (r) => r.event, sortable: true, nowrap: true, filter: { type: "multiselect", options: ["Identified", "Priority Changed", "PCM Changed", "Closed", "Reopened", "Excluded"].map((v) => ({ value: v, label: v })) } },
+    { key: "event", header: "Event", help: getVersion() >= 16 ? "Identified, Priority Changed, PCM Changed, Closed, Opened or Excluded." : "Identified, Priority Changed, PCM Changed, Closed, Reopened or Excluded.", accessor: (r) => r.event, sortable: true, nowrap: true, filter: { type: "multiselect", options: ["Identified", "Priority Changed", "PCM Changed", "Closed", getVersion() >= 16 ? "Opened" : "Reopened", "Excluded"].map((v) => ({ value: v, label: v })) } },
     { key: "status", header: "Gap Status", help: "The status of the gap after this event.", accessor: (r) => r.status, sortable: true, nowrap: true, render: (r) => <StatusChip tone={gapStatusTone[r.status as keyof typeof gapStatusTone]} label={r.status} /> },
     { key: "priority", header: "Priority", help: "The priority after this event. Only for an open gap.", accessor: (r) => r.priority, sortable: true, nowrap: true },
     { key: "details", header: "Change Details", accessor: (r) => r.details, width: 360 },
@@ -594,9 +626,9 @@ function HistoryV12({ g }: { g: GapView }) {
     { key: "source", header: "Source / Run Date", help: "What made the change. Sample data.", accessor: (r) => r.source, render: (r) => `${r.source}, ${fmtDate(r.when)}`, width: 220, ...optional },
     ...(h16
       ? ([
-          { key: "createdOn", header: "Created On", help: "Date the history entry was created.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
-          { key: "createdBy", header: "Created By", help: "Who or what created the history entry.", accessor: () => "System", sortable: true, ...optional },
-          { key: "lastUpdated", header: "Last Updated", help: "Date the history entry last changed.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+          { key: "createdOn", header: "Created On", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
         ] as Column<HistRow12>[])
       : []),
   ];
@@ -646,7 +678,7 @@ function Evidence({ g }: { g: GapView }) {
       ),
     [g.m, code],
   );
-  const gapLabel = V3_GAP_LABEL[code as MeasureCode];
+  const gapLabel = cgLabel(code as MeasureCode);
   const cols: Column<EvRow>[] = [
     {
       key: "date",
@@ -767,15 +799,15 @@ function History({ g }: { g: GapView }) {
   const v11 = useVersion().version.id >= 11;
   const rows = useMemo<HistRow[]>(() => {
     // Version 11 (LPP-16229): Priority only for an open gap, and the Primary Care Manager on every row.
-    const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
-    const openPriority = left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+    const left = Math.round((dueFor(g).getTime() - DEMO_NOW.getTime()) / 86400000);
+    const openPriority = getVersion() >= 16 ? (gapPriority(g) ?? "Low") : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
     const pcmP = pcmPerson(g.m);
     const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
-      gap: V3_GAP_LABEL[code],
+      gap: cgLabel(code),
       identified: g.identified,
-      due: DUE,
+      due: dueFor(g),
       closed: null,
       updated: g.identified,
       action: RECOMMENDED_SENTENCE(code, CURRENT_YEAR),
@@ -787,7 +819,7 @@ function History({ g }: { g: GapView }) {
       return [
         {
           key: "closed",
-          gap: V3_GAP_LABEL[code],
+          gap: cgLabel(code),
           identified: g.identified,
           due: null,
           closed: on,
@@ -920,7 +952,7 @@ export function CareGapDetailPageV3() {
     ? get(m, def.code as MeasureCode) ??
       (version.id >= 12 ? excludedOf(m).find((x) => x.def.code === def.code) ?? null : null)
     : null;
-  const label = def ? V3_GAP_LABEL[def.code as MeasureCode] : "Not found";
+  const label = def ? cgLabel(def.code as MeasureCode) : "Not found";
 
   // Version 8 (LPP-16153): Care Gaps > BCS > Member Name. Earlier versions: Care Gaps > Member Name > Gap Name.
   // Version 16 (LPP-16227 to 16229): Care Gaps > Gap Name > Member Name > Overview / Evidence / History.
@@ -928,9 +960,10 @@ export function CareGapDetailPageV3() {
   const crumbs = v16
     ? [
         { label: "Care Gaps", href: "/care-gaps" },
-        { label: def ? label : "Not found", href: "/care-gaps" },
+        ...(def ? [{ label, href: "/care-gaps" }] : []),
         ...(m ? [{ label: displayName(m), href: `/members/${m.id}` }] : []),
-        { label: tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
+        // An address that names no gap has no tab to show either.
+        { label: !def ? "Gap not found" : tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
       ]
     : v8
     ? [
@@ -950,7 +983,7 @@ export function CareGapDetailPageV3() {
           title="No care gap here"
           description={
             m && def
-              ? `${m.name} has no care gap for ${def.name}.`
+              ? `${version.id >= 16 ? displayName(m) : m.name} has no care gap for ${def.name}.`
               : "This care gap does not exist."
           }
           action={
@@ -970,7 +1003,7 @@ export function CareGapDetailPageV3() {
   const closed = g.status === "Closed";
   const excluded = g.status === "Excluded";
   // Version 11 summary (LPP-16153 and the Application Tables sheet): Priority, Primary Care Manager and Gap Evidence are new.
-  const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
+  const left = Math.round((dueFor(g).getTime() - DEMO_NOW.getTime()) / 86400000);
   const priority = v12 ? gapPriority(g) ?? "--" : closed ? "--" : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
   const pcmP = pcmPerson(m);
   const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
@@ -1020,10 +1053,10 @@ export function CareGapDetailPageV3() {
             <Field label={v11 ? "Gap Identified Date" : "Identified Date"}>{fmtDate(g.identified)}</Field>
             {v11 && !v12 && <Field label="Priority">{priority}</Field>}
             {v12 && (
-              <Field label="Due Date">{g.status === "Open" ? fmtDate(DUE) : "N/A"}</Field>
+              <Field label="Due Date">{g.status === "Open" ? fmtDate(dueFor(g)) : "N/A"}</Field>
             )}
             {v12 && (
-              <Field label="Days Remaining">{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</Field>
+              <Field label="Days Remaining">{g.status === "Open" ? `${daysLeft(g)} Days` : "N/A"}</Field>
             )}
             {v12 && closed && (
               <Field label="Gap Closed Date">
@@ -1037,7 +1070,7 @@ export function CareGapDetailPageV3() {
                   {g.work.closed ? fmtDay(g.work.closed.on) : fmtDate(g.lastUpdated)}
                 </Field>
               ) : (
-                <Field label="Due Date">{fmtDate(DUE)}</Field>
+                <Field label="Due Date">{fmtDate(dueFor(g))}</Field>
               ))}
             <Field label={v11 ? "Recommended Action" : version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
               {v8 ? (

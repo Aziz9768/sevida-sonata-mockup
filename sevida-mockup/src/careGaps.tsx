@@ -37,7 +37,8 @@ import {
   measures,
   memberById,
   providerName,
-  resultsFor,
+  rawResultsFor,
+  setGapClosedHook,
   stateLabel,
   a1cBandOf,
 } from "./data";
@@ -66,8 +67,28 @@ export const gapStatusTone: Record<GapStatus, StatusTone> = {
  * Version 12: ONE sample priority for a gap, used by the Care Gaps list, the member's Care Gaps tab and the Care Gap Details page
  * (before, the list and the other two disagreed for the same gap). Open gaps only; the tier rules are still to be confirmed.
  */
-export const gapPriority = (g: { id: string; status: GapStatus }): "High" | "Medium" | "Low" | null =>
-  g.status === "Open" ? (["High", "Medium", "Low"] as const)[hashOf(g.id) % 3] : null;
+/** The Care Gaps tickets say one row per gap, so GSD is one gap per member. Set to true to bring back the two-rate rows (HbA1c below 8% and above 9%). */
+const GSD_TWO_RATES = false;
+/**
+ * Version 16 (Care Gaps tickets): each open gap has its own due date, 7 to 76 days after the run (never after 31 Dec), the same way every time.
+ * With one shared year-end date every gap would sit in the same Priority tier. Before Version 16 every gap is due on 31 Dec.
+ */
+export const gapDueOf = (id: string, year: number = DEMO_NOW.getFullYear()): Date =>
+  getVersion() >= 16 && year === DEMO_NOW.getFullYear()
+    ? new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate() + 7 + (hashOf(`${id}:due`) % 70))
+    : new Date(year, 11, 31);
+/** Days from the run date to the due date. */
+export const gapDaysLeft = (due: Date) =>
+  Math.round((due.getTime() - new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate()).getTime()) / 86400000);
+export const gapPriority = (g: { id: string; status: GapStatus; due?: Date }): "High" | "Medium" | "Low" | null => {
+  if (g.status !== "Open") return null;
+  // Version 16: Priority follows the days left until the due date. 30 days or fewer is High, 31 to 60 is Medium, more than 60 is Low.
+  if (getVersion() >= 16) {
+    const left = gapDaysLeft(g.due ?? gapDueOf(g.id));
+    return left <= 30 ? "High" : left <= 60 ? "Medium" : "Low";
+  }
+  return (["High", "Medium", "Low"] as const)[hashOf(g.id) % 3];
+};
 export const priorityRank = (p: string | null) => (p === "High" ? 0 : p === "Medium" ? 1 : p === "Low" ? 2 : 3);
 
 export type EvidenceStatus =
@@ -536,7 +557,7 @@ function seedWork(m: Member, code: MeasureCode): Work {
       when: at(identifiedDate, 6),
       by: SYSTEM,
       kind: "Found",
-      text: `Gap found when ${code} was calculated: ${resultsFor(m)[code].reason}.`,
+      text: `Gap found when ${code} was calculated: ${rawResultsFor(m)[code].reason}.`,
       reason: "The measure result was Not met.",
     },
     {
@@ -927,7 +948,7 @@ function view(m: Member, code: MeasureCode, w: Work): GapView {
     id: gapKey(m.id, code),
     m,
     def,
-    result: resultsFor(m)[code],
+    result: rawResultsFor(m)[code],
     work: w,
     status: w.status,
     careManager: w.careManager,
@@ -1191,7 +1212,7 @@ export function impactsOf(m: Member, e: Evt, year: number = MY): Impact[] {
   const out: Impact[] = [];
   for (const def of measures) {
     if (!relatedTags[def.code].includes(e.tag)) continue;
-    const res = resultsFor(m, year)[def.code];
+    const res = rawResultsFor(m, year)[def.code];
     const kind = evidenceKindsFor(def.code, year).find((k) => k.tag === e.tag);
     if (res.evidence === e) {
       out.push({
@@ -1466,7 +1487,7 @@ const Ctx = createContext<GapsValue | null>(null);
 function excludedView(m: Member, code: MeasureCode): GapView {
   const h = hashOf(`${m.id}${code}x`);
   const when = iso(addDays(NEWEST_FILE, -(3 + (h % 60))));
-  const reason = resultsFor(m)[code].reason;
+  const reason = rawResultsFor(m)[code].reason;
   const w: Work = {
     status: "Excluded",
     careManager: careManagers[hashOf(m.id) % careManagers.length],
@@ -1505,6 +1526,9 @@ const seedOf = (m: Member, code: MeasureCode) => {
 export const seededGapOpen = (m: Member, code: MeasureCode) =>
   seedOf(m, code).status !== "Closed";
 
+// Version 16: the dashboards count a gap that staff already closed as closed (see resultsFor in data.ts).
+setGapClosedHook((m, code) => !seededGapOpen(m, code));
+
 export function GapsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const who = user?.name ?? "Admin";
@@ -1518,7 +1542,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
 
   const get = useCallback(
     (m: Member, code: MeasureCode): GapView | null =>
-      resultsFor(m)[code].state === "Gap"
+      rawResultsFor(m)[code].state === "Gap"
         ? view(m, code, workOf(m, code))
         : null,
     [workOf],
@@ -1531,7 +1555,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
         // Version 16: GSD has two rates (below 8%, above 9%). HbA1c 8% to 9% leaves the below-8 rate open and meets the above-9 rate,
         // so the member has an open and a closed GSD gap. Each is counted once per measure (see summaryOf and the Members list).
         .flatMap((g) => {
-          if (getVersion() < 16 || g.def.code !== "GSD" || g.status === "Closed" || a1cBandOf(g.m) !== "8% to 9%") return [g];
+          if (!GSD_TWO_RATES || getVersion() < 16 || g.def.code !== "GSD" || g.status === "Closed" || a1cBandOf(g.m) !== "8% to 9%") return [g];
           const closed: GapView = {
             ...g,
             id: `${g.id}:gt9`,
@@ -1558,7 +1582,7 @@ export function GapsProvider({ children }: { children: ReactNode }) {
       getVersion() < 12
         ? []
         : measures
-            .filter((x) => resultsFor(m)[x.code].state === "Excluded")
+            .filter((x) => rawResultsFor(m)[x.code].state === "Excluded")
             .map((x) => excludedView(m, x.code)),
     [],
   );
@@ -1869,7 +1893,7 @@ export function summaryOf(
   gaps: GapView[],
   year: number = MY,
 ): MemberSummary {
-  const r = resultsFor(m, year);
+  const r = rawResultsFor(m, year);
   const states = measures.map((x) => r[x.code].state);
   const count = (s: string) => states.filter((x) => x === s).length;
   const open = gaps.filter((g) => g.status !== "Closed");

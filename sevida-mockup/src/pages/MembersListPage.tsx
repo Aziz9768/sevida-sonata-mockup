@@ -84,7 +84,9 @@ export function MembersListPage() {
             : "Search by member name, member ID or insurance number…"
         }
         searchPlaceholderCompact={
-          v3
+          v16
+            ? "Member name, Member ID"
+            : v3
             ? "Member name, Tricare ID"
             : v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
         }
@@ -105,6 +107,7 @@ export function MembersListPage() {
               ? "demo-members-v30-ver2-d"
               : "demo-members-v30"
         }
+        savedViewsKeepPageSize={v16}
         savedViews={v16 ? "members-v16" : v12 ? "members-v12" : v11 ? "members-v11" : v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).

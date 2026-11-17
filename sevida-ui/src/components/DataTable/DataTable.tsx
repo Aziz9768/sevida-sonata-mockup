@@ -86,6 +86,10 @@ export interface DataTableProps<T> {
   title?: ReactNode;
   /** Keep the title exactly as written instead of Title Case (for a sentence-style heading). */
   titleAsWritten?: boolean;
+  /** A small icon before the title. */
+  titleIcon?: ReactNode;
+  /** A saved view also keeps the rows per page, and "Reset to Default" puts them back (opt-in, off by default). */
+  savedViewsKeepPageSize?: boolean;
   /** Extra buttons on the right of the toolbar (Export, Add...). */
   toolbarActions?: ReactNode;
   /**
@@ -107,7 +111,7 @@ export interface DataTableProps<T> {
    * `search`: add a search box at the top of the panel to find a column by name.
    * `groups`: show the groups in exactly this order (groups not named follow, in table order).
    */
-  columnsPanel?: { tableOrder?: boolean; search?: boolean; groups?: string[]; clearSelections?: boolean };
+  columnsPanel?: { tableOrder?: boolean; search?: boolean; groups?: string[]; clearSelections?: boolean; resetLabel?: string; clearFilters?: boolean };
   /** Filters panel: Apply first, then Clear Filters (default is Clear Filters, then Apply). */
   applyFirst?: boolean;
   /** Remembers which columns the user showed / hid / reordered, in this browser, under this name. Leave out to not remember. */
@@ -217,6 +221,8 @@ export function DataTable<T>({
   toolbar = true,
   title,
   titleAsWritten,
+  titleIcon,
+  savedViewsKeepPageSize,
   onResultCountChange,
   toolbarActions,
   exportFile,
@@ -335,6 +341,7 @@ export function DataTable<T>({
       pinned: [...config.pinnedKeys],
     },
     sort,
+    ...(savedViewsKeepPageSize ? { pageSize } : {}),
   };
   const builtInColumns = {
     order: tableDefs.map((c) => c.key),
@@ -348,13 +355,16 @@ export function DataTable<T>({
         ),
         columns: sv.active.columns,
         sort: sv.active.sort,
+        ...(savedViewsKeepPageSize ? { pageSize: sv.active.pageSize ?? pageSizeProp } : {}),
       }
     : {
         filters: onlyActive(withRequiredDefaults(allColumnDefs, {})),
         columns: builtInColumns,
         sort: defaultSort ?? null,
+        ...(savedViewsKeepPageSize ? { pageSize: pageSizeProp } : {}),
       };
   const viewDirty =
+    currentView.pageSize !== baseline.pageSize ||
     !sameJson(currentView.filters, baseline.filters) ||
     !sameColumns(currentView.columns, baseline.columns) ||
     !sameJson(currentView.sort, baseline.sort);
@@ -363,12 +373,20 @@ export function DataTable<T>({
     changeFilters(v.filters);
     config.apply(v.columns);
     setSort(v.sort);
+    if (savedViewsKeepPageSize && !serverMode) {
+      setOwnPageSize(v.pageSize ?? pageSizeProp);
+      setOwnPage(1);
+    }
   };
   const applyBuiltIn = () => {
     sv.setActiveId(null);
     changeFilters({});
     config.reset();
     setSort(defaultSort ?? null);
+    if (savedViewsKeepPageSize && !serverMode) {
+      setOwnPageSize(pageSizeProp);
+      setOwnPage(1);
+    }
   };
   // The view marked "opens by default" is put on once, when the table first shows.
   useEffect(() => {
@@ -420,7 +438,7 @@ export function DataTable<T>({
       const cols = columns.filter((c) => c.accessor);
       const body = processed.map((row) =>
         cols.map((c) => {
-          const v = c.accessor!(row);
+          const v = (c.exportValue ?? c.accessor!)(row);
           return Array.isArray(v) ? v.join("; ") : v;
         }),
       );
@@ -684,6 +702,7 @@ export function DataTable<T>({
       <TableToolbar
         title={title}
         titleAsWritten={titleAsWritten}
+        titleIcon={titleIcon}
         total={total}
         showSearch={showSearch}
         search={search}
@@ -720,6 +739,7 @@ export function DataTable<T>({
               onApplyDefault={applyBuiltIn}
               onApplyView={applyView}
               onSave={(name, id) => sv.save(name, currentView, id)}
+              keepsPageSize={savedViewsKeepPageSize}
             />
           ) : undefined
         }
@@ -1424,6 +1444,8 @@ export function DataTable<T>({
                 maxPinned={maxPinned}
                 onToggleHidden={config.toggleHidden}
                 onClearAll={columnsPanel?.clearSelections ? config.clearAll : undefined}
+                resetLabel={columnsPanel?.resetLabel}
+                onClearFilters={columnsPanel?.clearFilters ? () => changeFilters({}) : undefined}
                 onTogglePin={config.togglePin}
                 onReset={() => {
                   config.reset();

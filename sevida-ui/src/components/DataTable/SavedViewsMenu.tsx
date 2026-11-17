@@ -31,6 +31,8 @@ export interface SavedViewsMenuProps {
   onApplyView: (view: SavedView) => void;
   /** Save what is on screen: over the view that is on (`id` given) or as a new one. */
   onSave: (name: string, id?: string) => void;
+  /** The view also keeps the rows per page (the text in the Save dialog says so). */
+  keepsPageSize?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function SavedViewsMenu({
   onApplyDefault,
   onApplyView,
   onSave,
+  keepsPageSize,
 }: SavedViewsMenuProps) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -212,8 +215,9 @@ export function SavedViewsMenu({
       >
         <Stack spacing={2} sx={{ pt: 0.5 }}>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
-            A view keeps the filters, the columns (order, hidden, pinned) and
-            the sort. It does not keep the search text or column widths.
+            {keepsPageSize
+              ? "A view keeps the filters, the columns (order, hidden, pinned), the sort and the rows per page. It does not keep the search text or column widths."
+              : "A view keeps the filters, the columns (order, hidden, pinned) and the sort. It does not keep the search text or column widths."}
           </Typography>
           {active && (
             <Box>

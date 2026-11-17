@@ -14,10 +14,12 @@ import {
   evidenceCodeOf,
   evidenceNameOf,
   fmtDay,
+  gapDueOf,
   parseDay,
   useGaps,
 } from "../careGaps";
 import type { GapView } from "../careGaps";
+import { encRows } from "../v8Records";
 import {
   CURRENT_YEAR,
   DEMO_NOW,
@@ -34,7 +36,7 @@ import {
   fmtDate,
   measures,
   members,
-  resultsFor,
+  rawResultsFor,
   spokenLanguageOf,
   stateLabel,
   stateTone,
@@ -84,6 +86,7 @@ import {
   ageGroupFor,
 } from "../sharedFilters";
 
+const ENC_CACHE = new Map<string, ReturnType<typeof encRows>>();
 const opt = (list: string[]) => list.map((v) => ({ value: v, label: v }));
 const sortedSet = (xs: string[]) =>
   [...new Set(xs)].sort((a, b) => a.localeCompare(b));
@@ -500,7 +503,7 @@ export function useMemberTableColumns(
             .filter(
               (x) =>
                 (!only || x.code === only) &&
-                resultsFor(m, yearOf(m))[x.code].state === "Gap",
+                rawResultsFor(m, yearOf(m))[x.code].state === "Gap",
             )
             .map((x) => x.code)
         : openOf(m).map((g) => g.def.code);
@@ -508,7 +511,7 @@ export function useMemberTableColumns(
     /** "BCS-E: Met" for every measure the member is in (not for measures that do not apply to them). */
     const resultLines = (m: MemberRow) =>
       measures.flatMap((x) => {
-        const st = resultsFor(m, yearOf(m))[x.code].state;
+        const st = rawResultsFor(m, yearOf(m))[x.code].state;
         return st === "Not eligible" ? [] : [`${x.code}: ${stateLabel[st]}`];
       });
     const facets = memberFacets<MemberRow>((m) => m, yearOf);
@@ -616,7 +619,7 @@ export function useMemberTableColumns(
         : (lastOutreach(m)?.result ?? NOT_CONTACTED);
     const excludedOf = (m: MemberRow) =>
       measures.filter(
-        (x) => resultsFor(m, yearOf(m))[x.code].state === "Excluded",
+        (x) => rawResultsFor(m, yearOf(m))[x.code].state === "Excluded",
       );
     // Inside one measure: how this member came out for it (Met, Not met, Excluded, Needs review).
     const resultColumn: Column<MemberRow> | null = only
@@ -624,11 +627,11 @@ export function useMemberTableColumns(
           key: "result",
           header: "Measure result",
           help: "How the member came out for this measure in the measurement year. Not met is the care gap. Needs review means the evidence is missing or conflicting, so it is not counted as a gap yet. Excluded members are not in the rate.",
-          accessor: (m) => stateLabel[resultsFor(m, yearOf(m))[only].state],
+          accessor: (m) => stateLabel[rawResultsFor(m, yearOf(m))[only].state],
           sortable: true,
           nowrap: true,
           render: (m) => {
-            const st = resultsFor(m, yearOf(m))[only].state;
+            const st = rawResultsFor(m, yearOf(m))[only].state;
             return <StatusChip tone={stateTone[st]} label={stateLabel[st]} />;
           },
           filter: {
@@ -1079,7 +1082,7 @@ export function useMemberTableColumns(
       measures.filter(
         (x) =>
           (!only || x.code === only) &&
-          resultsFor(m, yearOf(m))[x.code].state !== "Not eligible",
+          rawResultsFor(m, yearOf(m))[x.code].state !== "Not eligible",
       );
     const eligibleCol: Column<MemberRow> = {
       key: "eligible",
@@ -1247,7 +1250,7 @@ export function useMemberTableColumns(
           sortable: true,
           align: "right",
           nowrap: true,
-          filter: { type: "numberCompare" },
+          filter: { type: "numberCompare", keepOperator: version >= 16 },
         },
         {
           key: "found",
@@ -1563,6 +1566,12 @@ export function useMemberTableColumns(
       const by = (k: string) => base.find((c) => c.key === k)!;
       const allBy = (k: string) => all.find((c) => c.key === k)!;
       const dueDate = new Date(CURRENT_YEAR, 11, 31);
+      // Version 16: every open gap has its own due date, so the earliest one is the soonest of them.
+      const earliestDue = (m: MemberRow) => {
+        const open = openOf(m);
+        if (!open.length) return null;
+        return getVersion() >= 16 ? new Date(Math.min(...open.map((g) => gapDueOf(g.id).getTime()))) : dueDate;
+      };
       const sexOf = (m: MemberRow) => {
         const g = genderV3(m);
         return g === "Other" ? "Unknown" : g;
@@ -1571,7 +1580,22 @@ export function useMemberTableColumns(
         const p = pcmPerson(m);
         return p ? `${p.name} - NPI: ${p.npi}` : null;
       };
+      // Version 16: Last Visit and Next Appointment come from the member's Encounters tab, so the list and the tab always agree.
+      const encOf = (m: MemberRow) => {
+        let r = ENC_CACHE.get(m.id);
+        if (!r) {
+          r = encRows(m);
+          ENC_CACHE.set(m.id, r);
+        }
+        return r;
+      };
       const lastVisit = (m: MemberRow) => {
+        if (getVersion() >= 16) {
+          const d = encOf(m)
+            .filter((x) => x.date.getTime() <= DEMO_NOW.getTime() && ["Completed", "Arrived", "Triaged", "In Progress"].includes(x.status))
+            .map((x) => x.date.getTime());
+          return d.length ? new Date(Math.max(...d)) : null;
+        }
         const days = m.events
           .filter((e) => e.kind === "EHR visit" && e.date.getTime() <= DEMO_NOW.getTime())
           .map((e) => e.date.getTime());
@@ -1589,6 +1613,23 @@ export function useMemberTableColumns(
       );
       const dodOf = (m: MemberRow) => String(1000000000 + (hashOf(`${m.id}-dod`) % 9000000000));
       const sample = " Sample data: the demo members have none, so it is made up.";
+      const DAY_MS = 86_400_000;
+      // Created On never comes before the member's birth, and Last Updated never before Created On or after today.
+      const createdOfMember = (m: MemberRow) => {
+        const base = new Date(2024, hashOf(`${m.id}-co`) % 12, 1 + (hashOf(`${m.id}-cd`) % 27));
+        const c = base.getTime() > m.dob.getTime() ? base : new Date(m.dob.getTime() + (1 + (hashOf(`${m.id}-cd`) % 30)) * DAY_MS);
+        return c.getTime() > DEMO_NOW.getTime() ? DEMO_NOW : c;
+      };
+      const updatedOfMember = (m: MemberRow) => {
+        const c = createdOfMember(m);
+        const u = new Date(2026, hashOf(`${m.id}-lu`) % 9, 1 + (hashOf(`${m.id}-ld`) % 27));
+        const out = u.getTime() >= c.getTime() ? u : new Date(c.getTime() + (hashOf(`${m.id}-ld`) % 30) * DAY_MS);
+        return out.getTime() > DEMO_NOW.getTime() ? DEMO_NOW : out;
+      };
+      const ageNowOf = (dob: Date) => {
+        const before = DEMO_NOW.getMonth() < dob.getMonth() || (DEMO_NOW.getMonth() === dob.getMonth() && DEMO_NOW.getDate() < dob.getDate());
+        return DEMO_NOW.getFullYear() - dob.getFullYear() - (before ? 1 : 0);
+      };
       const nameCol = by("name");
       return [
         // ---- Identifiers
@@ -1596,12 +1637,13 @@ export function useMemberTableColumns(
           ...nameCol,
           group: "Identifiers",
           help: undefined,
+          ...(getVersion() >= 16 ? { exportValue: (m: MemberRow) => displayName(m) } : {}),
           render: getVersion() >= 16 ? (m: MemberRow) => <TableLink to={`/members/${m.id}`}>{displayName(m)}</TableLink> : nameCol.render,
         },
         {
           key: "dodId",
           header: "DoD ID",
-          help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample,
+          help: getVersion() >= 16 ? undefined : "The member's Department of Defense ID. Kept for the demo and discussion." + sample,
           accessor: (m) => dodOf(m),
           sortable: true,
           nowrap: true,
@@ -1613,16 +1655,19 @@ export function useMemberTableColumns(
         {
           ...by("genesisEhr"),
           header: "Genesis MRN",
-          help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.",
+          help: getVersion() >= 16 ? "The member's ID in the Genesis EHR" : "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.",
           group: "Identifiers",
         },
         // ---- Demographics
         { ...by("dob"), defaultHidden: false, help: undefined, group: "Demographics" },
-        { ...by("age"), help: undefined, group: "Demographics" },
+        // Version 16: an exported file reads "51 years 8 months", the same as the table (not a day count), and the full name with the middle initial.
+        { ...by("age"), help: undefined, group: "Demographics", ...(getVersion() >= 16 ? { exportValue: (m: MemberRow) => ageLabel(m.dob) } : {}) },
         {
           ...allBy("ageGroup"),
           header: "Age Group",
-          help: "Age group, from the application's standard ranges.",
+          help: getVersion() >= 16 ? undefined : "Age group, from the application's standard ranges.",
+          // Version 16: the group is worked out from the age shown in the Age column, so the two never disagree.
+          ...(getVersion() >= 16 ? { accessor: (m: MemberRow) => ageGroupFor(ageNowOf(m.dob)) } : {}),
           group: "Demographics",
           defaultHidden: true,
           filter: undefined,
@@ -1643,7 +1688,7 @@ export function useMemberTableColumns(
           key: "military",
           filterOrder: 12,
           header: "Military Status",
-          help: "The member's military status, from the member file. Madigan does not send this yet, so a dash means no data.",
+          help: getVersion() >= 16 ? undefined : "The member's military status, from the member file. Madigan does not send this yet, so a dash means no data.",
           accessor: (m) => militaryV3(m),
           render: (m) => militaryV3(m) ?? "–",
           sortable: true,
@@ -1654,8 +1699,8 @@ export function useMemberTableColumns(
         },
         { ...by("race"), defaultHidden: true, help: undefined, group: "Demographics" },
         { ...by("ethnicity"), defaultHidden: true, help: undefined, group: "Demographics" },
-        { ...allBy("state"), filterOrder: 14, header: "State", help: "The state the member lives in, from the member file.", group: "Demographics", defaultHidden: true },
-        { ...allBy("county"), filterOrder: 15, header: "County", help: "The county the member lives in. Madigan does not send this yet.", group: "Demographics", defaultHidden: true },
+        { ...allBy("state"), filterOrder: 14, header: "State", help: getVersion() >= 16 ? "Member's state of residence" : "The state the member lives in, from the member file.", group: "Demographics", defaultHidden: true },
+        { ...allBy("county"), filterOrder: 15, header: "County", help: getVersion() >= 16 ? "Member's county of residence" : "The county the member lives in. Madigan does not send this yet.", group: "Demographics", defaultHidden: true },
         // ---- Care Team & Engagement
         {
           key: "pcm",
@@ -1669,7 +1714,7 @@ export function useMemberTableColumns(
         {
           key: "clinic",
           header: "Clinic",
-          help: "The clinic of the member's primary care manager." + sample,
+          help: getVersion() >= 16 ? undefined : "The clinic of the member's primary care manager." + sample,
           accessor: (m) => (clinicOf(m) === "–" ? null : clinicOf(m)),
           render: (m) => clinicOf(m),
           sortable: true,
@@ -1679,7 +1724,7 @@ export function useMemberTableColumns(
         {
           key: "lastVisit",
           header: "Last Visit",
-          help: "Date of the member's last encounter.",
+          help: getVersion() >= 16 ? "Date of last encounter." : "Date of the member's last encounter.",
           accessor: (m) => lastVisit(m),
           render: (m) => dateCell(lastVisit(m)),
           sortable: true,
@@ -1687,9 +1732,10 @@ export function useMemberTableColumns(
           defaultHidden: true,
           group: "Care Team & Engagement",
         },
-        { ...allBy("appt"), header: "Next Appointment", help: "Date of the member's next scheduled visit. Madigan does not send appointments yet.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
-        { ...allBy("contactResult"), key: "outreachStatus", header: "Outreach Status", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
-        { ...allBy("lastContact"), key: "lastOutreach", header: "Last Outreach", help: "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        { ...allBy("appt"), header: "Next Appointment", help: getVersion() >= 16 ? "Date of next scheduled visit." : "Date of the member's next scheduled visit. Madigan does not send appointments yet.",
+ group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        { ...allBy("contactResult"), key: "outreachStatus", header: "Outreach Status", help: getVersion() >= 16 ? undefined : "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
+        { ...allBy("lastContact"), key: "lastOutreach", header: "Last Outreach", help: getVersion() >= 16 ? undefined : "Needs Madigan input.", group: "Care Team & Engagement", defaultHidden: true, filter: undefined },
         // ---- Care Gaps
         {
           ...by("openCount"),
@@ -1765,7 +1811,7 @@ export function useMemberTableColumns(
                 sortable: true,
                 align: "right" as const,
                 nowrap: true,
-                filter: { type: "numberCompare" as const },
+                filter: { type: "numberCompare" as const, keepOperator: version >= 16 },
               },
             ]
           : []),
@@ -1776,8 +1822,8 @@ export function useMemberTableColumns(
           help: "Date on which the next recommended action is due to close an open gap. For members with multiple gaps, the earliest date is given.",
           group: "Care Gaps",
           defaultHidden: getVersion() >= 12 ? true : undefined,
-          accessor: (m) => (openOf(m).length ? dueDate : null),
-          render: (m) => dateCell(openOf(m).length ? dueDate : null),
+          accessor: (m) => earliestDue(m),
+          render: (m) => dateCell(earliestDue(m)),
           sortable: true,
           nowrap: true,
           searchable: false,
@@ -1806,19 +1852,19 @@ export function useMemberTableColumns(
               {
                 key: "createdOn",
                 header: "Created On",
-                help: "Date the member record was created. Sample data: the demo members have none, so it is made up.",
+                help: "Date the member record was created.",
                 group: "Records",
                 defaultHidden: true,
                 sortable: true,
                 nowrap: true,
                 searchable: false,
-                accessor: (m: MemberRow) => new Date(2024, hashOf(`${m.id}-co`) % 12, 1 + (hashOf(`${m.id}-cd`) % 27)),
-                render: (m: MemberRow) => dateCell(new Date(2024, hashOf(`${m.id}-co`) % 12, 1 + (hashOf(`${m.id}-cd`) % 27))),
+                accessor: (m: MemberRow) => createdOfMember(m),
+                render: (m: MemberRow) => dateCell(createdOfMember(m)),
               } as Column<MemberRow>,
               {
                 key: "createdBy",
                 header: "Created By",
-                help: "Who or what created the member record. Sample data.",
+                help: "Who or what created the member record.",
                 group: "Records",
                 defaultHidden: true,
                 sortable: true,
@@ -1828,14 +1874,14 @@ export function useMemberTableColumns(
               {
                 key: "lastUpdated",
                 header: "Last Updated",
-                help: "Date the member record last changed. Sample data: the demo members have none, so it is made up.",
+                help: "Date the member record last changed.",
                 group: "Records",
                 defaultHidden: true,
                 sortable: true,
                 nowrap: true,
                 searchable: false,
-                accessor: (m: MemberRow) => new Date(2026, hashOf(`${m.id}-lu`) % 9, 1 + (hashOf(`${m.id}-ld`) % 27)),
-                render: (m: MemberRow) => dateCell(new Date(2026, hashOf(`${m.id}-lu`) % 9, 1 + (hashOf(`${m.id}-ld`) % 27))),
+                accessor: (m: MemberRow) => updatedOfMember(m),
+                render: (m: MemberRow) => dateCell(updatedOfMember(m)),
               } as Column<MemberRow>,
             ]
           : []),

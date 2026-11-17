@@ -24,6 +24,8 @@ export interface TableToolbarProps<T> {
   title?: ReactNode;
   /** Keep the title exactly as written (no Title Case), for a sentence-style heading such as "Member's Open and Closed Care Gaps in the current Measurement Year, 2026". */
   titleAsWritten?: boolean;
+  /** A small icon before the title (for example the member icon on a member's own list). */
+  titleIcon?: ReactNode;
   total: number;
   showSearch: boolean;
   search: string;
@@ -174,8 +176,10 @@ export function TableToolbar<T>(p: TableToolbarProps<T>) {
                   fontWeight: 700,
                   color: "primary.main",
                   whiteSpace: "nowrap",
+                  ...(p.titleIcon ? { display: "inline-flex", alignItems: "center", gap: 1, "& svg": { fontSize: "1.25rem" } } : {}),
                 }}
               >
+                {p.titleIcon}
                 {title}
               </Typography>
             )}

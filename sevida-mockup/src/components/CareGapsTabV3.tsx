@@ -1,14 +1,16 @@
 import { useMemo } from "react";
-import { pcmPerson } from "../v16Data";
+import { displayName, pcmPerson } from "../v16Data";
 import { useNavigate } from "react-router-dom";
 import { DataTable, EmptyState, StatusChip } from "sevida-ui";
 import type { Column } from "sevida-ui";
 import { Typography } from "@mui/material";
+import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import {
   fmtDay,
   fmtWhen,
   gapStatusTone,
   evidenceRoles,
+  gapDueOf,
   gapPriority,
   gapRole,
   gapStatuses,
@@ -18,9 +20,9 @@ import {
   useGaps,
 } from "../careGaps";
 import type { GapStatus } from "../careGaps";
-import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, resultsFor } from "../data";
+import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, rawResultsFor } from "../data";
 import type { Member, MeasureCode } from "../data";
-import { RECOMMENDED_SENTENCE, V3_GAP_LABEL, v3GapOptions } from "../v3Data";
+import { RECOMMENDED_SENTENCE, cgGapOptions, cgLabel } from "../v3Data";
 import { getVersion } from "../version";
 import { GapStatusChip } from "./GapStatusChip";
 import { LlmText } from "./LlmText";
@@ -85,8 +87,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     // date inside that year. Its status follows the same measure this year, so the tab never disagrees with "# Open Gaps":
     // still a gap this year = not listed again (it is the same open gap); closed this year = Closed; met this year = Closed by that evidence; otherwise not listed.
     const past: Row[] = YEARS.filter((y) => y !== MY).flatMap((y) => {
-      const res = resultsFor(m, y);
-      const cur = resultsFor(m, MY);
+      const res = rawResultsFor(m, y);
+      const cur = rawResultsFor(m, MY);
       return measures
         .filter((x) => res[x.code].state === "Gap")
         .flatMap((x): Row[] => {
@@ -141,6 +143,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       role: gapRole(g).role,
       roleReason: gapRole(g).reason,
     }));
+    // Version 16 (LPP-16155): the tab lists the member's Open and Closed gaps of the current measurement year only.
+    if (getVersion() >= 16) return now.filter((r) => r.status === "Open" || r.status === "Closed");
     return [...now, ...excluded, ...past];
   }, [m, gapsOf, excludedOf]);
 
@@ -151,16 +155,18 @@ export function CareGapsTabV3({ m }: { m: Member }) {
   // Open gaps first by Priority, then Closed, then Excluded. Priority is the same sample value as on the Care Gaps list and the details page.
   if (getVersion() >= 12) {
     const dash = "--";
-    const dueOf = (r: Row) => new Date(r.year, 11, 31);
-    const prio = (r: Row) => gapPriority({ id: r.id, status: r.status });
+    const dueOf = (r: Row) => (getVersion() >= 16 ? gapDueOf(r.id, r.year) : new Date(r.year, 11, 31));
+    const prio = (r: Row) => gapPriority({ id: r.id, status: r.status, due: dueOf(r) });
     const pcm = (() => {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
+    const nameOf = (r: Row) => `${cgLabel(r.code)} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     // Version 16 (LPP-16155): the Evidence column says why the gap is open or closed (up to 2 lines, "…see more") and links to the Evidence tab.
     const evidenceText = (r: Row) =>
-      r.status === "Closed" && r.closure ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}` : r.explanation;
+      r.rate === ">9"
+        ? r.explanation.replace(/ \(8% or higher\)$/, "") + " (not above 9%)"
+        : r.status === "Closed" && r.closure ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}` : r.explanation;
     const optional = { group: "Optional", defaultHidden: true, searchable: false } as const;
     const cols: Column<Row>[] = [
       {
@@ -173,7 +179,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         defaultPinned: true,
         searchable: true,
         width: 300,
-        filter: { type: "multiselect", options: v3GapOptions },
+        filter: { type: "multiselect", options: cgGapOptions },
         filterAccessor: (r) => r.code,
         render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
       },
@@ -195,7 +201,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "priority",
         header: "Priority",
-        help: "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
+        help: getVersion() >= 16 ? "How urgent an open gap is, based on the days left until the due date. High: 30 days or fewer. Medium: 31 to 60 days. Low: more than 60 days. The same value as on the Care Gaps list." : "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
         accessor: (r) => priorityRank(prio(r)),
         filterAccessor: (r) => prio(r) ?? "N/A",
         filter: { type: "multiselect", options: opt(["High", "Medium", "Low"]) },
@@ -316,23 +322,36 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     // Version 16 (LPP-16155): the table is the ticket's eight columns. Evidence Role and Reason are not in the ticket, so they move to the Columns panel (off).
     // Created On, Created By, Last Updated and Related Records are added there, and every column has an info (i) text.
     const v16 = getVersion() >= 16;
+    // The i-button texts are the ticket's, word for word.
     const HELP16: Record<string, string> = {
-      status: "Open when the member still needs the service, Closed when a record closed the gap, Excluded when the member is out of the measure.",
-      found: "The date the gap was identified, from the engine run or the claim that showed it.",
-      due: "The date by which action should be taken to close the gap or keep it closed.",
-      action: "What to do next to close the gap. Closed gaps show a dash.",
-      closedDate: "The date the gap was closed. Open gaps show a dash.",
+      name: "The HEDIS Care Gap and Measurement Year",
+      status: "Indicates whether the care gap is open or closed. Open gaps require actions.",
+      priority: "How urgent the gap is, based on how close it is to its due date: High, Medium or Low.",
+      found: "Date on which the gap was identified. Based on information used to identify the gap - e.g. claims service date if known, otherwise shows the run date when the Gaps in Care engine was last run.",
+      due: "Date by which the gap needs to be closed in order to manage member's care. Also impacts the Gap Met % rates.",
+      action: "Actions to take to close the gap. A gap will show as Closed once evidence such as claims confirms the closure. Conducting the activity does not automatically close the gap.",
+      evidence: "Why the gap is open or closed.",
+      closedDate: "Date on which the gap was closed. Based on information used to close the gap - e.g. claims service date if known, otherwise shows the run date when the Gaps in Care engine was last run.",
     };
+    // Not in the ticket: Measure Code, Closure Source, Exclusion Reason, Primary Care Manager, Evidence Role and Reason.
+    const NOT_IN_TICKET = ["code", "closureSource", "exclusionReason", "pcm", "role", "roleReason"];
+    const runDate = new Date(DEMO_NOW.getTime() - 86_400_000);
     const hiddenOnly = { group: "Optional", defaultHidden: true, searchable: false, nowrap: true } as const;
     const cols16: Column<Row>[] = [
       ...cols
-        .filter((c) => c.key !== "role" && c.key !== "roleReason")
-        .map((c) => (c.help || !HELP16[c.key] ? c : { ...c, help: HELP16[c.key] })),
-      ...cols.filter((c) => c.key === "role" || c.key === "roleReason").map((c) => ({ ...c, group: "Optional", defaultHidden: true })),
-      { key: "createdOn", header: "Created On", help: "Date the gap record was created. Sample data.", accessor: (r) => r.identified, render: (r) => fmtDate(r.identified), sortable: true, ...hiddenOnly },
+        .filter((c) => !NOT_IN_TICKET.includes(c.key))
+        .map((c) => {
+          const withHelp = HELP16[c.key] ? { ...c, help: HELP16[c.key] } : c;
+          if (c.key === "status") return { ...withHelp, filter: { type: "multiselect" as const, options: opt(gapStatuses) } };
+          if (c.key === "action") return { ...withHelp, render: (r: Row) => (r.status === "Open" ? <LlmText inlineMore text={RECOMMENDED_SENTENCE(r.code, r.year)} /> : dash) };
+          if (c.key === "evidence") return { ...withHelp, render: (r: Row) => <LlmText inlineMore moreTo={`${to(r)}?tab=evidence`} text={evidenceText(r)} /> };
+          return withHelp;
+        }),
+      { key: "createdOn", header: "Created On", help: "Date the gap record was created.", accessor: (r) => r.identified, render: (r) => fmtDate(r.identified), sortable: true, ...hiddenOnly },
       { key: "createdBy", header: "Created By", help: "Who or what created the gap record.", accessor: () => "System", sortable: true, ...hiddenOnly },
-      { key: "lastUpdated", header: "Last Updated", help: "Date the gap record last changed. Sample data.", accessor: (r) => r.closed ?? r.identified, render: (r) => fmtDate(r.closed ?? r.identified), sortable: true, ...hiddenOnly },
-      { key: "related", header: "Related Records", help: "The records on the Evidence tab of this gap.", accessor: (r) => (r.year === MY ? "Evidence" : ""), render: (r) => (r.year === MY ? <TableLink to={`${to(r)}?tab=evidence`}>Evidence</TableLink> : dash), ...hiddenOnly },
+      // An open gap is refreshed by every run of the Gaps in Care engine, a closed one stops changing when it closes.
+      { key: "lastUpdated", header: "Last Updated", help: "Date the gap record last changed.", accessor: (r) => r.closed ?? runDate, render: (r) => fmtDate(r.closed ?? runDate), sortable: true, ...hiddenOnly },
+      { key: "related", header: "Related Records", help: "The records on the Evidence tab of this gap.", accessor: () => "Evidence", render: (r) => <TableLink to={`${to(r)}?tab=evidence`}>Evidence</TableLink>, ...hiddenOnly },
     ];
     return (
       <DataTable
@@ -346,11 +365,14 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         paginated={false}
         defaultSort={v16 ? { key: "priority", direction: "asc" } : undefined}
         searchPlaceholder="Search by Measure or Abbreviation"
+        // Version 16 (LPP-16155 description): "No Search". Filters stay.
+        toolbar={v16 ? { search: false } : undefined}
+        titleIcon={v16 ? <PersonOutlineOutlinedIcon /> : undefined}
         noResultsTitle="No care gaps found"
         storageKey={v16 ? "demo-member-care-gaps-v16-a" : "demo-member-care-gaps-v12-a"}
         columnsPanel={{ tableOrder: true, search: false }}
         onRowClick={(r) => r.year === MY && navigate(to(r))}
-        emptyState={<EmptyState title="No care gaps" description={`${m.name} has no care gaps, open or closed.`} />}
+        emptyState={<EmptyState title="No care gaps" description={`${v16 ? displayName(m) : m.name} has no care gaps, open or closed.`} />}
       />
     );
   }
@@ -371,7 +393,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       const p = pcmPerson(m);
       return p ? `${p.name} - NPI: ${p.npi}` : "Not sent";
     })();
-    const nameOf = (r: Row) => `${V3_GAP_LABEL[r.code]} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
+    const nameOf = (r: Row) => `${cgLabel(r.code)} (${r.year})${getVersion() >= 16 && r.rate ? ` (HbA1c ${r.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}`;
     const evidenceOf = (r: Row) =>
       r.status === "Closed" && r.closure
         ? `${r.closure.title}${r.closure.detail ? `. ${r.closure.detail}` : ""}`
@@ -386,7 +408,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
         defaultPinned: true,
         searchable: true,
         width: 300,
-        filter: { type: "multiselect", options: v3GapOptions },
+        filter: { type: "multiselect", options: cgGapOptions },
         filterAccessor: (r) => r.code,
         render: (r) => <TableLink to={to(r)}>{nameOf(r)}</TableLink>,
       },
@@ -516,13 +538,13 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "name",
         header: "Gap Name",
-        accessor: (r) => V3_GAP_LABEL[r.code],
+        accessor: (r) => cgLabel(r.code),
         sortable: true,
         primary: true,
         defaultPinned: true,
         alwaysVisible: true,
         width: 260,
-        render: (r) => <TableLink to={to(r)}>{V3_GAP_LABEL[r.code]}</TableLink>,
+        render: (r) => <TableLink to={to(r)}>{cgLabel(r.code)}</TableLink>,
       },
       {
         key: "status",
@@ -611,7 +633,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     // Gap Name A to Z; gaps with the same name: newest identification date first (the table sort is stable).
     const sorted = [...rows].sort((a, b) => b.identified.getTime() - a.identified.getTime());
     // Search: the measure's name or its abbreviation. The name column is the only searched one.
-    const named = v8cols.map((c) => (c.key === "name" ? { ...c, searchable: true, accessor: (r: Row) => `${V3_GAP_LABEL[r.code]} ${r.code}` } : c));
+    const named = v8cols.map((c) => (c.key === "name" ? { ...c, searchable: true, accessor: (r: Row) => `${cgLabel(r.code)} ${r.code}` } : c));
     return (
       <DataTable
         ariaLabel="Care gaps"
@@ -643,18 +665,18 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       key: "name",
       header: "Gap Name",
       help: "The measure the gap belongs to, for example BCS - Breast Cancer Screening.",
-      accessor: (r) => V3_GAP_LABEL[r.code],
+      accessor: (r) => cgLabel(r.code),
       sortable: true,
       primary: true,
       width: 240,
       filterOrder: 2,
-      filter: { type: "multiselect", options: v3GapOptions },
+      filter: { type: "multiselect", options: cgGapOptions },
       filterAccessor: (r) => r.code,
       render: (r) =>
         r.year === MY ? (
-          <TableLink to={to(r)}>{V3_GAP_LABEL[r.code]}</TableLink>
+          <TableLink to={to(r)}>{cgLabel(r.code)}</TableLink>
         ) : (
-          V3_GAP_LABEL[r.code]
+          cgLabel(r.code)
         ),
     },
     {

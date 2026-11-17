@@ -14,7 +14,7 @@ export type ColumnFilter =
   | { type: "multiselect"; options: Option[]; ordered?: boolean } // pick several values. Options are listed A to Z by label; set `ordered` to keep your own order when the values have a natural one (age groups, stages, size bands)
   | { type: "dateRange"; presets?: DatePreset[] } //    From / To dates (needs accessor returning a Date or "YYYY-MM-DD"). `presets` adds quick-pick buttons above the dates
   | { type: "numberUnit"; units: NumberUnit[]; bound: "min" | "max" } // A number plus a unit picked from a list (for example Age Min: 18 + year). The accessor returns the row's value in the SMALLEST unit (for age, completed months). "min" keeps rows at or above number x unit; "max" keeps rows below (number + 1) x unit, so "up to 5 years" includes someone who is 5 years 3 months.
-  | { type: "numberCompare" } //                         An operator (=, <, <=, >, >=) plus a whole number of 0 or more (for example # Open Gaps >= 2). The accessor returns a number.
+  | { type: "numberCompare"; keepOperator?: boolean } //  An operator (=, <, <=, >, >=) plus a whole number of 0 or more (for example # Open Gaps >= 2). The accessor returns a number. With `keepOperator`, an operator picked before the number is typed is kept (otherwise it falls back to =).
   | { type: "numberRange"; min?: number; max?: number }; // From / To numbers, such as age (needs accessor returning a number). Give `min` and `max` to add a two-handle slider above the From / To boxes; both stay in step. A slider left at both ends means no filter
 
 /** One unit of a `numberUnit` filter. `perUnit` is how many of the smallest unit it holds (year = 12 when the accessor counts months). */
@@ -53,6 +53,8 @@ export interface Column<T> {
   help?: string;
   /** Gets the plain value of this column for a row. Used for sorting, search, filters and, if no `render`, for display. A list of text (for a row that can have several values, such as gap names) works with a `multiselect` filter: the row stays if ANY of its values is picked. */
   accessor?: (row: T) => string | number | Date | string[] | null | undefined;
+  /** What an exported file shows for this column, when it should read differently from the raw value (for example "51 years 8 months" instead of a day count). */
+  exportValue?: (row: T) => string | number | Date | string[] | null | undefined;
   /** Custom cell content (a StatusChip, a link...). Overrides what `accessor` would show. */
   render?: (row: T) => ReactNode;
   /** Allow clicking the heading to sort. Needs `accessor`. */

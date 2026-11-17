@@ -12,6 +12,7 @@ import {
   DASH,
   addDays,
   claimRows,
+  dxSystem,
   dxRows,
   encRows,
   immRows,
@@ -20,6 +21,7 @@ import {
   obsRows,
   procRows,
   provRows,
+  orgContact16,
 } from "../v8Records";
 import type { RecordTabKey } from "../v8Records";
 import { TableLink } from "./TableLink";
@@ -45,6 +47,41 @@ const NOUN: Record<V8TabKey, string> = {
   providers: "Providers",
 };
 
+/** The rows of the Providers tab. The tab number counts the same rows. Version 16 adds the primary care manager from the header (no records of their own, so no Last Interaction). */
+function providerRows(m: Member) {
+  const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime() || (v16() ? a.name.localeCompare(b.name) : 0));
+  // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
+  const pcm = v16() ? pcmPerson(m) : undefined;
+  if (pcm && !base.some((r) => r.npi === pcm.npi)) {
+    const [first, ...rest] = pcm.name.split(" ");
+    const last = new Date(0);
+    const early = base.length ? new Date(Math.min(...base.map((r) => r.first.getTime()))) : DEMO_NOW;
+    base.push({
+      npi: pcm.npi,
+      // Like the other providers, the manager has a credential after the name.
+      name: `${rest.join(" ")}, ${first} ${["MD", "DO", "NP", "PA"][hashOf(pcm.npi) % 4]}`,
+      active: "Yes",
+      entity: "I",
+      specialty: "Primary Care",
+      org: clinicOf(m),
+      last,
+      first: last,
+      related: [],
+      noInteraction: true,
+      prescribing: "N",
+      taxonomy: DASH,
+      orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
+      phone: v16() ? orgContact16(clinicOf(m), pcm.npi).phone : `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
+      address: v16() ? orgContact16(clinicOf(m), pcm.npi).address : "9040 Jackson Ave, Tacoma, WA 98431",
+      created: early,
+      updated: early,
+      source: "MHS GENESIS",
+    });
+  }
+  if (v16() && clinicOf(m) !== "–") for (const r of base) if (r.org === "Sample Family Medicine Group") r.org = clinicOf(m);
+  return v16() ? base.sort((a, b) => b.last.getTime() - a.last.getTime() || a.name.localeCompare(b.name)) : base;
+}
+
 /** How many rows each tab has, for the number on the tab. */
 export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
   claims: claimRows(m).length,
@@ -55,7 +92,7 @@ export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
   medications: medRows(m).length,
   observations: obsRows(m).length,
   procedures: procRows(m).length,
-  providers: provRows(m).length,
+  providers: v16() ? providerRows(m).length : provRows(m).length,
 });
 
 const GREEN = ["Active", "Completed", "Paid", "Final", "Yes"];
@@ -222,18 +259,26 @@ interface TableProps<T> {
   search: string;
   /** Optional: keep only the rows of this provider (a link from the Providers tab). */
   providerOf?: (r: T) => string;
+  /** Version 16: a note under the table in place of the generic "Sample data" note. */
+  note?: string;
 }
 
-function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf }: TableProps<T>) {
+function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf, note }: TableProps<T>) {
   const [params, setParams] = useSearchParams();
   const provider = params.get("provider");
+  // Version 16 (LPP-16163): a link from the Providers tab opens this tab with the search box set to the provider (the ticket's words), and the Provider column is searched.
+  const linked = v16() && !!provider && !!providerOf;
+  const searchCols = useMemo(
+    () => (linked ? columns.map((c) => (c.key === "provider" || c.key === "prescriberName" ? { ...c, searchable: true } : c)) : columns),
+    [columns, linked],
+  );
   const shown = useMemo(
     () => (provider && providerOf ? rows.filter((r) => providerOf(r) === provider) : rows),
     [rows, provider, providerOf],
   );
   return (
     <Box>
-      {provider && providerOf && (
+      {provider && providerOf && !v16() && (
         <Box sx={{ mb: 1.5 }}>
           <Chip
             size="small"
@@ -249,11 +294,22 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
       <DataTable
         ariaLabel={NOUN[tab]}
         title={v16() ? NOUN[tab] : `List of ${NOUN[tab]}`}
-        columns={columns}
+        columns={searchCols}
         rows={shown}
         getRowId={getRowId}
         defaultSort={sort}
         pageSize={10}
+        search={linked ? (provider as string) : undefined}
+        onSearchChange={
+          linked
+            ? (s) => {
+                if (s === provider) return;
+                const next = new URLSearchParams(params);
+                next.delete("provider");
+                setParams(next, { replace: true });
+              }
+            : undefined
+        }
         searchPlaceholder={search}
         noResultsTitle={`No ${NOUN[tab].toLowerCase()} found`}
         storageKey={v16() ? `demo-member-${tab}-v16-a` : v12() ? `demo-member-${tab}-v12-a` : v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
@@ -261,7 +317,7 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
         columnsPanel={v12() ? { tableOrder: true, search: false } : undefined}
       />
       <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
-        {NOTE}
+        {note ?? NOTE}
       </Typography>
     </Box>
   );
@@ -291,9 +347,26 @@ export function RecordTabV8({ m, tab }: { m: Member; tab: V8TabKey }) {
 }
 
 /* ------------------------------------------------------------------ claims */
+/** Version 16 (LPP-16156): the info (i) text of each Claims column. A column that is not in the list has no (i). */
+const CLAIM_HELP16: Record<string, string> = {
+  services: "What was done for the member: the name of each service on the claim, one per line.",
+  from: "The first day services on this claim were provided.",
+  to: "The last day services on this claim were provided. A dash means the source did not send one.",
+  code: "The ICD-10 diagnosis code or codes on the claim, one per line. A claim with no diagnosis, such as a dental claim, shows its service codes.",
+  ctype: "P is Professional, I is Institutional and D is Dental. Hover over the letter to see the full name.",
+  provider: "The billing provider who submitted the claim.",
+  id: "The number the payer gave this claim.",
+  line: "The position of each service line on the claim, starting at 1.",
+  status: "The status of the claim: Active, Cancelled, Draft or Entered-in-Error.",
+  updated: "The date this claim was last changed.",
+};
 function ClaimsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof claimRows>[number];
-  const rows = useMemo(() => claimRows(m).sort((a, b) => b.from.getTime() - a.from.getTime()), [m]);
+  // Version 16 (LPP-16156): newest Service End Date first, then newest Service Start Date.
+  const rows = useMemo(
+    () => claimRows(m).sort((a, b) => (v16() ? b.to.getTime() - a.to.getTime() || b.from.getTime() - a.from.getTime() : b.from.getTime() - a.from.getTime())),
+    [m],
+  );
   const columns: Column<R>[] = [
     col<R>("id", "Claim ID", (r) => r.id, { s: true, group: "Claim", nowrap: true, primary: true, sortable: true }),
     col<R>("from", "Service Dates", (r) => r.from, {
@@ -365,7 +438,7 @@ function ClaimsV8({ m }: { m: Member }) {
         width: 240,
         render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code} - ${r.diagnoses[0].text}` : DASH),
       }),
-      col<R>("pos", "Place of Service", (r) => (r.type === "I" ? "21 - Inpatient Hospital" : "11 - Office"), { nowrap: true }),
+      col<R>("pos", "Place of Service", (r) => r.pos ?? (r.type === "I" ? "21 - Inpatient Hospital" : "11 - Office"), { nowrap: true }),
       "provider",
       ["status", "Claim Status"],
     ],
@@ -395,6 +468,7 @@ function ClaimsV8({ m }: { m: Member }) {
           {
             ...by("services"),
             header: "Procedure/Service",
+            sortable: true,
             // LPP-16156: one line per service line, each at most 2 lines, then "…" with the full text in a tooltip.
             render: (r: R) => (
               <>
@@ -409,16 +483,16 @@ function ClaimsV8({ m }: { m: Member }) {
             ),
           },
           { ...by("from"), header: "Service Start Date" },
-          col<R>("to", "Service End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
+          col<R>("to", "Service End Date", (r) => (r.endMissing ? null : r.to), { sortable: true, nowrap: true, render: (r) => (r.endMissing ? DASH : day(r.to)) }),
           // LPP-16156: the Code is the ICD-10-CM diagnosis code or codes, one per line with the description; with no diagnosis it is the service code.
           col<R>("code", "Code", (r) => (r.diagnoses.length ? r.diagnoses.map((d) => d.code) : r.lines.map((l) => l.code)), {
             s: true,
             width: 260,
             render: (r) => lines(r.diagnoses.length ? r.diagnoses.map((d) => `${d.code} - ${d.text}`) : r.lines.map((l) => `${l.code} - ${l.text}`)),
           }),
-          col<R>("system", "Code System", (r) => (r.diagnoses.length ? "ICD-10-CM" : r.lines.map((l) => l.system)), {
+          col<R>("system", "Code System", (r) => (r.diagnoses.length ? dxSystem() : r.lines.map((l) => l.system)), {
             width: 120,
-            render: (r) => (r.diagnoses.length ? "ICD-10-CM" : lines(r.lines.map((l) => l.system))),
+            render: (r) => (r.diagnoses.length ? dxSystem() : lines(r.lines.map((l) => l.system))),
           }),
           col<R>("ctype", "Claim Type", (r) => r.type, {
             sortable: true,
@@ -429,7 +503,7 @@ function ClaimsV8({ m }: { m: Member }) {
               </Tooltip>
             ),
           }),
-          { ...by("pos"), help: "Where the service was provided: the place of service code and its name, for example 11 - Office." },
+          by("pos"),
           by("provider"),
         ],
     {
@@ -438,15 +512,15 @@ function ClaimsV8({ m }: { m: Member }) {
         { ...by("line"), header: "Line Number" },
         by("status"),
         // LPP-16156 lists "End Date" among the hidden columns: the last day of the claim, the same date as Service End Date.
-        col<R>("endDate", "End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to), help: "The last date services on this claim were provided. The same date as Service End Date." }),
-        { ...by("pdx"), help: "The main diagnosis on the claim: the first diagnosis in sequence, with its ICD-10-CM code and description." },
+        col<R>("endDate", "End Date", (r) => (r.endMissing ? null : r.to), { sortable: true, nowrap: true, render: (r) => (r.endMissing ? DASH : day(r.to)) }),
+        by("pdx"),
         by("updated"),
       ],
     },
-  );
+  ).map((c) => ({ ...c, help: CLAIM_HELP16[c.key] ?? "" }));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return (
-    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={v16() ? { key: "to", direction: "desc" } : { key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
+    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={v16() ? { key: "to", direction: "desc" } : { key: "from", direction: "desc" }} search={v16() ? "Search by Procedure/Service or Code…" : "Search by Claim ID, Service or Code…"} providerOf={(r) => r.provider} />
   );
 }
 
@@ -505,13 +579,20 @@ function DiagnosesV8({ m }: { m: Member }) {
                   </Tooltip>
                 ),
               }
-            : D16[c.key]
-              ? { ...c, help: D16[c.key] }
-              : c,
+            : c.key === "code"
+              ? { ...c, help: D16.code, searchable: true }
+              : c.key === "provider"
+                ? { ...c, help: D16.provider, searchable: false }
+                : // The ticket gives Code System and Created By no info text, so they have no (i).
+                  c.key === "ctype" || c.key === "createdBy" || c.key === "system"
+                  ? { ...c, help: "" }
+                  : D16[c.key]
+                    ? { ...c, help: D16[c.key] }
+                    : c,
         )
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search={v16() ? "Search by Diagnosis or Code…" : "Search by Diagnosis or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ encounters */
@@ -552,7 +633,7 @@ function EncountersV8({ m }: { m: Member }) {
       "status",
       col<R>("dx", "Primary Diagnosis", (r) => r.diagnoses.map((d) => d.code), {
         width: 240,
-        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code}: ${r.diagnoses[0].text}` : DASH),
+        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code}${v16() ? " - " : ": "}${r.diagnoses[0].text}` : DASH),
       }),
       col<R>("pos", "Place of Service", (r) => posOf(r.place), { nowrap: true }),
       col<R>("facility", "Clinic/Facility", (r) => r.place, { width: 220 }),
@@ -573,7 +654,6 @@ function EncountersV8({ m }: { m: Member }) {
     type: "The kind of visit, such as an office visit, wellness visit or telehealth visit.",
     date: "The date the encounter took place.",
     status: "Where the encounter is in its lifecycle, as reported by the source: Planned, Arrived, Triaged, In Progress, On Leave, Completed, Canceled or Entered in Error.",
-    dx: "The main diagnosis recorded for this encounter, with its ICD-10-CM code and description.",
     pos: "Where the encounter took place.",
     facility: "The clinic or facility where the member was seen.",
     provider: "The provider who saw the member at this encounter.",
@@ -585,18 +665,27 @@ function EncountersV8({ m }: { m: Member }) {
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
-          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: (r: R) => (/telehealth/i.test(r.place) ? r.place : clinicOf(m)) })), "pos", (x) => ({
+          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: () => (clinicOf(m) === "–" ? "Madigan Army Medical Center" : clinicOf(m)) })), "pos", (x) => ({
             ...x,
-            accessor: (r: R) => r.place,
+            // The room or department inside that clinic, so the two columns never repeat each other.
+            accessor: (r: R) => (r.place === DASH ? r.place : r.place.replace(/^Madigan /, "").replace(/^Army Medical Center$/, "Main Campus")),
           })),
         hidden: (h) => [
           col<R>("end", "End Date", (r) => r.end, { sortable: true, nowrap: true, render: (r) => day(r.end) }),
           ...h.filter((c) => c.key === "source"),
         ],
-      }).map((c) => (E16[c.key] ? { ...c, help: E16[c.key] } : c))
+      })
+        // The ticket gives Primary Diagnosis, Clinic / Facility and Created By no info text, so they have no (i). The hidden columns follow the ticket's order.
+        .map((c) => (c.key === "dx" || c.key === "facility" || c.key === "createdBy" || c.key === "created" || c.key === "updated" ? { ...c, help: "" } : E16[c.key] ? { ...c, help: E16[c.key] } : c))
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "end", "source"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Encounter Type or Provider…" : "Search by Visit Type or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: places of service and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ immunizations */
@@ -632,7 +721,7 @@ function ImmunizationsV8({ m }: { m: Member }) {
     [
       ["vaccine", "Vaccine"],
       ["date", "Administered Date"],
-      col<R>("dose", "Dose", (r) => r.vaccine, { nowrap: true, render: (r) => (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
+      col<R>("dose", "Dose", (r) => r.dose ?? r.vaccine, { nowrap: true, render: (r) => r.dose ?? (/pediatric|drops/i.test(r.vaccine) ? "0.25 mL" : "0.5 mL") }),
       col<R>("ccode", "Code", (r) => codeOf(r.code), { nowrap: true }),
       col<R>("csys", "Code System", (r) => systemOf(r.code), { nowrap: true }),
       "status",
@@ -641,27 +730,35 @@ function ImmunizationsV8({ m }: { m: Member }) {
     ],
     ["source", col<R>("lot", "Lot Number", (r) => lotOf(r.key), { nowrap: true }), col<R>("year", "Year of Immunization", (r) => r.date.getFullYear(), { sortable: true, nowrap: true })],
   );
-  // Version 16 (LPP-16360): the code is written with its system, "CVX: 208". Hidden: Source, Created On, Created By, Last Updated (no Related Care Gap, no Lot Number,
-  // no Year of Immunization). The info texts are the ticket's; the Provider and Source texts of the ticket still say "medication" (copied), so they say vaccine here.
+  // Version 16 (LPP-16360): the Code is written as the ticket's "C: ####" (the first letter of the code system, then the code), and the Code System has its own column.
+  // Hidden: Created On, Created By, Last Updated, Source (the ticket's order), then Year of Immunization, which the Administered Date text points to.
+  // The info texts are the ticket's words; Code System, Created On, Created By and Last Updated have no text in the ticket, so they have no (i).
   const I16: Record<string, string> = {
     vaccine: "The name of the vaccination.",
     date: "Date the vaccine was given. If date is unknown, refer to Year of Immunization.",
     dose: "The dose quantity given.",
     ccode: "CVX code of the vaccine.",
-    status: "Status of the vaccination record: Completed, Not Done or Entered in Error.",
-    provider: "The provider who administered the vaccine.",
-    source: "The system or data feed this immunization record was received from.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
+    status: "Status of the vaccination record.",
+    provider: "The provider who prescribed the medication.",
+    source: "The system or data feed this medication record was received from.",
+    year: "The year the vaccine was given. Use it when the exact administered date is unknown.",
   };
+  const NO_HELP = ["csys", "created", "createdBy", "updated"];
   const cols16 = v16()
     ? ticket16<R>(cols12, {
-        main: (c) => mapKey(c, "ccode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code)}: ${codeOf(r.code)}` })),
-        hidden: (h) => h.filter((c) => c.key === "source"),
-      }).map((c) => (I16[c.key] ? { ...c, help: I16[c.key] } : c))
+        main: (c) => mapKey(mapKey(c, "ccode", (x) => ({ ...x, searchable: true, render: (r: R) => `${systemOf(r.code).charAt(0)}: ${codeOf(r.code)}` })), "vaccine", (x) => ({ ...x, searchable: true })),
+        hidden: (h) => h.filter((c) => c.key === "source" || c.key === "year"),
+      })
+        .map((c) => (NO_HELP.includes(c.key) ? { ...c, help: "" } : I16[c.key] ? { ...c, help: I16[c.key] } : c))
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "source", "year"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="immunizations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Vaccine or Code…" : v11() ? "Search by Vaccination…" : "Search by Vaccine…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: doses and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ labs */
@@ -728,7 +825,7 @@ function LabsV8({ m }: { m: Member }) {
     [
       "test",
       ["date", "Collection Date"],
-      col<R>("res", "Result", (r) => valueOf(r), { nowrap: true }),
+      col<R>("res", "Result", (r) => valueOf(r), { nowrap: true, alwaysVisible: true }),
       col<R>("unit", "Unit", (r) => unitOf(r), { nowrap: true, render: (r) => unitOf(r) || DASH }),
       col<R>("range", "Reference Range", (r) => r.range, { nowrap: true, render: (r) => r.range.replace(" to ", "–") }),
       col<R>("flag", "Abnormal Flag", (r) => r.flag, { nowrap: true, sortable: true }),
@@ -756,11 +853,9 @@ function LabsV8({ m }: { m: Member }) {
     provider: "The provider who ordered the lab.",
     resulted: "The date the lab result was reported.",
     source: "The system or data feed this lab result was received from.",
-    unit: "The unit the result is measured in.",
-    pstatus: "Whether the lab result is Final or Preliminary.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
   };
+  // The ticket gives Unit, Code System, Panel Status, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["unit", "lsys", "pstatus", "created", "createdBy", "updated"];
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
@@ -773,7 +868,7 @@ function LabsV8({ m }: { m: Member }) {
                 (x) => ({ ...x, render: (r: R) => (unitOf(r) ? `${valueOf(r)} ${unitOf(r)}` : valueOf(r)) }),
               ),
               "lcode",
-              (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.test) }),
+              (x) => ({ ...x, width: 300, nowrap: false, render: (r: R) => withText(r.loinc, r.loincText ?? r.test) }),
             ),
             "test",
             // Name of the test, at most 2 lines, then "…" with the full text in a tooltip.
@@ -789,10 +884,18 @@ function LabsV8({ m }: { m: Member }) {
             }),
           ),
         hidden: (h) => ["resulted", "pstatus", "source"].flatMap((k) => h.filter((c) => c.key === k).map((c) => (k === "pstatus" ? { ...c, header: "Panel Status" } : c))),
-      }).map((c) => (L16[c.key] ? { ...c, help: L16[c.key] } : c))
+      })
+        .map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : L16[c.key] ? { ...c, help: L16[c.key] } : c))
+        // The hidden columns follow the ticket's order.
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "pstatus", "resulted", "source"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Test, LOINC Code or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="labs" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Test, Code or Provider…" : "Search by Test, LOINC Code or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: reference ranges, resulting dates and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ medications */
@@ -843,8 +946,6 @@ function MedicationsV8({ m }: { m: Member }) {
   const M16: Record<string, string> = {
     name: "The name of the medication dispensed.",
     date: "The date the pharmacy dispensed the medication to the member.",
-    strength: "How much of the active ingredient is in one unit of the medication, for example 500 mg.",
-    dose: "How much of the medication the member takes at one time, for example 1 tablet.",
     qty: "The amount of medication dispensed in this fill.",
     days: "The number of days this fill is expected to last.",
     mcode: "The drug code for this medication, and the coding system it comes from (RxNorm or NDC).",
@@ -853,19 +954,29 @@ function MedicationsV8({ m }: { m: Member }) {
     source: "The system or data feed this medication record was received from.",
     pharmacy: "The pharmacy that dispensed the medication.",
     pharmacyNpi: "The NPI of the pharmacy.",
-    prescriberNpi: "The NPI of the provider who prescribed the medication.",
-    prescriberName: "The name of the provider who prescribed the medication.",
+    prescriberNpi: "The NPI of the pharmacy.",
     refills: "The number of refills left on this prescription, out of the total refills prescribed.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
   };
+  // The ticket gives Strength, Dose, Code System, Prescriber Name, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["strength", "dose", "msys", "prescriberName", "created", "createdBy", "updated"];
   // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel (no Related Care Gap).
-  const doseOf = (r: R) => (/inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe|insulin/i.test(r.name) ? "1 injection" : "1 tablet");
+  const doseOf = (r: R) =>
+    /inhal|puff|actuation/i.test(r.name)
+      ? "2 puffs"
+      : /suspension/i.test(r.name)
+        ? "5 mL"
+        : /drops/i.test(r.name)
+          ? "1 mL"
+          : /capsule/i.test(r.name)
+            ? "1 capsule"
+            : /inject|syringe|insulin/i.test(r.name)
+              ? "1 injection"
+              : "1 tablet";
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
           mapKey(
-            mapKey(c, "mcode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })),
+            mapKey(c, "mcode", (x) => ({ ...x, searchable: true, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })),
             "name",
             // Name, strength and form, at most 2 lines, then "…" with the full text in a tooltip.
             (x) => ({
@@ -893,10 +1004,18 @@ function MedicationsV8({ m }: { m: Member }) {
           col<R>("prescriberName", "Prescriber Name", (r) => r.provider, { sortable: true }),
           { ...columns.find((x) => x.key === "refills")!, header: "Refills Remaining" },
         ],
-      }).map((c) => (M16[c.key] ? { ...c, help: M16[c.key] } : c))
+      })
+        .map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : M16[c.key] ? { ...c, help: M16[c.key] } : c))
+        // The hidden columns follow the ticket's order.
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "pharmacy", "pharmacyNpi", "prescriberNpi", "prescriberName", "refills"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Medication or Code…" : "Search by Medication…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: pharmacies, refills and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ observations */
@@ -977,18 +1096,14 @@ function ObservationsV8({ m }: { m: Member }) {
     service: "The name of what was observed or measured.",
     date: "The date the observation was made or recorded.",
     val: "The result of the observation, any flag showing it is outside the normal range (High, Low or Abnormal), and the status of the result (Registered, Preliminary, Final, Amended, Corrected, Cancelled or Entered in Error).",
-    unit: "The unit the result is measured in. A dash means the result has no unit.",
-    type: "The group the observation belongs to, such as Vital Signs, Laboratory or Exam.",
     ocode: "The standard code that identifies the observation, and the coding system it comes from (e.g. LOINC or SNOMED CT).",
-    osys: "The coding system the observation code comes from: LOINC or SNOMED CT.",
     provider: "The provider who ordered the service.",
-    created: "The date this record was first received.",
-    createdBy: "Who or what created this record.",
-    updated: "The date this record was last changed.",
     otype: "The category of observation: Vital Signs, Laboratory, Survey, Exam, Social History, Imaging, Procedure, Therapy or Activity.",
     ostatus: "The status of the associated claim record, as reported by the source: Active, Cancelled, Draft or Entered in Error.",
     source: "The system or data feed this observation was received from.",
   };
+  // The ticket gives Unit, Category, Code System, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["unit", "type", "osys", "created", "createdBy", "updated"];
   const cols16 = ticket16<R>(cols12, {
     main: (c) =>
       c.map((x) =>
@@ -1004,13 +1119,14 @@ function ObservationsV8({ m }: { m: Member }) {
               ),
             }
           : x.key === "ocode"
-            ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(`${systemName(systemOf(r.code))}: ${codeOf(r.code)}`, r.service) }
+            ? { ...x, width: 320, nowrap: false, render: (r: R) => withText(`${systemName(systemOf(r.code))}: ${codeOf(r.code)}`, r.codeText ?? r.service) }
             : x.key === "val"
               ? {
                   ...x,
+                  alwaysVisible: true,
                   accessor: (r: R) => r.value,
                   render: (r: R) =>
-                    r.value === DASH ? (
+                    r.value === DASH && r.status === "Final" ? (
                       DASH
                     ) : (
                       <>
@@ -1023,7 +1139,9 @@ function ObservationsV8({ m }: { m: Member }) {
                 }
               : x.key === "unit"
                 ? { ...x, accessor: (r: R) => r.unit, render: (r: R) => r.unit || DASH }
-                : x,
+                : x.key === "type"
+                  ? { ...x, alwaysVisible: false }
+                  : x,
       ),
     hidden: () => [
       col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
@@ -1033,9 +1151,9 @@ function ObservationsV8({ m }: { m: Member }) {
       col<R>("ostatus", "Status", (r) => r.claimStatus, { nowrap: true, sortable: true, render: (r) => chip(r.claimStatus) }),
       col<R>("source", "Source", (r) => r.source, { sortable: true }),
     ],
-  }).map((c) => (O16[c.key] ? { ...c, help: O16[c.key] } : c));
+  }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : O16[c.key] ? { ...c, help: O16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
-  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Observation or Code…" : "Search by Service Type or Service…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="observations" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Observation or Code…" : "Search by Service Type or Service…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: results, claim statuses and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ procedures */
@@ -1094,9 +1212,14 @@ function ProceduresV8({ m }: { m: Member }) {
   const posOfProc = (r: R) =>
     /colonoscopy|sigmoidoscopy/i.test(r.name)
       ? "24 - Ambulatory Surgical Center"
-      : /mammogra/i.test(r.name) || hashOf(r.key) % 5 === 0
-        ? "22 - On Campus Outpatient Hospital"
-        : "11 - Office";
+      : /mastectomy/i.test(r.name)
+        ? "21 - Inpatient Hospital"
+        : /diagnostic mammogra/i.test(r.name)
+          ? "11 - Office"
+          : /screening mammogra|radiologic/i.test(r.name) || (/venipuncture|electrocardiogram|spirometry/i.test(r.name) && hashOf(r.key) % 6 === 0)
+            ? "22 - On Campus Outpatient Hospital"
+            : "11 - Office";
+  const NO_HELP16 = ["psys", "created", "createdBy", "updated", "ppos"];
   const P16: Record<string, string> = {
     name: "The name of the procedure performed.",
     date: "The date the procedure was performed.",
@@ -1135,48 +1258,19 @@ function ProceduresV8({ m }: { m: Member }) {
           col<R>("createdBy", "Created By", () => "System", { sortable: true }),
           col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
           ...h.filter((c) => c.key === "value"),
-          col<R>("ppos", "Place of Service", posOfProc, { nowrap: true }),
+          col<R>("ppos", "Place of Service", posOfProc, { width: 260 }),
         ],
-      }).map((c) => (P16[c.key] ? { ...c, help: P16[c.key] } : c))
+      }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : P16[c.key] ? { ...c, help: P16[c.key] } : c))
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Procedure or Code…" : "Search by Procedure…"} providerOf={(r) => r.provider} />;
+  return <RecordTable tab="procedures" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Procedure or Code…" : "Search by Procedure…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: results, places of service and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ providers */
 function ProvidersV8({ m }: { m: Member }) {
   type R = ReturnType<typeof provRows>[number];
   // Name A to Z; providers with the same name: the most recent interaction first (the table sort is stable).
-  const rows = useMemo(() => {
-    const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime() || (v16() ? a.name.localeCompare(b.name) : 0));
-    // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
-    const pcm = v16() ? pcmPerson(m) : undefined;
-    if (pcm && !base.some((r) => r.npi === pcm.npi)) {
-      const [first, ...rest] = pcm.name.split(" ");
-      const last = base.length ? base[0].last : DEMO_NOW;
-      const early = base.length ? new Date(Math.min(...base.map((r) => r.first.getTime()))) : last;
-      base.push({
-        npi: pcm.npi,
-        name: `${rest.join(" ")}, ${first}`,
-        active: "Yes",
-        entity: "I",
-        specialty: "Primary Care",
-        org: clinicOf(m),
-        last,
-        first: early,
-        related: [],
-        prescribing: "N",
-        taxonomy: DASH,
-        orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
-        phone: `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
-        address: "9040 Jackson Ave, Tacoma, WA 98431",
-        created: early,
-        updated: last,
-        source: "MHS GENESIS",
-      });
-    }
-    return v16() ? base.sort((a, b) => b.last.getTime() - a.last.getTime() || a.name.localeCompare(b.name)) : base;
-  }, [m]);
+  const rows = useMemo(() => providerRows(m), [m]);
   const columns: Column<R>[] = [
     col<R>("name", "Provider", (r) => r.name, { s: true, group: "Provider", sortable: true, alwaysVisible: true, width: 240 }),
     col<R>("npi", "Provider ID", (r) => r.npi, { s: true, group: "Provider", nowrap: true, help: "The provider's NPI." }),
@@ -1184,7 +1278,7 @@ function ProvidersV8({ m }: { m: Member }) {
     col<R>("entity", "Entity Type", (r) => (r.entity === "I" ? "Individual" : "Organization"), { group: "Provider", nowrap: true }),
     col<R>("specialty", "Specialty", (r) => r.specialty, { s: true, group: "Provider", sortable: true }),
     col<R>("org", "Organization", (r) => r.org, { s: true, group: "Provider", sortable: true }),
-    col<R>("last", "Last Interaction", (r) => r.last, { group: REL, sortable: true, nowrap: true, render: (r) => day(r.last) }),
+    col<R>("last", "Last Interaction", (r) => r.last, { group: REL, sortable: true, nowrap: true, render: (r) => (r.noInteraction ? DASH : day(r.last)) }),
     col<R>("related", "Related Records", (r) => r.related.map((x) => `${x.label} (${x.n})`), {
       group: REL,
       width: 220,
@@ -1198,7 +1292,7 @@ function ProvidersV8({ m }: { m: Member }) {
           )),
         ),
     }),
-    col<R>("first", "First Interaction", (r) => r.first, { group: REL, defaultHidden: true, sortable: true, nowrap: true, render: (r) => day(r.first) }),
+    col<R>("first", "First Interaction", (r) => r.first, { group: REL, defaultHidden: true, sortable: true, nowrap: true, render: (r) => (r.noInteraction ? DASH : day(r.first)) }),
     col<R>("prescribing", "Prescribing Provider", (r) => r.prescribing, { group: "Provider", defaultHidden: true, nowrap: true }),
     col<R>("taxonomy", "Taxonomy Code", (r) => r.taxonomy, { group: "Provider", defaultHidden: true, nowrap: true }),
     col<R>("orgNpi", "Organization NPI", (r) => r.orgNpi, { group: "Provider", defaultHidden: true, nowrap: true }),
@@ -1267,17 +1361,23 @@ function ProvidersV8({ m }: { m: Member }) {
     "Family nurse practitioner (PCP)": "Primary Care Provider",
     "OB/GYN": "OB/GYN",
     Radiology: "Radiologist",
+    "General surgery": "Surgeon",
     Gastroenterology: "Gastroenterologist",
     Dentist: "Dentist",
     Hospital: "Facility",
     Clinic: "Facility",
+    Laboratory: "Laboratory",
+    "Dental clinic": "Dental clinic",
   };
   const role16 = (r: R) => (r.npi === pcmNpi ? "PCM" : (ROLE16[r.specialty] ?? "Encounter Provider"));
   const taxonomy16 = (r: R): string[] => {
     if (r.taxonomy === DASH) return [];
-    const extra = r.entity === "I" && hashOf(r.npi) % 4 === 0 ? ["207R00000X"] : [];
-    return [r.taxonomy, ...extra.filter((x) => x !== r.taxonomy)];
+    // A second code only where a doctor really holds two: a gastroenterologist is also an internist, a family doctor may also be certified in geriatrics.
+    const second = r.taxonomy === "207RG0100X" ? "207R00000X" : r.taxonomy === "207Q00000X" ? "207QG0300X" : "";
+    return second && hashOf(r.npi) % 2 === 0 ? [r.taxonomy, second] : [r.taxonomy];
   };
+  // The ticket has no info text for Type/Role, Created On, Created By and Last Updated.
+  const NO_HELP16 = ["role", "created", "createdBy", "updated"];
   const PV16: Record<string, string> = {
     name: "The provider's name.",
     npi: "The provider's National Provider Identifier (NPI).",
@@ -1302,9 +1402,9 @@ function ProvidersV8({ m }: { m: Member }) {
         x.key === "role"
           ? { ...x, accessor: (r: R) => role16(r), render: (r: R) => role16(r) }
           : x.key === "specialty"
-            ? { ...x, s: false, accessor: (r: R) => specialty16(r.specialty), render: (r: R) => specialty16(r.specialty) }
+            ? { ...x, searchable: false, accessor: (r: R) => specialty16(r.specialty), render: (r: R) => specialty16(r.specialty) }
             : x.key === "org"
-              ? { ...x, s: false }
+              ? { ...x, searchable: false }
               : x.key === "related"
                 ? {
                     ...x,
@@ -1331,13 +1431,13 @@ function ProvidersV8({ m }: { m: Member }) {
       col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
       col<R>("createdBy", "Created By", () => "System", { sortable: true }),
       col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
-      ...["orgNpi", "taxonomy", "phone", "first", "address", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
+      ...["orgNpi", "taxonomy", "phone", "address", "first", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
         x.key === "taxonomy"
           ? { ...x, accessor: (r: R) => taxonomy16(r).join(", "), render: (r: R) => (taxonomy16(r).length ? lines(taxonomy16(r)) : DASH) }
           : x,
       ),
     ],
-  }).map((c) => (PV16[c.key] ? { ...c, help: PV16[c.key] } : c));
+  }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : PV16[c.key] ? { ...c, help: PV16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v16() ? { key: "last", direction: "desc" } : v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v16() ? "Search by Provider or NPI…" : v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
 }

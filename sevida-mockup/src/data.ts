@@ -161,6 +161,12 @@ export const providers: Provider[] = [
     type: 'Dentist',
     org: 'Sample Dental',
   },
+  // Version 16 (LPP-16162): the surgeon of the sample mastectomies. No record of an older version names her.
+  { npi: '1000000244', name: 'Sofia R. Alvarez, MD', type: 'General surgery', org: 'Sample General Hospital' },
+  // Version 16 (LPP-16156): the billing organizations of the sample claims, so the Providers tab can list them.
+  { npi: '1000000905', name: 'Sample Regional Laboratory', type: 'Laboratory' },
+  { npi: '1000000913', name: 'Sample Community Hospital', type: 'Hospital' },
+  { npi: '1000000921', name: 'Sample Family Dental', type: 'Dental clinic' },
   { npi: '1000001010', name: 'Sample General Hospital', type: 'Hospital' },
   { npi: '1000000012', name: 'Sample Family Medicine Group', type: 'Clinic' },
 ];
@@ -2117,7 +2123,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         }
       }
       const old = tooOld(['cytology'], d(Y - 2, 1, 1));
-      const miss = R.hpvPath ? 'No cervical cytology in the last 3 years and no high-risk HPV test in the last 5' : 'No cervical cytology in the last 3 years';
+      const miss = R.hpvPath ? 'No cervical cytology in the last 3 years and no high-risk HPV test in the last 5' + (getVersion() >= 16 ? ' years' : '') : 'No cervical cytology in the last 3 years';
       add(4, 'unmet', `${miss}.${oldNote(old, `since 01/01/${Y - 2}`)}`, old ? src(old) : undefined);
       return finish('Gap', miss);
     }
@@ -2241,7 +2247,7 @@ const v3Filled = new Map<string, Evt[]>();
  * They never change a measure result, and Versions 1 and 2 never see them.
  */
 export function v3Filler(member: Member): Evt[] {
-  const hit = v3Filled.get(member.id);
+  const hit = v3Filled.get(`${member.id}:${getVersion() >= 16}`);
   if (hit) return hit;
   const have = new Map<V3Tab, number>();
   for (const e of member.events) have.set(v3TabOf(e), (have.get(v3TabOf(e)) ?? 0) + 1);
@@ -2301,8 +2307,15 @@ export function v3Filler(member: Member): Evt[] {
 
   const procList = {
     infant: [['90460', 'Immunization administration, first component'], ['36416', 'Collection of capillary blood specimen'], ['92551', 'Screening test, pure tone, air only']],
-    child: [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']],
-    adult: [['36415', 'Collection of venous blood by venipuncture'], ['93000', 'Electrocardiogram, routine, with interpretation and report'], ['71046', 'Radiologic examination, chest, 2 views'], ['97110', 'Therapeutic exercises, each 15 minutes'], ['96372', 'Therapeutic injection, subcutaneous or intramuscular']],
+    // Version 16: a developmental screening is for children under 5 (older ones get a behavioral assessment) and spirometry needs a child of 5 or more.
+    child:
+      getVersion() >= 16
+        ? age < 5
+          ? [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture']]
+          : [['96127', 'Brief emotional/behavioral assessment, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']]
+        : [['96110', 'Developmental screening, with scoring and documentation'], ['92551', 'Screening test, pure tone, air only'], ['36415', 'Collection of venous blood by venipuncture'], ['94010', 'Spirometry']],
+    // Version 16: physical therapy (97110) is not done in a family doctor's office, so an earwax removal takes its place.
+    adult: [['36415', 'Collection of venous blood by venipuncture'], ['93000', 'Electrocardiogram, routine, with interpretation and report'], ['71046', 'Radiologic examination, chest, 2 views'], getVersion() >= 16 ? ['69210', 'Removal of impacted earwax (cerumen) with instruments, one ear'] : ['97110', 'Therapeutic exercises, each 15 minutes'], ['96372', 'Therapeutic injection, subcutaneous or intramuscular']],
   }[band];
   for (let i = 0; i < need('procedures'); i++) {
     const [code, text] = procList[(Math.floor(h('proc') * procList.length) + i) % procList.length];
@@ -2331,7 +2344,7 @@ export function v3Filler(member: Member): Evt[] {
       out.push(claim(day('clm', i), code, 'CPT', text, 'other', { provider: pcp }));
     }
   }
-  v3Filled.set(member.id, out);
+  v3Filled.set(`${member.id}:${getVersion() >= 16}`, out);
   return out;
 }
 
@@ -2400,12 +2413,36 @@ export function closedStepOf(m: Member, code: MeasureCode, year: number = MY): n
   const t = unitHash(`${m.id}:${code}:${year}`) / CLOSED_PER_STEP;
   return t >= RUN_STEPS ? null : Math.floor(t);
 }
-export function resultsFor(m: Member, year: number = MY): Results {
+/** Version 16: the Care Gaps screens know which gaps staff already closed. The dashboards ask this to count those gaps as closed, so the dashboard and the Care Gaps List agree. */
+let gapClosedHook: ((m: Member, code: MeasureCode) => boolean) | null = null;
+export const setGapClosedHook = (f: (m: Member, code: MeasureCode) => boolean) => {
+  gapClosedHook = f;
+};
+const adjusted = new Map<string, Results>();
+/** The measure results as the measure run calculated them. The care gap screens use these. */
+export function rawResultsFor(m: Member, year: number = MY): Results {
   const key = `${m.id}:${year}:${asOfStep}:${getVersion()}`;
   let r = cache.get(key);
   if (!r) {
     r = Object.fromEntries(measures.map((x) => [x.code, asOfRun(m, x.code, year, evaluate(m, x.code, year), asOfStep)])) as Results;
     cache.set(key, r);
+  }
+  return r;
+}
+/** The measure results for the dashboards. From Version 16 a gap that staff already closed in the current year counts as Met. */
+export function resultsFor(m: Member, year: number = MY): Results {
+  const raw = rawResultsFor(m, year);
+  if (getVersion() < 16 || year !== MY || !gapClosedHook) return raw;
+  const key = `${m.id}:${year}:${asOfStep}:${getVersion()}`;
+  let r = adjusted.get(key);
+  if (!r) {
+    r = Object.fromEntries(
+      measures.map((x) => {
+        const v = raw[x.code];
+        return [x.code, v.state === 'Gap' && gapClosedHook!(m, x.code) ? { ...v, state: 'Met' as const, reason: 'Staff added a record that closed this gap, so the measure is met.' } : v];
+      }),
+    ) as Results;
+    adjusted.set(key, r);
   }
   return r;
 }

@@ -53,6 +53,8 @@ export function MemberHeaderV4({
   const v8 = getVersion() >= 8;
   // Version 11 (LPP-16072 / Mansi): the sex label replaces Gender, and the open care gaps count opens the Care Gaps tab.
   const v11 = getVersion() >= 11;
+  // Version 16 (decided with the Members List ticket): "Sex" becomes "Gender" and "Tricare ID" becomes "Member ID".
+  const v16 = getVersion() >= 16;
   const [open, setOpen] = useState(false);
   const [idsOpen, setIdsOpen] = useState(false);
   const ids = memberIdsOf(m);
@@ -110,7 +112,7 @@ export function MemberHeaderV4({
             {v8 ? (
               // LPP-16072 summary card: Tricare ID (with See All IDs), Age, Gender, Open Care Gaps, Measures Met, Last Updated.
               <>
-                <Field label="Tricare ID">
+                <Field label={v16 ? "Member ID" : "Tricare ID"}>
                   {tricare.value}
                   <Link
                     component="button"
@@ -123,7 +125,7 @@ export function MemberHeaderV4({
                   </Link>
                 </Field>
                 <Field label="Age">{ageLabel(m.dob)}</Field>
-                <Field label={v11 ? "Sex" : "Gender"}>{v11 ? sexV11(m) : genderV3(m)}</Field>
+                <Field label={v11 && !v16 ? "Sex" : "Gender"}>{v11 ? sexV11(m) : genderV3(m)}</Field>
               </>
             ) : (
               <>

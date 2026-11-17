@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { clinicOf, countyOfMember, displayName, pcmPerson, stateNameOf } from "../v16Data";
-import { useVersion } from "../version";
+import { getVersion, useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
 import {
@@ -19,9 +19,10 @@ import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
 import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
-import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
+import { evidenceNameOf, fmtDay, gapDueOf, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
 import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, v3Extra } from "../data";
+import { encRows } from "../v8Records";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -30,7 +31,7 @@ import {
   militaryOptions,
   MISSING_SHORT,
   RECOMMENDED_SENTENCE,
-  V3_GAP_LABEL,
+  cgLabel,
   ageLabel,
   ageParts,
   ageRangeOf,
@@ -41,7 +42,7 @@ import {
   militaryV3,
   raceV3,
   tricareIdOf,
-  v3GapOptions,
+  cgGapOptions,
 } from "../v3Data";
 import { memberExtras } from "../recordFields";
 import { ageGroupFor } from "../sharedFilters";
@@ -187,24 +188,24 @@ export function CareGapsPageV3() {
           ? "The HEDIS Care Gap"
           : "The care gap on this row, one gap per row. A member with more than one gap appears more than once. Hover for the measure's full name.",
         group: "Care Gaps",
-        accessor: (r) => V3_GAP_LABEL[r.g.def.code],
+        accessor: (r) => cgLabel(r.g.def.code),
         sortable: true,
         render: (r) =>
           // Version 4: the gap name opens that care gap's own page (before, only the Member Name link and the row menu did).
           versionNo >= 4 ? (
             <TableLink to={`/members/${r.m.id}/gaps/${r.g.def.code}`}>
-              {V3_GAP_LABEL[r.g.def.code]}
+              {cgLabel(r.g.def.code)}
               {versionNo >= 16 && r.g.rate ? ` (HbA1c ${r.g.rate === "<8" ? "below 8%" : "above 9%"} rate)` : ""}
             </TableLink>
           ) : (
             <StatusChip
               tone="primary"
-              label={V3_GAP_LABEL[r.g.def.code]}
+              label={cgLabel(r.g.def.code)}
               tip={r.g.def.name}
             />
           ),
         filterAccessor: (r) => r.g.def.code,
-        filter: { type: "multiselect", options: v3GapOptions },
+        filter: { type: "multiselect", options: cgGapOptions },
         searchable: false,
         width: 280,
       },
@@ -223,7 +224,7 @@ export function CareGapsPageV3() {
         align: "right",
         nowrap: true,
         searchable: false,
-        filter: { type: "numberCompare" },
+        filter: { type: "numberCompare", keepOperator: versionNo >= 16 },
       },
       {
         key: "found",
@@ -272,13 +273,13 @@ export function CareGapsPageV3() {
           ? "Date by which the gap needs to be closed in order to manage member's care. Also impacts the Gap Met % rates."
           : "Gaps are due by the end of the measurement year: the number of days left, then the date.",
         group: "Care Gaps",
-        accessor: (r) => (v8 && r.g.status !== "Open" && (v12 || r.g.status === "Closed") ? null : DUE),
+        accessor: (r) => (v8 && r.g.status !== "Open" && (v12 || r.g.status === "Closed") ? null : versionNo >= 16 ? gapDueOf(r.g.id) : DUE),
         // LPP-16144: MM/DD/YYYY only, and N/A once the gap is closed.
         render: (r) =>
           v8
             ? r.g.status === "Closed" || r.g.status === "Excluded"
               ? "N/A"
-              : fmtDate(DUE)
+              : fmtDate(versionNo >= 16 ? gapDueOf(r.g.id) : DUE)
             : `${daysToDue()} days (${fmtDate(DUE)})`,
         sortable: true,
         nowrap: true,
@@ -338,7 +339,7 @@ export function CareGapsPageV3() {
       {
         key: "age",
         header: "Age",
-        ...(v8 ? {} : { help: "Age today: days under 1 month, months under 1 year, then years and months." }),
+        ...(v8 ? (versionNo >= 16 ? { help: "The member's age today. A measure uses the age on December 31 of the measurement year, so a member who turns the measure's minimum age later this year is already listed." } : {}) : { help: "Age today: days under 1 month, months under 1 year, then years and months." }),
         accessor: (r) => ageParts(r.m.dob).days,
         render: (r) => ageLabel(r.m.dob),
         sortable: true,
@@ -503,6 +504,13 @@ export function CareGapsPageV3() {
         return p ? `${p.name} - NPI: ${p.npi}` : null;
       };
       const lastVisit = (r: GapRow) => {
+        // Version 16: the member's last encounter, the same date the Encounters tab and the Members list show.
+        if (getVersion() >= 16) {
+          const d16 = encRows(r.m)
+            .filter((x) => x.date.getTime() <= DEMO_NOW.getTime() && ["Completed", "Arrived", "Triaged", "In Progress"].includes(x.status))
+            .map((x) => x.date.getTime());
+          return d16.length ? new Date(Math.max(...d16)) : null;
+        }
         const d = r.m.events
           .filter((e) => e.kind === "EHR visit" && e.date.getTime() <= DEMO_NOW.getTime())
           .map((e) => e.date.getTime());
@@ -521,7 +529,7 @@ export function CareGapsPageV3() {
       const closedEvidence = (r: GapRow) => {
         const c = r.g.work.closed;
         const rec = c && r.g.work.evidence.find((x) => x.id === c.evidenceId);
-        return rec ? `${evidenceNameOf(rec.kind)} on ${fmtDate(parseDay(rec.date))}` : null;
+        return rec ? `${evidenceNameOf(rec.kind)}${versionNo >= 16 ? (/^hemoglobin a1c$/i.test(evidenceNameOf(rec.kind)) ? " test completed" : " completed") : ""} on ${fmtDate(parseDay(rec.date))}` : null;
       };
       const none = { searchable: false } as const;
       // Version 16 (LPP-16144): info (i) texts only on the columns the ticket names; Closure Source instead of Evidence; the sex column is called Gender.
@@ -541,9 +549,9 @@ export function CareGapsPageV3() {
             </Stack>
           ),
         }),
-        { key: "dodId", header: "DoD ID", help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample, accessor: (r) => String(1000000000 + (hashOf(`${r.m.id}-dod`) % 9000000000)), sortable: true, nowrap: true, defaultHidden: true, group: "Identifiers", ...none },
+        ...(v16 ? [] : [{ key: "dodId", header: "DoD ID", help: "The member's Department of Defense ID. Kept for the demo and discussion." + sample, accessor: (r) => String(1000000000 + (hashOf(`${r.m.id}-dod`) % 9000000000)), sortable: true, nowrap: true, defaultHidden: true, group: "Identifiers", ...none } as Column<GapRow>]),
         base(g("tricare"), { group: "Identifiers", help: undefined, ...(v16 ? { header: "Member ID" } : {}) }),
-        base(g("genesisEhr"), { header: "Genesis MRN", help: "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.", group: "Identifiers" }),
+        base(g("genesisEhr"), { header: v16 ? "MRN" : "Genesis MRN", help: v16 ? "The member's medical record number (MRN) in the Genesis EHR. Supplied by and unique to Madigan." : "The member's ID in the Genesis EHR. Supplied by and unique to Madigan.", group: "Identifiers" }),
         base(g("dob"), { group: "Demographics", ...(v16 ? { help: undefined } : {}) }),
         base(g("age"), { defaultHidden: false, help: undefined, group: "Demographics" }),
         { key: "ageGroup", header: "Age Group", help: "Age group, from the application's standard ranges.", accessor: (r) => ageGroupFor(ageAtYearEnd(r.m.dob, CURRENT_YEAR)), sortable: true, defaultHidden: true, group: "Demographics", ...none },
@@ -558,7 +566,7 @@ export function CareGapsPageV3() {
         base(g("gapStatus"), { group: "Care Gaps", ...(v16 ? { help: "Indicates whether the care gap is open or closed. Open gaps require actions. Excluded means the member is out of the measure." } : {}) }),
         ...(v12
           ? [
-              { key: "priority", header: "Priority", help: v16 ? "How urgent the gap is, based on how close it is to its due date: High, Medium or Low." : "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
+              { key: "priority", header: "Priority", help: v16 ? "How urgent the gap is, based on how close it is to its due date. High: 30 days or fewer left. Medium: 31 to 60 days left. Low: more than 60 days left." : "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
             ]
           : []),
         base(g("found"), { group: "Care Gaps", ...(v16 ? { help: "Date on which the gap was identified. Based on information used to open the gap - e.g. encounter date if known, otherwise shows the run date when the Gaps in Care engine was last run." } : {}) }),
@@ -657,9 +665,9 @@ export function CareGapsPageV3() {
           noResultsTitle={v8 ? "No care gaps found" : undefined}
           searchOnEnter={v11}
           applyFirst={v11}
-          columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"] } : undefined}
+          columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"], ...(versionNo >= 16 ? { resetLabel: "Reset to System Default", clearFilters: true } : {}) } : undefined}
           searchPlaceholder={versionNo >= 16 ? "Search by Member Name or Member ID" : v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
-          searchPlaceholderCompact="Member name, Tricare ID"
+          searchPlaceholderCompact={versionNo >= 16 ? "Member name, Member ID" : "Member name, Tricare ID"}
           search={search}
           onSearchChange={setSearch}
           filters={filters}
@@ -667,12 +675,13 @@ export function CareGapsPageV3() {
           onResultCountChange={setShown}
           key={v12 ? mode : undefined}
           storageKey={versionNo >= 16 ? `demo-care-gaps-v3-ver16-a-${mode}` : v12 ? `demo-care-gaps-v3-ver12-a-${mode}` : v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
+          savedViewsKeepPageSize={versionNo >= 16}
           savedViews={versionNo >= 16 ? "care-gaps-v16" : v12 ? "care-gaps-v12" : v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader
           // Version 11: always room for about five rows, even on a short screen (the page scrolls instead of squeezing the table).
           maxHeight={v11 ? "max(calc(100vh - 360px), 400px)" : "calc(100vh - 360px)"}
-          onRowClick={(r) => navigate(`/members/${r.m.id}?tab=gaps`)}
+          onRowClick={(r) => navigate(versionNo >= 16 ? `/members/${r.m.id}/gaps/${r.g.def.code}` : `/members/${r.m.id}?tab=gaps`)}
           rowActions={(r) => (
             <RowActions
               id={r.m.id}

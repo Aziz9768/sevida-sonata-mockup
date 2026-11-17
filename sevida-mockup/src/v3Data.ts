@@ -22,6 +22,15 @@ export const V3_GAP_LABEL: Record<MeasureCode, string> = {
     return `WCV ${getVersion() >= 8 ? "-" : "·"} Child and Adolescent Well-Care Visits`;
   },
 };
+/** Version 16 (Care Gaps tickets): on the Care Gaps screens the WCV gap name is "WCV - Well Child Visit" (the tab hover keeps the full HEDIS name). */
+export const cgLabel = (code: string): string =>
+  getVersion() >= 16 && code === "WCV" ? "WCV - Well Child Visit" : V3_GAP_LABEL[code as MeasureCode];
+export const cgGapOptions = (Object.keys(V3_GAP_LABEL) as MeasureCode[]).map((c) => ({
+  value: c,
+  get label() {
+    return cgLabel(c);
+  },
+}));
 /** BCS-E is written BCS in the sheet. */
 export const gapShort = (code: string) => code.replace(/-E$/, "");
 export const v3GapOptions = (Object.keys(V3_GAP_LABEL) as MeasureCode[]).map(
@@ -89,6 +98,19 @@ export const MILITARY_V8 = [
 /** The Military Status choices of the version being shown. */
 export const militaryOptions = () => (getVersion() >= 8 ? MILITARY_V8 : MILITARY_V3);
 export const militaryV3 = (m: Member, year = DEMO_NOW.getFullYear()): string => {
+  // Version 16 (LPP-16069): a status that fits the member's age. Children and many spouses are family members with no status of their own ("–");
+  // nobody under 18 serves, and retirement comes after 20 years of service.
+  if (getVersion() >= 16) {
+    const before = DEMO_NOW.getMonth() < m.dob.getMonth() || (DEMO_NOW.getMonth() === m.dob.getMonth() && DEMO_NOW.getDate() < m.dob.getDate());
+    const age = DEMO_NOW.getFullYear() - m.dob.getFullYear() - (before ? 1 : 0);
+    const r = hashOf(`${m.id}-mil`) % 100;
+    if (age < 18) return "–";
+    if (m.military === "Active" && age <= 60) return MILITARY_V8[0];
+    if (m.military === "Retired" && age >= 38) return MILITARY_V8[4];
+    if (age < 38) return r < 50 ? MILITARY_V8[0] : r < 68 ? MILITARY_V8[2] : r < 78 ? MILITARY_V8[1] : r < 82 ? MILITARY_V8[3] : "–";
+    if (age < 60) return r < 20 ? MILITARY_V8[0] : r < 28 ? MILITARY_V8[2] : r < 33 ? MILITARY_V8[1] : r < 38 ? MILITARY_V8[3] : r < 78 ? MILITARY_V8[4] : "–";
+    return r < 75 ? MILITARY_V8[4] : "–";
+  }
   if (getVersion() >= 8) {
     if (m.military === "Active") return MILITARY_V8[0];
     if (m.military === "Retired") return MILITARY_V8[4];
@@ -259,7 +281,15 @@ export const MISSING_SHORT: Record<MeasureCode, string> = {
 
 /** Version 8 (LPP-16144): the Recommended Actions text is a sentence written by the AI, not a short label. Open gaps only. */
 export const RECOMMENDED_SENTENCE = (code: MeasureCode, year: number): string =>
-  ({
+  getVersion() >= 16
+    ? ({
+        "BCS-E": "Schedule a mammogram before the due date.",
+        "CCS-E": "Schedule a cervical cancer screening (cervical cytology) before the due date.",
+        "COL-E": "Schedule a colonoscopy, or send a stool-based screening test kit, before the due date.",
+        GSD: "Order an HbA1c test and record the result before the due date.",
+        WCV: "Schedule a well-care visit with a primary care provider before the due date.",
+      })[code]
+    : ({
     "BCS-E": `Schedule a mammogram before Dec 31, ${year}.`,
     "CCS-E": `Schedule a cervical cancer screening (cervical cytology) before Dec 31, ${year}.`,
     "COL-E": `Schedule a colonoscopy, or send a stool-based screening test kit, before Dec 31, ${year}.`,

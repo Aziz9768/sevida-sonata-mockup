@@ -12,11 +12,13 @@ export interface SavedView {
   filters: FilterState;
   columns: { order: string[]; hidden: string[]; pinned: string[] };
   sort: SortState | null;
+  /** Rows per page, kept only by tables that turn on `savedViewsKeepPageSize`. */
+  pageSize?: number;
   updatedAt: number;
 }
 
 /** What a view is made of before it has an id and a date. */
-export type SavedViewDraft = Pick<SavedView, "filters" | "columns" | "sort">;
+export type SavedViewDraft = Pick<SavedView, "filters" | "columns" | "sort" | "pageSize">;
 
 /**
  * Where views are kept. The built-in store keeps them in this browser (private to the person using it).
@@ -69,6 +71,7 @@ export const localSavedViewsStore: SavedViewsStore = {
       filters: view.filters,
       columns: view.columns,
       sort: view.sort,
+      ...(view.pageSize !== undefined ? { pageSize: view.pageSize } : {}),
       updatedAt: Date.now(),
     };
     const i = views.findIndex((v) => v.id === id);
