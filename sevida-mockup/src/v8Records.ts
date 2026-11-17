@@ -337,19 +337,24 @@ export interface DxRow {
   updated: Date;
   source: string;
 }
-export const dxRows = (m: Member): DxRow[] =>
+const dxBase = (m: Member): DxRow[] =>
   allRecords(m)
     .filter((e) => v3TabOf(e) === "diagnoses")
     .map((e) => {
       const acute = ACUTE.includes(e.code);
       // Version 16 (LPP-16157): the six statuses of the ticket appear in the sample data. Most long-term conditions stay Active.
       const roll = getVersion() >= 16 && !acute ? h(`${m.id}${e.code}${e.date.getTime()}`) % 20 : 99;
-      const chronic = roll === 0 ? ("Recurrence" as const) : roll === 1 ? ("Relapse" as const) : roll <= 3 ? ("Remission" as const) : roll === 4 ? ("Inactive" as const) : ("Active" as const);
+      const rolled = roll === 0 ? ("Recurrence" as const) : roll === 1 ? ("Relapse" as const) : roll <= 3 ? ("Remission" as const) : roll === 4 ? ("Inactive" as const) : ("Active" as const);
+      // Version 16: only statuses that make sense for the condition. A lifelong condition (frailty, dementia, hypertension, high cholesterol, a missing organ) stays Active;
+      // diabetes can go into remission or relapse but is never "Inactive"; a routine exam is a one-day record, so it is Resolved on the day of the visit.
+      const visitCode = getVersion() >= 16 && /^Z0[01]/.test(e.code);
+      const lifelong = getVersion() >= 16 && ["R54", "F03.90", "I10", "E78.5", "Z90.710", "Z90.12"].includes(e.code);
+      const chronic = visitCode ? ("Resolved" as const) : lifelong || (getVersion() >= 16 && e.code === "E11.9" && (rolled === "Inactive" || rolled === "Recurrence")) ? ("Active" as const) : rolled;
       return {
         key: evKey(e),
         e,
         start: e.date,
-        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : chronic === "Inactive" ? addDays(e.date, 60 + (h(e.code) % 90)) : null,
+        end: acute ? addDays(e.date, 7 + (h(e.code + e.date.getTime()) % 8)) : visitCode ? e.date : chronic === "Inactive" ? addDays(e.date, 60 + (h(e.code) % 90)) : null,
         name: e.text,
         codes: [
           { code: e.code, system: e.system === "ICD-10" ? "ICD-10-CM" : e.system },
@@ -364,6 +369,37 @@ export const dxRows = (m: Member): DxRow[] =>
         source: getVersion() >= 16 ? "MHS GENESIS" : sourceName(e),
       };
     });
+
+/**
+ * Version 16 (LPP-16157): "Populate all records with a Diagnosis Code from Encounters". Every diagnosis code on a visit of the Encounters tab
+ * has one row here, even when the code is a routine-exam code. One row per diagnosis: the first visit it was used on is the Start Date, and a
+ * routine exam is Resolved on the day of the visit.
+ */
+export const dxRows = (m: Member): DxRow[] => {
+  const base = dxBase(m);
+  if (getVersion() < 16) return base;
+  const have = new Set(base.flatMap((r) => r.codes.map((c) => c.code)));
+  const first = new Map<string, { enc: EncRow; text: string }>();
+  for (const enc of [...encRows(m)].sort((a, b) => a.date.getTime() - b.date.getTime())) {
+    if (enc.status !== "Completed" || enc.date > DEMO_NOW) continue;
+    for (const d of enc.diagnoses) if (!have.has(d.code) && !first.has(d.code)) first.set(d.code, { enc, text: d.text });
+  }
+  const extra: DxRow[] = [...first.entries()].map(([code, { enc, text }]) => ({
+    key: `enc|${code}|${enc.key}`,
+    e: enc.e,
+    start: enc.date,
+    end: enc.date,
+    name: text,
+    codes: [{ code, system: "ICD-10-CM" }],
+    status: "Resolved" as const,
+    provider: enc.provider,
+    measures: [],
+    created: enc.created,
+    updated: enc.updated,
+    source: "MHS GENESIS",
+  }));
+  return [...base, ...extra];
+};
 
 /* ------------------------------------------------------------------ encounters (LPP-16158) */
 

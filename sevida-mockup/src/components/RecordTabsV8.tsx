@@ -222,9 +222,11 @@ interface TableProps<T> {
   search: string;
   /** Optional: keep only the rows of this provider (a link from the Providers tab). */
   providerOf?: (r: T) => string;
+  /** Version 16: a note under the table in place of the generic "Sample data" note. */
+  note?: string;
 }
 
-function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf }: TableProps<T>) {
+function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf, note }: TableProps<T>) {
   const [params, setParams] = useSearchParams();
   const provider = params.get("provider");
   const shown = useMemo(
@@ -261,7 +263,7 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
         columnsPanel={v12() ? { tableOrder: true, search: false } : undefined}
       />
       <Typography variant="caption" sx={{ display: "block", mt: 1, color: "text.secondary" }}>
-        {NOTE}
+        {note ?? NOTE}
       </Typography>
     </Box>
   );
@@ -522,13 +524,20 @@ function DiagnosesV8({ m }: { m: Member }) {
                   </Tooltip>
                 ),
               }
-            : D16[c.key]
-              ? { ...c, help: D16[c.key] }
-              : c,
+            : c.key === "code"
+              ? { ...c, help: D16.code, searchable: true }
+              : c.key === "provider"
+                ? { ...c, help: D16.provider, searchable: false }
+                : // The ticket gives Code System and Created By no info text, so they have no (i).
+                  c.key === "ctype" || c.key === "createdBy" || c.key === "system"
+                  ? { ...c, help: "" }
+                  : D16[c.key]
+                    ? { ...c, help: D16[c.key] }
+                    : c,
         )
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search="Search by Diagnosis or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="diagnoses" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "start", direction: "desc" }} search={v16() ? "Search by Diagnosis or Code…" : "Search by Diagnosis or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ encounters */
