@@ -21,6 +21,7 @@ import {
   obsRows,
   procRows,
   provRows,
+  orgContact16,
 } from "../v8Records";
 import type { RecordTabKey } from "../v8Records";
 import { TableLink } from "./TableLink";
@@ -230,13 +231,19 @@ interface TableProps<T> {
 function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf, note }: TableProps<T>) {
   const [params, setParams] = useSearchParams();
   const provider = params.get("provider");
+  // Version 16 (LPP-16163): a link from the Providers tab opens this tab with the search box set to the provider (the ticket's words), and the Provider column is searched.
+  const linked = v16() && !!provider && !!providerOf;
+  const searchCols = useMemo(
+    () => (linked ? columns.map((c) => (c.key === "provider" || c.key === "prescriberName" ? { ...c, searchable: true } : c)) : columns),
+    [columns, linked],
+  );
   const shown = useMemo(
     () => (provider && providerOf ? rows.filter((r) => providerOf(r) === provider) : rows),
     [rows, provider, providerOf],
   );
   return (
     <Box>
-      {provider && providerOf && (
+      {provider && providerOf && !v16() && (
         <Box sx={{ mb: 1.5 }}>
           <Chip
             size="small"
@@ -252,11 +259,22 @@ function RecordTable<T>({ tab, rows, columns, getRowId, sort, search, providerOf
       <DataTable
         ariaLabel={NOUN[tab]}
         title={v16() ? NOUN[tab] : `List of ${NOUN[tab]}`}
-        columns={columns}
+        columns={searchCols}
         rows={shown}
         getRowId={getRowId}
         defaultSort={sort}
         pageSize={10}
+        search={linked ? (provider as string) : undefined}
+        onSearchChange={
+          linked
+            ? (s) => {
+                if (s === provider) return;
+                const next = new URLSearchParams(params);
+                next.delete("provider");
+                setParams(next, { replace: true });
+              }
+            : undefined
+        }
         searchPlaceholder={search}
         noResultsTitle={`No ${NOUN[tab].toLowerCase()} found`}
         storageKey={v16() ? `demo-member-${tab}-v16-a` : v12() ? `demo-member-${tab}-v12-a` : v11() ? `demo-member-${tab}-v11-a` : `demo-member-${tab}-v8-a`}
@@ -1236,8 +1254,8 @@ function ProvidersV8({ m }: { m: Member }) {
         prescribing: "N",
         taxonomy: DASH,
         orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
-        phone: `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
-        address: "9040 Jackson Ave, Tacoma, WA 98431",
+        phone: v16() ? orgContact16(clinicOf(m), pcm.npi).phone : `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
+        address: v16() ? orgContact16(clinicOf(m), pcm.npi).address : "9040 Jackson Ave, Tacoma, WA 98431",
         created: early,
         updated: last,
         source: "MHS GENESIS",
@@ -1340,13 +1358,18 @@ function ProvidersV8({ m }: { m: Member }) {
     Dentist: "Dentist",
     Hospital: "Facility",
     Clinic: "Facility",
+    Laboratory: "Laboratory",
+    "Dental clinic": "Dental Clinic",
   };
   const role16 = (r: R) => (r.npi === pcmNpi ? "PCM" : (ROLE16[r.specialty] ?? "Encounter Provider"));
   const taxonomy16 = (r: R): string[] => {
     if (r.taxonomy === DASH) return [];
-    const extra = r.entity === "I" && hashOf(r.npi) % 4 === 0 ? ["207R00000X"] : [];
-    return [r.taxonomy, ...extra.filter((x) => x !== r.taxonomy)];
+    // A second code only where a doctor really holds two: a gastroenterologist is also an internist, a family doctor may also be certified in geriatrics.
+    const second = r.taxonomy === "207RG0100X" ? "207R00000X" : r.taxonomy === "207Q00000X" ? "207QG0300X" : "";
+    return second && hashOf(r.npi) % 2 === 0 ? [r.taxonomy, second] : [r.taxonomy];
   };
+  // The ticket has no info text for Type/Role, Created On, Created By and Last Updated.
+  const NO_HELP16 = ["role", "created", "createdBy", "updated"];
   const PV16: Record<string, string> = {
     name: "The provider's name.",
     npi: "The provider's National Provider Identifier (NPI).",
@@ -1371,9 +1394,9 @@ function ProvidersV8({ m }: { m: Member }) {
         x.key === "role"
           ? { ...x, accessor: (r: R) => role16(r), render: (r: R) => role16(r) }
           : x.key === "specialty"
-            ? { ...x, s: false, accessor: (r: R) => specialty16(r.specialty), render: (r: R) => specialty16(r.specialty) }
+            ? { ...x, searchable: false, accessor: (r: R) => specialty16(r.specialty), render: (r: R) => specialty16(r.specialty) }
             : x.key === "org"
-              ? { ...x, s: false }
+              ? { ...x, searchable: false }
               : x.key === "related"
                 ? {
                     ...x,
@@ -1400,13 +1423,13 @@ function ProvidersV8({ m }: { m: Member }) {
       col<R>("created", "Created On", (r) => r.created, { sortable: true, nowrap: true, render: (r) => day(r.created) }),
       col<R>("createdBy", "Created By", () => "System", { sortable: true }),
       col<R>("updated", "Last Updated", (r) => r.updated, { sortable: true, nowrap: true, render: (r) => day(r.updated) }),
-      ...["orgNpi", "taxonomy", "phone", "first", "address", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
+      ...["orgNpi", "taxonomy", "phone", "address", "first", "source"].map((k) => columns.find((x) => x.key === k)!).map((x) =>
         x.key === "taxonomy"
           ? { ...x, accessor: (r: R) => taxonomy16(r).join(", "), render: (r: R) => (taxonomy16(r).length ? lines(taxonomy16(r)) : DASH) }
           : x,
       ),
     ],
-  }).map((c) => (PV16[c.key] ? { ...c, help: PV16[c.key] } : c));
+  }).map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : PV16[c.key] ? { ...c, help: PV16[c.key] } : c));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return <RecordTable tab="providers" m={m} rows={rows} columns={cols} getRowId={(r) => r.npi} sort={v16() ? { key: "last", direction: "desc" } : v12() ? { key: "role", direction: "asc" } : { key: "name", direction: "asc" }} search={v16() ? "Search by Provider or NPI…" : v12() ? "Search by Provider, NPI, Specialty or Organization…" : "Search by Provider, Provider ID, Specialty or Organization…"} />;
 }

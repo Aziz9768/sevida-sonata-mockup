@@ -20,7 +20,7 @@ import { renderCrumbLink } from "../components/RouterLinkAdapter";
 import { MemberHeader } from "./MemberDetailPage";
 import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
-import { tabKeyOfRecord } from "../v8Records";
+import { DASH, createdOn, dxSystem, providerCell, tabKeyOfRecord, updatedOn } from "../v8Records";
 import {
   arrivedOn,
   fmtDay,
@@ -241,7 +241,23 @@ function OverviewV12({ g }: { g: GapView }) {
       ? closedRec
         ? `The gap was closed on ${fmtDay(g.work.closed.on)} by a ${closedRec.kind.toLowerCase()} record dated ${fmtDate(parseDayLocal(closedRec.date))} (${closedRec.source}).`
         : `The gap was closed on ${fmtDay(g.work.closed.on)}: ${g.work.closed.reason}`
-      : `No qualifying ${service} was found for the ${MY} measurement period. Records that count: ${windows}. ${lastLine}`;
+      : getVersion() >= 16
+        ? // Version 16 (LPP-16227): specific and data driven, in the ticket's words: what was looked for, between which dates, and the last record on record.
+          (() => {
+            const long = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+            const START: Partial<Record<MeasureCode, Date>> = { "BCS-E": new Date(MY - 2, 9, 1), "CCS-E": new Date(MY - 2, 0, 1), GSD: new Date(MY, 0, 1), WCV: new Date(MY, 0, 1) };
+            const start = START[code];
+            const found =
+              code === "COL-E"
+                ? `No colorectal cancer screening found: no colonoscopy since Jan 1, ${MY - 9}, no CT colonography or flexible sigmoidoscopy since Jan 1, ${MY - 4}, no stool DNA test since Jan 1, ${MY - 2} and no FIT in ${MY}.`
+                : `No ${service} found between ${start ? long(start) : `Jan 1, ${MY}`} and ${long(DEMO_NOW)}.`;
+            const lastOn =
+              last?.origin === "file" || last?.origin === "recorded"
+                ? `Last ${service} on record: ${long(last.date)}${last.origin === "file" && last.e.value !== undefined ? ` (${last.e.value}${last.e.unit ? ` ${last.e.unit}` : last.e.tag === "hba1c" ? "%" : ""})` : ""}.`
+                : `No ${service} on record.`;
+            return `${found} ${lastOn}`;
+          })()
+        : `No qualifying ${service} was found for the ${MY} measurement period. Records that count: ${windows}. ${lastLine}`;
   const sub = (title: string) => (
     <Typography sx={{ fontSize: ".8125rem", fontWeight: 700, color: "text.secondary" }}>{title}</Typography>
   );
@@ -400,6 +416,8 @@ interface EvRow12 {
   result: string;
   provider: string;
   source: string;
+  created: Date;
+  updated: Date;
   recordId: string;
   received: Date | null;
   valueSet: string;
@@ -432,10 +450,12 @@ function EvidenceV12({ g }: { g: GapView }) {
             tab,
             desc: e.text,
             code: e.code,
-            system: e.system,
-            result: e.value !== undefined ? `${e.value}${e.unit ? ` ${e.unit}` : e.tag === "hba1c" ? "%" : ""}` : "–",
-            provider: providerName(e.provider),
-            source: e.supplemental ? "EHR / lab feed" : "Claims",
+            system: getVersion() >= 16 && e.system === "ICD-10" ? dxSystem() : e.system,
+            created: createdOn(e),
+            updated: updatedOn(e),
+            result: e.value !== undefined ? `${e.value}${e.unit ? ` ${e.unit}` : e.tag === "hba1c" ? "%" : ""}` : getVersion() >= 16 ? DASH : "–",
+            provider: getVersion() >= 16 ? providerCell(g.m, e) : providerName(e.provider),
+            source: getVersion() >= 16 ? "MHS GENESIS" : e.supplemental ? "EHR / lab feed" : "Claims",
             recordId: `REC-${(hashOf(`${e.file}${e.code}${e.date.toISOString()}`) % 900000) + 100000}`,
             received: arrivedOn(e) ?? null,
             valueSet: `${gapShort(code as MeasureCode)} ${e.tag}`,
@@ -479,9 +499,9 @@ function EvidenceV12({ g }: { g: GapView }) {
     { key: "clinic", header: "Clinic / Facility", accessor: (r) => r.clinic, width: 200, ...optional },
     ...(e16
       ? ([
-          { key: "createdOn", header: "Created On", help: "Date the evidence record was created.", accessor: (r) => r.date, render: (r) => fmtDate(r.date), sortable: true, nowrap: true, ...optional },
-          { key: "createdBy", header: "Created By", help: "Who or what created the evidence record.", accessor: () => "System", sortable: true, ...optional },
-          { key: "lastUpdated", header: "Last Updated", help: "Date the evidence record last changed.", accessor: (r) => r.received ?? r.date, render: (r) => fmtDate(r.received ?? r.date), sortable: true, nowrap: true, ...optional },
+          { key: "createdOn", header: "Created On", accessor: (r) => r.created, render: (r) => fmtDate(r.created), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", accessor: (r) => r.updated, render: (r) => fmtDate(r.updated), sortable: true, nowrap: true, ...optional },
         ] as Column<EvRow12>[])
       : []),
   ];
@@ -543,7 +563,14 @@ function HistoryV12({ g }: { g: GapView }) {
       } else if (a.kind === "Closed")
         evs.push({ key: a.id, when, event: "Closed", details: a.text, pcm: pcmNow, closed: when });
       else if (a.kind === "Status" && /reopened/i.test(a.text))
-        evs.push({ key: a.id, when, event: "Reopened", details: a.text, pcm: pcmNow, closed: null });
+        evs.push({ key: a.id, when, event: getVersion() >= 16 ? "Opened" : "Reopened", details: a.text, pcm: pcmNow, closed: null });
+    }
+    // Version 16 (LPP-16229): about one open gap in nine was closed by a claim that the payer later reversed, so the gap was opened again (the Opened event of the ticket).
+    // The Evidence tab shows no record for it, because the claim no longer counts.
+    if (getVersion() >= 16 && g.status === "Open" && hashOf(`${g.id}reopen`) % 9 === 0 && g.identified.getTime() + 16 * 86_400_000 < DEMO_NOW.getTime()) {
+      const closedOn = new Date(g.identified.getTime() + 8 * 86_400_000);
+      evs.push({ key: `${g.id}-c`, when: closedOn, event: "Closed", details: `Gap closed by a claim for ${serviceName[code]}.`, pcm: pcmNow, closed: closedOn });
+      evs.push({ key: `${g.id}-o`, when: new Date(g.identified.getTime() + 15 * 86_400_000), event: "Opened", details: "Gap opened again: the payer reversed the claim that closed it.", pcm: pcmNow, closed: null });
     }
     // A made-up example: some open gaps moved to a higher priority a few weeks after they were identified.
     if (g.status === "Open" && hashOf(g.id) % 2 === 0 && prioNow !== "Low") {
@@ -557,7 +584,7 @@ function HistoryV12({ g }: { g: GapView }) {
     const wasPrio = prioNow === "High" ? "Medium" : "Low";
     const built: HistRow12[] = evs.map((e) => {
       if (e.event === "Closed") status = "Closed";
-      else if (e.event === "Reopened" || e.event === "Identified") status = "Open";
+      else if (e.event === "Reopened" || e.event === "Opened" || e.event === "Identified") status = "Open";
       else if (e.event === "Excluded") status = "Excluded";
       const priority = status !== "Open" ? "N/A" : change && e.when < change.when ? wasPrio : prioNow;
       return {
@@ -582,7 +609,7 @@ function HistoryV12({ g }: { g: GapView }) {
   const h16 = getVersion() >= 16;
   const cols: Column<HistRow12>[] = [
     { key: "when", header: "Date", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, primary: true },
-    { key: "event", header: "Event", help: "Identified, Priority Changed, PCM Changed, Closed, Reopened or Excluded.", accessor: (r) => r.event, sortable: true, nowrap: true, filter: { type: "multiselect", options: ["Identified", "Priority Changed", "PCM Changed", "Closed", "Reopened", "Excluded"].map((v) => ({ value: v, label: v })) } },
+    { key: "event", header: "Event", help: getVersion() >= 16 ? "Identified, Priority Changed, PCM Changed, Closed, Opened or Excluded." : "Identified, Priority Changed, PCM Changed, Closed, Reopened or Excluded.", accessor: (r) => r.event, sortable: true, nowrap: true, filter: { type: "multiselect", options: ["Identified", "Priority Changed", "PCM Changed", "Closed", getVersion() >= 16 ? "Opened" : "Reopened", "Excluded"].map((v) => ({ value: v, label: v })) } },
     { key: "status", header: "Gap Status", help: "The status of the gap after this event.", accessor: (r) => r.status, sortable: true, nowrap: true, render: (r) => <StatusChip tone={gapStatusTone[r.status as keyof typeof gapStatusTone]} label={r.status} /> },
     { key: "priority", header: "Priority", help: "The priority after this event. Only for an open gap.", accessor: (r) => r.priority, sortable: true, nowrap: true },
     { key: "details", header: "Change Details", accessor: (r) => r.details, width: 360 },
@@ -594,9 +621,9 @@ function HistoryV12({ g }: { g: GapView }) {
     { key: "source", header: "Source / Run Date", help: "What made the change. Sample data.", accessor: (r) => r.source, render: (r) => `${r.source}, ${fmtDate(r.when)}`, width: 220, ...optional },
     ...(h16
       ? ([
-          { key: "createdOn", header: "Created On", help: "Date the history entry was created.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
-          { key: "createdBy", header: "Created By", help: "Who or what created the history entry.", accessor: () => "System", sortable: true, ...optional },
-          { key: "lastUpdated", header: "Last Updated", help: "Date the history entry last changed.", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+          { key: "createdOn", header: "Created On", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
+          { key: "createdBy", header: "Created By", accessor: () => "System", sortable: true, ...optional },
+          { key: "lastUpdated", header: "Last Updated", accessor: (r) => r.when, render: (r) => fmtDate(r.when), sortable: true, nowrap: true, ...optional },
         ] as Column<HistRow12>[])
       : []),
   ];

@@ -163,6 +163,10 @@ export const providers: Provider[] = [
   },
   // Version 16 (LPP-16162): the surgeon of the sample mastectomies. No record of an older version names her.
   { npi: '1000000244', name: 'Sofia R. Alvarez, MD', type: 'General surgery', org: 'Sample General Hospital' },
+  // Version 16 (LPP-16156): the billing organizations of the sample claims, so the Providers tab can list them.
+  { npi: '1000000900', name: 'Sample Regional Laboratory', type: 'Laboratory' },
+  { npi: '1000000910', name: 'Sample Community Hospital', type: 'Hospital' },
+  { npi: '1000000920', name: 'Sample Family Dental', type: 'Dental clinic' },
   { npi: '1000001010', name: 'Sample General Hospital', type: 'Hospital' },
   { npi: '1000000012', name: 'Sample Family Medicine Group', type: 'Clinic' },
 ];

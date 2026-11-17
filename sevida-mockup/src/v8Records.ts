@@ -1233,6 +1233,8 @@ const TAXONOMY: Record<string, string> = {
   Dentist: "122300000X",
   Hospital: "282N00000X",
   Clinic: "261QP2300X",
+  Laboratory: "291U00000X",
+  "Dental clinic": "261QD0000X",
 };
 export type RecordTabKey = "claims" | "diagnoses" | "encounters" | "immunizations" | "labs" | "medications" | "observations" | "procedures";
 const TAB_LABEL: Record<RecordTabKey, string> = {
@@ -1271,17 +1273,62 @@ export interface ProvRow {
   updated: Date;
   source: string;
 }
+/**
+ * Version 16 (LPP-16163): an organization has one address, and its phone numbers start with that city's area code (sample data; the 555-01xx numbers are
+ * the ones kept for fiction). The ticket's own example, 9040 Jackson Ave, Tacoma, is the address of the family medicine group.
+ */
+const ORG_CONTACT: Record<string, [string, string]> = {
+  "Sample Family Medicine Group": ["9040 Jackson Ave, Tacoma, WA 98431", "253"],
+  "Sample Imaging Center": ["1120 Pacific Ave, Tacoma, WA 98402", "253"],
+  "Sample General Hospital": ["2200 Main St, Tacoma, WA 98405", "253"],
+  "Sample Dental": ["410 Union Ave, Tacoma, WA 98402", "253"],
+  "Sample Regional Laboratory": ["7300 Lakewood Dr W, Tacoma, WA 98467", "253"],
+  "Sample Community Hospital": ["1500 Division Ave, Tacoma, WA 98405", "253"],
+  "Sample Family Dental": ["820 Union Ave, Tacoma, WA 98402", "253"],
+  "Sample Quad Cities Clinic": ["1400 5th Ave, Moline, IL 61265", "309"],
+  "Sample Peoria Health Center": ["500 Glen Oak Ave, Peoria, IL 61603", "309"],
+  "Sample Springfield Family Clinic": ["800 Carpenter St, Springfield, IL 62702", "217"],
+  "Sample Gateway Primary Care": ["2100 Olive St, St. Louis, MO 63103", "314"],
+  "Sample Wabash Valley Medical Group": ["1700 7th St, Terre Haute, IN 47802", "812"],
+};
+export const orgContact16 = (org: string, key: string): { address: string; phone: string } => {
+  const c = ORG_CONTACT[org];
+  return c ? { address: c[0], phone: `(${c[1]}) 555-01${pad(h(`ph${key}`) % 100, 2)}` } : { address: DASH, phone: DASH };
+};
 export const provRows = (m: Member): ProvRow[] => {
-  type Grp = { npi: string; dates: Date[]; counts: Map<RecordTabKey, number>; last: Evt };
+  type Grp = { npi: string; name?: string; dates: Date[]; counts: Map<RecordTabKey, number>; last?: Evt };
   const by = new Map<string, Grp>();
-  for (const e of allRecords(m)) {
-    const { npi } = providerFor(m, e);
-    const cur: Grp = by.get(npi) ?? { npi, dates: [], counts: new Map<RecordTabKey, number>(), last: e };
-    cur.dates.push(e.date);
-    const t = tabKeyOfRecord(e);
+  const addTo = (npi: string, date: Date, t: RecordTabKey, name?: string, last?: Evt) => {
+    const cur: Grp = by.get(npi) ?? { npi, name, dates: [], counts: new Map<RecordTabKey, number>(), last };
+    cur.dates.push(date);
     cur.counts.set(t, (cur.counts.get(t) ?? 0) + 1);
     by.set(npi, cur);
-  }
+  };
+  if (getVersion() >= 16) {
+    // Version 16 (LPP-16163): every row of the eight record tabs that names a provider counts, so "Encounters (4)" here is the number of rows the Encounters tab shows.
+    const npiOf = new Map<string, string>();
+    for (const p of providers) npiOf.set(/,\s?(MD|NP|DDS|DO|PA)$/.test(p.name) ? lastFirst(p.name) : p.name, p.npi);
+    for (const o of Object.values(ORG_PROVIDERS)) npiOf.set(o.name, o.npi);
+    const put = (rows: Array<{ provider: string }>, date: (r: never) => Date, t: RecordTabKey) => {
+      for (const r of rows) {
+        if (!r.provider || r.provider === DASH) continue;
+        const npi = npiOf.get(r.provider) ?? `19${pad(h(r.provider) % 100000000, 8)}`.slice(0, 10);
+        addTo(npi, (date as (x: typeof r) => Date)(r), t, r.provider);
+      }
+    };
+    put(claimRows(m), (r) => (r as unknown as ClaimRow).from, "claims");
+    put(dxRows(m), (r) => (r as unknown as DxRow).start, "diagnoses");
+    put(encRows(m), (r) => (r as unknown as EncRow).date, "encounters");
+    put(immRows(m), (r) => (r as unknown as ImmRow).date, "immunizations");
+    put(labRows(m), (r) => (r as unknown as LabRow).date, "labs");
+    put(medRows(m), (r) => (r as unknown as MedRow).date, "medications");
+    put(obsRows(m), (r) => (r as unknown as ObsRow).date, "observations");
+    put(procRows(m), (r) => (r as unknown as ProcRow).date, "procedures");
+  } else
+    for (const e of allRecords(m)) {
+      const { npi } = providerFor(m, e);
+      addTo(npi, e.date, tabKeyOfRecord(e), undefined, e);
+    }
   return [...by.values()].map((g) => {
     const p = providers.find((x) => x.npi === g.npi);
     const org = providers.find((x) => x.name === p?.org);
@@ -1290,7 +1337,7 @@ export const provRows = (m: Member): ProvRow[] => {
     const individual = !!p && /,\s?(MD|NP|DDS|DO|PA)$/.test(p.name);
     return {
       npi: g.npi,
-      name: lastFirst(p?.name ?? `NPI ${g.npi}`),
+      name: getVersion() >= 16 && !individual ? (p?.name ?? g.name ?? `NPI ${g.npi}`) : lastFirst(p?.name ?? `NPI ${g.npi}`),
       active: "Yes" as const,
       entity: individual ? ("I" as const) : ("O" as const),
       specialty: p?.type ?? DASH,
@@ -1300,9 +1347,9 @@ export const provRows = (m: Member): ProvRow[] => {
       related: [...g.counts.entries()].map(([tab, n]) => ({ tab, label: TAB_LABEL[tab], n })).sort((a, b) => b.n - a.n),
       prescribing: /MD|NP|DO|PA/.test(p?.name ?? "") ? ("Y" as const) : ("N" as const),
       taxonomy: TAXONOMY[p?.type ?? ""] ?? DASH,
-      orgNpi: org ? org.npi : `19${pad(seed % 100000000, 8)}`.slice(0, 10),
-      phone: `(253) 555-0${pad(100 + (seed % 900), 3)}`,
-      address: "9040 Jackson Ave, Tacoma, WA 98431",
+      orgNpi: getVersion() >= 16 && !individual ? g.npi : org ? org.npi : `19${pad(seed % 100000000, 8)}`.slice(0, 10),
+      phone: getVersion() >= 16 ? orgContact16(p?.org ?? (individual ? DASH : (p?.name ?? DASH)), g.npi).phone : `(253) 555-0${pad(100 + (seed % 900), 3)}`,
+      address: getVersion() >= 16 ? orgContact16(p?.org ?? (individual ? DASH : (p?.name ?? DASH)), g.npi).address : "9040 Jackson Ave, Tacoma, WA 98431",
       created: addDays(dates[0], 1),
       updated: addDays(dates[dates.length - 1], 1) > DEMO_NOW ? DEMO_NOW : addDays(dates[dates.length - 1], 1),
       source: "MHS GENESIS",

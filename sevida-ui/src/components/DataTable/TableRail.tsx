@@ -291,7 +291,13 @@ export function ColumnsPanel<T>({
   onTogglePin,
   onReset,
   onClearAll,
+  resetLabel,
+  onClearFilters,
 }: {
+  /** The words on the reset button. Default "Reset Columns". */
+  resetLabel?: string;
+  /** Adds a Clear Filters button (above the reset button) that removes every filter. */
+  onClearFilters?: () => void;
   /** List each group's columns in table order (default: A to Z inside each group). */
   tableOrder?: boolean;
   /** A search box at the top to find a column by name. */
@@ -447,6 +453,28 @@ export function ColumnsPanel<T>({
           </Fragment>
         ))}
       </Stack>
+      {onClearFilters && (
+        <Box
+          component="button"
+          type="button"
+          onClick={onClearFilters}
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            border: 0,
+            bgcolor: "transparent",
+            cursor: "pointer",
+            color: "ink.500",
+            font: "inherit",
+            fontSize: ".8125rem",
+            p: 0.5,
+            "&:hover": { color: "primary.main" },
+          }}
+        >
+          Clear Filters
+        </Box>
+      )}
       <Box
         component="button"
         type="button"
@@ -467,7 +495,7 @@ export function ColumnsPanel<T>({
         }}
       >
         <RestartAltIcon sx={{ fontSize: 15 }} />
-        Reset Columns
+        {resetLabel ?? "Reset Columns"}
       </Box>
       {onClearAll && (
         <Box

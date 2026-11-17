@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { clinicOf, countyOfMember, displayName, pcmPerson, stateNameOf } from "../v16Data";
-import { useVersion } from "../version";
+import { getVersion, useVersion } from "../version";
 import { useNavigate } from "react-router-dom";
 import { Stack } from "@mui/material";
 import {
@@ -22,6 +22,7 @@ import { GapStatusChip } from "../components/GapStatusChip";
 import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
 import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, v3Extra } from "../data";
+import { encRows } from "../v8Records";
 import type { Member } from "../data";
 import { useRole } from "../roles";
 import {
@@ -503,6 +504,13 @@ export function CareGapsPageV3() {
         return p ? `${p.name} - NPI: ${p.npi}` : null;
       };
       const lastVisit = (r: GapRow) => {
+        // Version 16: the member's last encounter, the same date the Encounters tab and the Members list show.
+        if (getVersion() >= 16) {
+          const d16 = encRows(r.m)
+            .filter((x) => x.date.getTime() <= DEMO_NOW.getTime() && ["Completed", "Arrived", "Triaged", "In Progress"].includes(x.status))
+            .map((x) => x.date.getTime());
+          return d16.length ? new Date(Math.max(...d16)) : null;
+        }
         const d = r.m.events
           .filter((e) => e.kind === "EHR visit" && e.date.getTime() <= DEMO_NOW.getTime())
           .map((e) => e.date.getTime());
@@ -521,7 +529,7 @@ export function CareGapsPageV3() {
       const closedEvidence = (r: GapRow) => {
         const c = r.g.work.closed;
         const rec = c && r.g.work.evidence.find((x) => x.id === c.evidenceId);
-        return rec ? `${evidenceNameOf(rec.kind)} on ${fmtDate(parseDay(rec.date))}` : null;
+        return rec ? `${evidenceNameOf(rec.kind)}${versionNo >= 16 ? (/^hemoglobin a1c$/i.test(evidenceNameOf(rec.kind)) ? " test completed" : " completed") : ""} on ${fmtDate(parseDay(rec.date))}` : null;
       };
       const none = { searchable: false } as const;
       // Version 16 (LPP-16144): info (i) texts only on the columns the ticket names; Closure Source instead of Evidence; the sex column is called Gender.
@@ -657,7 +665,7 @@ export function CareGapsPageV3() {
           noResultsTitle={v8 ? "No care gaps found" : undefined}
           searchOnEnter={v11}
           applyFirst={v11}
-          columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"] } : undefined}
+          columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"], ...(versionNo >= 16 ? { resetLabel: "Reset to System Default", clearFilters: true } : {}) } : undefined}
           searchPlaceholder={versionNo >= 16 ? "Search by Member Name or Member ID" : v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
           searchPlaceholderCompact={versionNo >= 16 ? "Member name, Member ID" : "Member name, Tricare ID"}
           search={search}
@@ -673,7 +681,7 @@ export function CareGapsPageV3() {
           stickyHeader
           // Version 11: always room for about five rows, even on a short screen (the page scrolls instead of squeezing the table).
           maxHeight={v11 ? "max(calc(100vh - 360px), 400px)" : "calc(100vh - 360px)"}
-          onRowClick={(r) => navigate(`/members/${r.m.id}?tab=gaps`)}
+          onRowClick={(r) => navigate(versionNo >= 16 ? `/members/${r.m.id}/gaps/${r.g.def.code}` : `/members/${r.m.id}?tab=gaps`)}
           rowActions={(r) => (
             <RowActions
               id={r.m.id}
