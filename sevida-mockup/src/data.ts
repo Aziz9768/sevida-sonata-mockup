@@ -2117,7 +2117,7 @@ function evaluateCore(m: Member, code: MeasureCode, year: number): MeasureResult
         }
       }
       const old = tooOld(['cytology'], d(Y - 2, 1, 1));
-      const miss = R.hpvPath ? 'No cervical cytology in the last 3 years and no high-risk HPV test in the last 5' : 'No cervical cytology in the last 3 years';
+      const miss = R.hpvPath ? 'No cervical cytology in the last 3 years and no high-risk HPV test in the last 5' + (getVersion() >= 16 ? ' years' : '') : 'No cervical cytology in the last 3 years';
       add(4, 'unmet', `${miss}.${oldNote(old, `since 01/01/${Y - 2}`)}`, old ? src(old) : undefined);
       return finish('Gap', miss);
     }

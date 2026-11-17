@@ -1581,7 +1581,8 @@ export function MemberDetailPage() {
     {
       key: "gaps",
       label: "Care Gaps",
-      count: sum.open,
+      // Version 16 (LPP-16155): the tab lists open and closed gaps, so its number is the number of rows in it (the "(n)" in its title).
+      count: version.id >= 16 && year === MY ? gapsOf(m).filter((g) => g.status === "Open" || g.status === "Closed").length : sum.open,
       content: <CareGapsTabV3 m={m} />,
     },
     ...(v4 && !v11t

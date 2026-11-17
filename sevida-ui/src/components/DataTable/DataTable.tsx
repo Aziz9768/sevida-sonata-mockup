@@ -86,6 +86,8 @@ export interface DataTableProps<T> {
   title?: ReactNode;
   /** Keep the title exactly as written instead of Title Case (for a sentence-style heading). */
   titleAsWritten?: boolean;
+  /** A small icon before the title. */
+  titleIcon?: ReactNode;
   /** A saved view also keeps the rows per page, and "Reset to Default" puts them back (opt-in, off by default). */
   savedViewsKeepPageSize?: boolean;
   /** Extra buttons on the right of the toolbar (Export, Add...). */
@@ -219,6 +221,7 @@ export function DataTable<T>({
   toolbar = true,
   title,
   titleAsWritten,
+  titleIcon,
   savedViewsKeepPageSize,
   onResultCountChange,
   toolbarActions,
@@ -699,6 +702,7 @@ export function DataTable<T>({
       <TableToolbar
         title={title}
         titleAsWritten={titleAsWritten}
+        titleIcon={titleIcon}
         total={total}
         showSearch={showSearch}
         search={search}

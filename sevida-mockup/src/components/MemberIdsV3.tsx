@@ -6,6 +6,8 @@ import { Button, DataTable, IconButton, Modal } from "sevida-ui";
 import type { Column } from "sevida-ui";
 import type { Member } from "../data";
 import { memberIdsOf } from "../v3Data";
+import { displayName } from "../v16Data";
+import { getVersion } from "../version";
 import type { MemberId } from "../v3Data";
 
 /** A copy icon that says "Copied" for a moment after it is used. */
@@ -42,9 +44,13 @@ export function MemberIdsModalV3({
   open: boolean;
   onClose: () => void;
 }) {
+  const v16 = getVersion() >= 16;
+  // Version 16: "Tricare ID" is now "Member ID" (same as the Members list and the header), so the Sevida record number is called "Sevida ID".
+  const typeLabel = (t: string) => (v16 ? (t === "Tricare ID" ? "Member ID" : t === "Member ID" ? "Sevida ID" : t) : t);
   const ids = memberIdsOf(m);
+  const name = v16 ? displayName(m) : m.name;
   const columns: Column<MemberId>[] = [
-    { key: "type", header: "ID Type", accessor: (r) => r.type, nowrap: true },
+    { key: "type", header: "ID Type", accessor: (r) => typeLabel(r.type), nowrap: true },
     {
       key: "value",
       header: "ID",
@@ -62,19 +68,19 @@ export function MemberIdsModalV3({
       header: "Copy",
       align: "center",
       width: 72,
-      render: (r) => <CopyButton value={r.value} label={r.type} />,
+      render: (r) => <CopyButton value={r.value} label={typeLabel(r.type)} />,
     },
   ];
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`${m.name}: IDs`}
+      title={`${name}: IDs`}
       size="md"
       actions={<Button onClick={onClose}>Close</Button>}
     >
       <DataTable
-        ariaLabel={`IDs of ${m.name}`}
+        ariaLabel={`IDs of ${name}`}
         columns={columns}
         rows={ids}
         getRowId={(r) => r.type}
@@ -82,7 +88,7 @@ export function MemberIdsModalV3({
         toolbar={false}
       />
       <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
-        Sample data: only Member ID is real here. The other IDs are made up.
+        {v16 ? "Sample data: only the Sevida ID is real here. The other IDs are made up." : "Sample data: only Member ID is real here. The other IDs are made up."}
       </Typography>
     </Modal>
   );
