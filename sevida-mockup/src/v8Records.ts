@@ -94,12 +94,18 @@ export interface ClaimRow {
   to: Date;
   type: ClaimType;
   lines: Array<{ text: string; code: string; system: string }>;
-  payment: "Paid" | "Denied" | "Partially Paid";
+  payment: "Paid" | "Denied" | "Partially Paid" | "Not Paid";
   paid: string;
   provider: string;
   providerNpi: string;
   diagnoses: Array<{ code: string; text: string }>;
   updated: Date;
+  /** Version 16 (LPP-16156): when the claim reached the system (sample). */
+  created?: Date;
+  /** Version 16: place of service as "code - name" (sample). */
+  pos?: string;
+  /** Version 16: the source did not send a Service End Date. */
+  endMissing?: boolean;
   measures: string[];
   status: string;
   admission: Date | null;
@@ -110,6 +116,11 @@ export interface ClaimRow {
 
 /** One row per claim. Service lines of the same day, type and provider are one claim. */
 export const claimRows = (m: Member): ClaimRow[] => {
+  const base = claimRowsBase(m);
+  return getVersion() >= 16 ? claimsV16(m, base) : base;
+};
+
+const claimRowsBase = (m: Member): ClaimRow[] => {
   const evs = allRecords(m).filter((e) => v3TabOf(e) === "claims" && e.kind !== "Pharmacy");
   const groups = new Map<string, Evt[]>();
   for (const e of evs) {
@@ -159,6 +170,147 @@ export const claimRows = (m: Member): ClaimRow[] => {
       source: sourceName(e0),
     };
   });
+};
+
+/**
+ * Version 16 (LPP-16156): the sample claims look like a real member's claim history (all sample data, made up the same way every time):
+ * the office claims fall on the days of the member's completed visits, labs are billed by a laboratory, screenings by a hospital outpatient
+ * department, and some members also have an emergency room claim (Institutional), an observation stay or a dental claim (Dental).
+ * A few claims are Cancelled, Draft or Entered-in-Error, and a few come without a Service End Date or without a provider.
+ */
+const ORG_PROVIDERS = {
+  lab: { npi: "1000000900", name: "Sample Regional Laboratory" },
+  er: { npi: "1000000910", name: "Sample Community Hospital" },
+  dental: { npi: "1000000920", name: "Sample Family Dental" },
+};
+const claimsV16 = (m: Member, base: ClaimRow[]): ClaimRow[] => {
+  const age = DEMO_NOW.getFullYear() - m.dob.getFullYear();
+  const child = age < 18;
+  const isEm = (r: ClaimRow) => r.type === "P" && r.measures.length === 0 && r.lines.some((l) => /^99\d{3}$/.test(l.code));
+  const idFor = (d: Date, seed: number) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(10000 + (seed % 89999), 5)}`;
+  const clampNow = (d: Date) => (d > DEMO_NOW ? DEMO_NOW : d);
+
+  // 1. Office claims on the days of the completed visits (the newest claim to the newest visit).
+  const visitDays = [
+    ...new Set(
+      encRows(m)
+        .filter((r) => r.status === "Completed" && r.date <= DEMO_NOW)
+        .map((r) => r.date.getTime()),
+    ),
+  ].sort((a, b) => b - a);
+  const emClaims = base.filter(isEm).sort((a, b) => b.from.getTime() - a.from.getTime());
+  const moved = new Map<ClaimRow, Date>();
+  emClaims.forEach((r, i) => {
+    if (visitDays[i] !== undefined) moved.set(r, new Date(visitDays[i]));
+  });
+
+  const rows: ClaimRow[] = base.map((r) => {
+    const seed = h(`${m.id}${r.from.getTime()}${r.type}`);
+    const from = moved.get(r) ?? r.from;
+    const to = r.type === "I" ? addDays(from, Math.max(1, Math.round((r.to.getTime() - r.from.getTime()) / DAY))) : from;
+    const created = clampNow(addDays(from, 1 + (seed % 3)));
+    const updated = clampNow(addDays(created, h(`u16${r.id}`) % 21));
+    const allLab = r.lines.length > 0 && r.lines.every((l) => /^8\d{4}$/.test(l.code) || l.code === "36415");
+    const screening = r.lines.some((l) => /^(77067|45\d{3}|88\d{3})$/.test(l.code));
+    const pos = r.type === "I" ? "21 - Inpatient Hospital" : allLab ? "81 - Independent Laboratory" : screening ? "22 - On Campus Outpatient Hospital" : "11 - Office";
+    const org = allLab ? ORG_PROVIDERS.lab : null;
+    // A claim's status: most are Active.
+    const roll = h(`st16${m.id}${r.from.getTime()}${r.type}`) % 100;
+    const status = roll < 3 ? "Cancelled" : roll === 3 ? "Entered-in-Error" : roll < 6 ? "Draft" : "Active";
+    const unpaid = status !== "Active";
+    const noEnd = r.type !== "I" && h(`ne16${r.id}`) % 50 === 0;
+    const noProvider = !org && h(`np16${r.id}`) % 50 === 1;
+    return {
+      ...r,
+      id: idFor(from, seed),
+      from,
+      to,
+      created,
+      updated,
+      pos,
+      endMissing: noEnd,
+      status,
+      payment: unpaid ? "Not Paid" : r.payment,
+      paid: unpaid ? money(0) : r.paid,
+      provider: org ? org.name : noProvider ? DASH : r.provider,
+      providerNpi: org ? org.npi : noProvider ? DASH : r.providerNpi,
+      admission: r.type === "I" ? from : null,
+      discharge: r.type === "I" ? to : null,
+    };
+  });
+
+  // 2. Extra claims some members have: emergency room, observation stay, dental.
+  const mk = (kind: string, from: Date, extra: Partial<ClaimRow> & Pick<ClaimRow, "type" | "lines" | "diagnoses" | "pos" | "providerNpi" | "provider">): ClaimRow => {
+    const seed = h(`${m.id}${kind}${from.getTime()}`);
+    const created = clampNow(addDays(from, 1 + (seed % 3)));
+    const amt = 60 + (seed % 90000) / 100;
+    return {
+      id: idFor(from, seed),
+      from,
+      to: from,
+      payment: "Paid",
+      paid: money(amt),
+      updated: clampNow(addDays(created, seed % 14)),
+      created,
+      measures: [],
+      status: "Active",
+      admission: null,
+      discharge: null,
+      supplement: "N",
+      source: "TRICARE claims",
+      ...extra,
+    };
+  };
+  const dayInLastYear = (key: string) => addDays(DEMO_NOW, -(20 + (h(`${m.id}${key}`) % 330)));
+  if (h(`${m.id}er16`) % 6 === 0) {
+    const d = dayInLastYear("er");
+    const dx = child
+      ? [{ code: "R50.9", text: "Fever, unspecified" }]
+      : [{ code: h(`${m.id}erdx`) % 2 ? "R07.9" : "R10.9", text: h(`${m.id}erdx`) % 2 ? "Chest pain, unspecified" : "Unspecified abdominal pain" }];
+    rows.push(
+      mk("er", d, {
+        type: "I",
+        lines: [{ text: "Emergency department visit for the evaluation and management of a patient, low to moderate severity", code: "99283", system: "CPT" }],
+        diagnoses: dx,
+        pos: "23 - Emergency Room - Hospital",
+        provider: ORG_PROVIDERS.er.name,
+        providerNpi: ORG_PROVIDERS.er.npi,
+      }),
+    );
+  }
+  if (!child && h(`${m.id}obs16`) % 12 === 1) {
+    const d = dayInLastYear("obs");
+    rows.push(
+      mk("obs", d, {
+        type: "I",
+        to: addDays(d, 1),
+        lines: [{ text: "Hospital observation services, per hour", code: "G0378", system: "HCPCS" }],
+        diagnoses: [{ code: "R07.9", text: "Chest pain, unspecified" }],
+        pos: "22 - On Campus Outpatient Hospital",
+        provider: ORG_PROVIDERS.er.name,
+        providerNpi: ORG_PROVIDERS.er.npi,
+        admission: d,
+        discharge: addDays(d, 1),
+      }),
+    );
+  }
+  if (h(`${m.id}dental16`) % 2 === 0) {
+    const d = dayInLastYear("dental");
+    const cleaning = child
+      ? { text: "Prophylaxis - child", code: "D1120", system: "CDT" }
+      : { text: "Prophylaxis - adult", code: "D1110", system: "CDT" };
+    rows.push(
+      mk("dental", d, {
+        type: "D",
+        lines: [{ text: "Periodic oral evaluation - established patient", code: "D0120", system: "CDT" }, cleaning],
+        diagnoses: [],
+        pos: "11 - Office",
+        provider: ORG_PROVIDERS.dental.name,
+        providerNpi: ORG_PROVIDERS.dental.npi,
+      }),
+    );
+  }
+  return rows;
 };
 
 /* ------------------------------------------------------------------ diagnoses (LPP-16157) */

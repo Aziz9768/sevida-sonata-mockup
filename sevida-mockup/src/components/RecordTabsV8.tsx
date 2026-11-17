@@ -291,9 +291,26 @@ export function RecordTabV8({ m, tab }: { m: Member; tab: V8TabKey }) {
 }
 
 /* ------------------------------------------------------------------ claims */
+/** Version 16 (LPP-16156): the info (i) text of each Claims column. A column that is not in the list has no (i). */
+const CLAIM_HELP16: Record<string, string> = {
+  services: "What was done for the member: the name of each service on the claim, one per line.",
+  from: "The first day services on this claim were provided.",
+  to: "The last day services on this claim were provided. A dash means the source did not send one.",
+  code: "The ICD-10-CM diagnosis code or codes on the claim, one per line. A claim with no diagnosis, such as a dental claim, shows its service codes.",
+  ctype: "P is Professional, I is Institutional and D is Dental. Hover over the letter to see the full name.",
+  provider: "The billing provider who submitted the claim.",
+  id: "The number the payer gave this claim.",
+  line: "The position of each service line on the claim, starting at 1.",
+  status: "The status of the claim: Active, Cancelled, Draft or Entered-in-Error.",
+  updated: "The date this claim was last changed.",
+};
 function ClaimsV8({ m }: { m: Member }) {
   type R = ReturnType<typeof claimRows>[number];
-  const rows = useMemo(() => claimRows(m).sort((a, b) => b.from.getTime() - a.from.getTime()), [m]);
+  // Version 16 (LPP-16156): newest Service End Date first, then newest Service Start Date.
+  const rows = useMemo(
+    () => claimRows(m).sort((a, b) => (v16() ? b.to.getTime() - a.to.getTime() || b.from.getTime() - a.from.getTime() : b.from.getTime() - a.from.getTime())),
+    [m],
+  );
   const columns: Column<R>[] = [
     col<R>("id", "Claim ID", (r) => r.id, { s: true, group: "Claim", nowrap: true, primary: true, sortable: true }),
     col<R>("from", "Service Dates", (r) => r.from, {
@@ -365,7 +382,7 @@ function ClaimsV8({ m }: { m: Member }) {
         width: 240,
         render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code} - ${r.diagnoses[0].text}` : DASH),
       }),
-      col<R>("pos", "Place of Service", (r) => (r.type === "I" ? "21 - Inpatient Hospital" : "11 - Office"), { nowrap: true }),
+      col<R>("pos", "Place of Service", (r) => r.pos ?? (r.type === "I" ? "21 - Inpatient Hospital" : "11 - Office"), { nowrap: true }),
       "provider",
       ["status", "Claim Status"],
     ],
@@ -409,7 +426,7 @@ function ClaimsV8({ m }: { m: Member }) {
             ),
           },
           { ...by("from"), header: "Service Start Date" },
-          col<R>("to", "Service End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to) }),
+          col<R>("to", "Service End Date", (r) => (r.endMissing ? null : r.to), { sortable: true, nowrap: true, render: (r) => (r.endMissing ? DASH : day(r.to)) }),
           // LPP-16156: the Code is the ICD-10-CM diagnosis code or codes, one per line with the description; with no diagnosis it is the service code.
           col<R>("code", "Code", (r) => (r.diagnoses.length ? r.diagnoses.map((d) => d.code) : r.lines.map((l) => l.code)), {
             s: true,
@@ -429,7 +446,7 @@ function ClaimsV8({ m }: { m: Member }) {
               </Tooltip>
             ),
           }),
-          { ...by("pos"), help: "Where the service was provided: the place of service code and its name, for example 11 - Office." },
+          by("pos"),
           by("provider"),
         ],
     {
@@ -438,15 +455,15 @@ function ClaimsV8({ m }: { m: Member }) {
         { ...by("line"), header: "Line Number" },
         by("status"),
         // LPP-16156 lists "End Date" among the hidden columns: the last day of the claim, the same date as Service End Date.
-        col<R>("endDate", "End Date", (r) => r.to, { sortable: true, nowrap: true, render: (r) => day(r.to), help: "The last date services on this claim were provided. The same date as Service End Date." }),
-        { ...by("pdx"), help: "The main diagnosis on the claim: the first diagnosis in sequence, with its ICD-10-CM code and description." },
+        col<R>("endDate", "End Date", (r) => (r.endMissing ? null : r.to), { sortable: true, nowrap: true, render: (r) => (r.endMissing ? DASH : day(r.to)) }),
+        by("pdx"),
         by("updated"),
       ],
     },
-  );
+  ).map((c) => ({ ...c, help: CLAIM_HELP16[c.key] ?? "" }));
   const cols = v16() ? cols16 : v12() ? cols12 : colsOld;
   return (
-    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={v16() ? { key: "to", direction: "desc" } : { key: "from", direction: "desc" }} search="Search by Claim ID, Service or Code…" providerOf={(r) => r.provider} />
+    <RecordTable tab="claims" m={m} rows={rows} columns={cols} getRowId={(r) => r.id + r.from.getTime()} sort={v16() ? { key: "to", direction: "desc" } : { key: "from", direction: "desc" }} search={v16() ? "Search by Procedure/Service or Code…" : "Search by Claim ID, Service or Code…"} providerOf={(r) => r.provider} />
   );
 }
 
