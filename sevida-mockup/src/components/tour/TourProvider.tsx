@@ -5,6 +5,8 @@ import { Box, Button, Paper, Popper, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { useVersion } from "../../version";
 import { TOURS, screenFor } from "./tourSteps";
+import { VISUALS } from "./tourVisuals";
+import TouchAppOutlinedIcon from "@mui/icons-material/TouchAppOutlined";
 import type { TourScreen, TourStep } from "./tourSteps";
 
 /**
@@ -247,10 +249,10 @@ function TourOverlay({
           aria-modal={false}
           aria-label={`Product tour, ${TOURS[run.screen].label}: ${step.title}`}
           elevation={8}
-          sx={{ width: 340, maxWidth: "calc(100vw - 24px)", p: 2, borderRadius: "10px" }}
+          sx={{ width: 400, maxWidth: "calc(100vw - 24px)", maxHeight: "calc(100vh - 24px)", overflowY: "auto", p: 2, borderRadius: "10px" }}
         >
-          <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, mb: 0.5 }}>
-            <Typography component="h2" sx={{ fontSize: "1rem", fontWeight: 700, lineHeight: 1.35 }}>
+          <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, mb: 1 }}>
+            <Typography component="h2" sx={{ fontSize: "1.0625rem", fontWeight: 700, lineHeight: 1.35 }}>
               {step.title}
             </Typography>
             <Button
@@ -262,7 +264,25 @@ function TourOverlay({
               Skip tour
             </Button>
           </Box>
-          <Typography sx={{ fontSize: ".9375rem", color: "text.primary", mb: 2 }}>{step.body}</Typography>
+          {step.visual && VISUALS[step.visual]()}
+          <Typography sx={{ fontSize: ".9375rem", color: "text.primary", mb: step.detail ? 1 : 1.5 }}>{step.body}</Typography>
+          {step.detail && <Typography sx={{ fontSize: ".875rem", color: "text.secondary", mb: 1.5 }}>{step.detail}</Typography>}
+          {step.example && (
+            <Box sx={{ bgcolor: "rgba(80, 90, 200, .08)", borderLeft: "3px solid", borderColor: "secondary.main", borderRadius: "4px", px: 1.25, py: 0.75, mb: 1.5 }}>
+              <Typography sx={{ fontSize: ".8125rem" }}>
+                <Box component="span" sx={{ fontWeight: 700 }}>
+                  Example:{" "}
+                </Box>
+                {step.example}
+              </Typography>
+            </Box>
+          )}
+          {step.tryIt && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5, color: "secondary.main" }}>
+              <TouchAppOutlinedIcon sx={{ fontSize: 18 }} />
+              <Typography sx={{ fontSize: ".8125rem", fontWeight: 600 }}>Try it: {step.tryIt}</Typography>
+            </Box>
+          )}
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <Typography aria-live="polite" sx={{ fontSize: ".8125rem", color: "text.secondary" }}>
               {pos + 1} of {shown.length}
