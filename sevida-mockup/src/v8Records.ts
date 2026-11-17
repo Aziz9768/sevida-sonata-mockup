@@ -830,7 +830,16 @@ export const medRows = (m: Member): MedRow[] => {
     const e = { code: ndc, date: d } as Evt;
     return mk(`fill-${i}-${name}`, d, name, days, "NDC", ndc, providerFor(m, { provider: undefined } as Evt).npi, [], false, createdOn(e), updatedOn(e), "TRICARE pharmacy claims");
   });
-  return [...fromFiles, ...filler];
+  const all = [...fromFiles, ...filler];
+  if (getVersion() < 16) return all;
+  // Version 16 (LPP-16160): "One row per Medication". A drug filled more than once is one row: its latest fill.
+  const latest = new Map<string, MedRow>();
+  for (const r of all) {
+    const k = r.name.toLowerCase();
+    const have = latest.get(k);
+    if (!have || r.date.getTime() > have.date.getTime()) latest.set(k, r);
+  }
+  return [...latest.values()];
 };
 
 export interface ImmRow {
