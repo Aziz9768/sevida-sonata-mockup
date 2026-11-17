@@ -438,19 +438,17 @@ export interface EncRow {
   updated: Date;
   source: string;
 }
-/** Version 16 (LPP-16158): the eight statuses of the ticket appear in the sample data; the open ones (Planned to In Progress) only on the most recent visits. */
+/** Version 16 (LPP-16158): the eight statuses of the ticket appear in the sample data. Planned, Arrived, Triaged and In Progress visits are added by encRows (a future or a today visit). */
 const statusV16 = (e: Evt, seed: number): string => {
   const base = STATUS_ENC[e.status] ?? "Completed";
   if (base !== "Completed" || e.tag !== "other") return base;
   const roll = seed % 40;
-  const recent = DEMO_NOW.getTime() - e.date.getTime() <= 60 * DAY;
   if (roll === 0 || roll === 1) return "Canceled";
   if (roll === 2) return "Entered in Error";
   if (roll === 3) return "On Leave";
-  if (recent && roll >= 4 && roll <= 7) return ["Planned", "Arrived", "Triaged", "In Progress"][roll - 4];
   return "Completed";
 };
-export const encRows = (m: Member): EncRow[] => {
+const encBase = (m: Member): EncRow[] => {
   const all = allRecords(m);
   const dx = all.filter((e) => v3TabOf(e) === "diagnoses");
   return all
@@ -467,7 +465,9 @@ export const encRows = (m: Member): EncRow[] => {
         status: getVersion() >= 16 ? statusV16(e, seed) : STATUS_ENC[e.status] ?? "Completed",
         // Version 16 (LPP-16158): every visit shows a primary diagnosis; with no diagnosis near the date it is the routine-exam code for the member's age.
         diagnoses:
-          near.length === 0 && getVersion() >= 16
+          getVersion() >= 16 && !["Completed", "On Leave"].includes(statusV16(e, seed))
+            ? [] // Version 16: a visit that did not happen, or is not finished yet, has no diagnosis.
+            : near.length === 0 && getVersion() >= 16
             ? [
                 (e.date.getFullYear() - m.dob.getFullYear() < 18
                   ? { code: "Z00.129", text: "Encounter for routine child health examination without abnormal findings" }
@@ -491,6 +491,50 @@ export const encRows = (m: Member): EncRow[] => {
         source: sourceName(e),
       };
     });
+};
+
+/**
+ * Version 16 (LPP-16158): some members also have an upcoming visit (Planned, in the future) and a few have a visit that is happening today
+ * (Arrived, Triaged or In Progress), so all eight statuses of the ticket show up with dates that make sense. Sample data, made the same way every time.
+ */
+export const encRows = (m: Member): EncRow[] => {
+  const base = encBase(m);
+  if (getVersion() < 16) return base;
+  const ev0 = allRecords(m).find((e) => v3TabOf(e) === "visits");
+  if (!ev0) return base;
+  const child = DEMO_NOW.getFullYear() - m.dob.getFullYear() < 18;
+  const today = new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate());
+  const extra: EncRow[] = [];
+  const add = (kind: string, date: Date, status: string, type: string, reason: string, code: string) => {
+    const seed = h(`${m.id}enc${kind}`);
+    const e: Evt = { ...ev0, date, code, text: reason, status: kind, tag: "other", telehealth: false };
+    const created = addDays(DEMO_NOW, -(1 + (seed % 20)));
+    extra.push({
+      key: evKey(e),
+      e,
+      date,
+      end: null,
+      type,
+      status,
+      diagnoses: [],
+      provider: providerCell(m, ev0),
+      place: (child ? ["Madigan Pediatrics Clinic", "Madigan Family Medicine Clinic"] : ["Madigan Family Medicine Clinic", "Madigan Internal Medicine Clinic"])[seed % 2],
+      measures: [],
+      reason,
+      encId: `ENC-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(seed % 10000, 4)}`,
+      created: status === "Planned" ? created : today,
+      updated: status === "Planned" ? addDays(created, seed % 5) : today,
+      source: "MHS GENESIS",
+    });
+  };
+  if (h(`${m.id}planned16`) % 4 === 0) {
+    const d = addDays(today, 7 + (h(`${m.id}pl16`) % 53));
+    const wellness = h(`${m.id}plt16`) % 3 === 0;
+    add("planned", d, "Planned", wellness ? "Annual wellness visit" : "Office visit", wellness ? "Annual wellness visit" : "Follow-up office visit", wellness ? "99395" : "99213");
+  }
+  const open = h(`${m.id}open16`) % 25;
+  if (open >= 1 && open <= 3) add("open", today, ["Arrived", "Triaged", "In Progress"][open - 1], "Office visit", "Office visit", "99213");
+  return [...base, ...extra];
 };
 
 /* ------------------------------------------------------------------ labs (LPP-16159) */

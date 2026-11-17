@@ -578,7 +578,7 @@ function EncountersV8({ m }: { m: Member }) {
       "status",
       col<R>("dx", "Primary Diagnosis", (r) => r.diagnoses.map((d) => d.code), {
         width: 240,
-        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code}: ${r.diagnoses[0].text}` : DASH),
+        render: (r) => (r.diagnoses[0] ? `${r.diagnoses[0].code}${v16() ? " - " : ": "}${r.diagnoses[0].text}` : DASH),
       }),
       col<R>("pos", "Place of Service", (r) => posOf(r.place), { nowrap: true }),
       col<R>("facility", "Clinic/Facility", (r) => r.place, { width: 220 }),
@@ -611,7 +611,7 @@ function EncountersV8({ m }: { m: Member }) {
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
-          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: (r: R) => (/telehealth/i.test(r.place) ? r.place : clinicOf(m)) })), "pos", (x) => ({
+          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: () => "Madigan Army Medical Center" })), "pos", (x) => ({
             ...x,
             accessor: (r: R) => r.place,
           })),
@@ -619,10 +619,18 @@ function EncountersV8({ m }: { m: Member }) {
           col<R>("end", "End Date", (r) => r.end, { sortable: true, nowrap: true, render: (r) => day(r.end) }),
           ...h.filter((c) => c.key === "source"),
         ],
-      }).map((c) => (E16[c.key] ? { ...c, help: E16[c.key] } : c))
+      })
+        // The ticket gives Primary Diagnosis, Clinic / Facility and Created By no info text, so they have no (i). The hidden columns follow the ticket's order.
+        .map((c) => (c.key === "dx" || c.key === "facility" || c.key === "createdBy" ? { ...c, help: "" } : E16[c.key] ? { ...c, help: E16[c.key] } : c))
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "end", "source"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Visit Type or Provider…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="encounters" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Encounter Type or Provider…" : "Search by Visit Type or Provider…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: places of service and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ immunizations */
