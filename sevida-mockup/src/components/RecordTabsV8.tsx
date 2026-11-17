@@ -1159,9 +1159,11 @@ function ProceduresV8({ m }: { m: Member }) {
       ? "24 - Ambulatory Surgical Center"
       : /mastectomy/i.test(r.name)
         ? "21 - Inpatient Hospital"
-        : /mammogra|radiologic/i.test(r.name) || (/venipuncture|electrocardiogram|spirometry/i.test(r.name) && hashOf(r.key) % 6 === 0)
-          ? "22 - On Campus Outpatient Hospital"
-          : "11 - Office";
+        : /diagnostic mammogra/i.test(r.name)
+          ? "11 - Office"
+          : /screening mammogra|radiologic/i.test(r.name) || (/venipuncture|electrocardiogram|spirometry/i.test(r.name) && hashOf(r.key) % 6 === 0)
+            ? "22 - On Campus Outpatient Hospital"
+            : "11 - Office";
   const NO_HELP16 = ["psys", "created", "createdBy", "updated", "ppos"];
   const P16: Record<string, string> = {
     name: "The name of the procedure performed.",
@@ -1333,6 +1335,7 @@ function ProvidersV8({ m }: { m: Member }) {
     "Family nurse practitioner (PCP)": "Primary Care Provider",
     "OB/GYN": "OB/GYN",
     Radiology: "Radiologist",
+    "General surgery": "Surgeon",
     Gastroenterology: "Gastroenterologist",
     Dentist: "Dentist",
     Hospital: "Facility",

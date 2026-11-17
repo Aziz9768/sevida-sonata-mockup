@@ -21,7 +21,11 @@ export const dxSystem = () => (getVersion() >= 16 ? "ICD-10 Diagnosis" : "ICD-10
 const snomedName = () => (getVersion() >= 16 ? "SNOMED" : "SNOMED CT");
 
 /** Every record the files hold for the member, plus the routine demo records that fill each tab (see v3Filler). */
-export const allRecords = (m: Member): Evt[] => [...memberForYear(m, MY).events, ...v3Filler(m)];
+export const allRecords = (m: Member): Evt[] => {
+  const all = [...memberForYear(m, MY).events, ...v3Filler(m)];
+  // Version 16 (LPP-16162): a mastectomy is done by the sample surgeon (NPI 1000000244), so the Providers tab lists her too.
+  return getVersion() >= 16 ? all.map((e) => (e.tag === "mastectomy" && e.kind === "EHR procedure" && !e.provider ? { ...e, provider: "1000000244" } : e)) : all;
+};
 
 export const evKey = (e: Evt) => `${e.file}|${e.code}|${e.date.getTime()}|${e.text}`;
 
@@ -156,7 +160,8 @@ const claimRowsBase = (m: Member): ClaimRow[] => {
       type,
       // Version 16 (LPP-16156): a claim has one header and one or more lines. About one office claim in three also bills the blood draw.
       lines: [
-        ...g.map((x) => ({ text: x.text, code: x.code, system: x.system })),
+        // Version 16 (LPP-16162): a mammography claim line carries the same procedure name as the Procedures tab.
+        ...g.map((x) => ({ text: getVersion() >= 16 && isMammoClaim(x) ? (MAMMO_NAME[x.code] ?? x.text) : x.text, code: x.code, system: x.system })),
         ...(getVersion() >= 16 && type === "P" && seed % 3 === 0 && !g.some((x) => x.code === "36415")
           ? [{ text: "Collection of venous blood by venipuncture", code: "36415", system: "CPT" }]
           : []),
@@ -1108,15 +1113,17 @@ export interface ProcRow {
   updated: Date;
   source: string;
 }
-/** Version 16 (LPP-16162): who performed a procedure that a family doctor would not (Grace Kim is the radiologist, Daniel Okafor the surgeon-gynecologist of the sample). */
-const procPerformer16 = (e: Evt): string | null =>
-  e.code === "71046" ? lastFirst(providerName("1000000210")) : e.tag === "mastectomy" ? lastFirst(providerName("1000000129")) : null;
+/** Version 16 (LPP-16162): a chest X-ray is read by the radiologist of the sample (Grace Kim), not by the family doctor. */
+const procPerformer16 = (e: Evt): string | null => (e.code === "71046" ? lastFirst(providerName("1000000210")) : null);
+/** Version 16 (LPP-16162): the mammography claims of the sample are procedures too (the ticket's own example is "Screening mammography"). */
+const isMammoClaim = (e: Evt) => e.kind === "Claim" && e.tag === "mammogram" && e.system === "CPT" && e.status !== "denied";
+const MAMMO_NAME: Record<string, string> = { "77067": "Screening mammography, bilateral", "77065": "Diagnostic mammography, unilateral" };
 
 export const procRows = (m: Member): ProcRow[] => {
   const all = allRecords(m);
   const visits = all.filter((e) => v3TabOf(e) === "visits");
   const rows = all
-    .filter((e) => v3TabOf(e) === "procedures" && e.kind !== "Vaccine")
+    .filter((e) => (v3TabOf(e) === "procedures" && e.kind !== "Vaccine") || (getVersion() >= 16 && isMammoClaim(e)))
     .map((e) => {
       const near = visits
         .map((v) => ({ v, d: Math.abs(v.date.getTime() - e.date.getTime()) }))
@@ -1128,10 +1135,12 @@ export const procRows = (m: Member): ProcRow[] => {
         key: evKey(e),
         e,
         date: e.date,
-        name: e.text,
+        name: getVersion() >= 16 && isMammoClaim(e) ? (MAMMO_NAME[e.code] ?? e.text) : e.text,
         value:
           e.tag === "mammogram"
-            ? `Body site: ${e.side === "LT" ? "Left breast" : e.side === "RT" ? "Right breast" : "Both breasts"}`
+            ? getVersion() >= 16 && e.code === "77065"
+              ? `Body site: ${e.side === "RT" || (e.side !== "LT" && seed % 2) ? "Right" : "Left"} breast`
+              : `Body site: ${e.side === "LT" ? "Left breast" : e.side === "RT" ? "Right breast" : "Both breasts"}`
             : e.tag === "colonoscopy" || e.tag === "sigmoidoscopy"
               ? "Body site: Colon"
               : getVersion() >= 16
@@ -1219,6 +1228,7 @@ const TAXONOMY: Record<string, string> = {
   "Family nurse practitioner (PCP)": "363LF0000X",
   "OB/GYN": "207V00000X",
   Radiology: "2085R0202X",
+  "General surgery": "208600000X",
   Gastroenterology: "207RG0100X",
   Dentist: "122300000X",
   Hospital: "282N00000X",
