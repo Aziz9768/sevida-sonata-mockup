@@ -84,7 +84,9 @@ export function MembersListPage() {
             : "Search by member name, member ID or insurance number…"
         }
         searchPlaceholderCompact={
-          v3
+          v16
+            ? "Member name, Member ID"
+            : v3
             ? "Member name, Tricare ID"
             : v2 ? "Member name, ID, subscriber ID" : "Member name, ID, insurance no."
         }

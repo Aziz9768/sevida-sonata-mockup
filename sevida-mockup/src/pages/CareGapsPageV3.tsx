@@ -659,7 +659,7 @@ export function CareGapsPageV3() {
           applyFirst={v11}
           columnsPanel={v11 ? { tableOrder: true, search: true, groups: ["Identifiers", "Demographics", "Care Team & Engagement", "Care Gaps"] } : undefined}
           searchPlaceholder={versionNo >= 16 ? "Search by Member Name or Member ID" : v11 ? "Search by Member Name or Tricare ID" : "Search by Member Name or Tricare ID…"}
-          searchPlaceholderCompact="Member name, Tricare ID"
+          searchPlaceholderCompact={versionNo >= 16 ? "Member name, Member ID" : "Member name, Tricare ID"}
           search={search}
           onSearchChange={setSearch}
           filters={filters}
