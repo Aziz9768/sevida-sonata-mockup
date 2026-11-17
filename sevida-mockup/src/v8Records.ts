@@ -189,9 +189,9 @@ const claimRowsBase = (m: Member): ClaimRow[] => {
  * A few claims are Cancelled, Draft or Entered-in-Error, and a few come without a Service End Date or without a provider.
  */
 const ORG_PROVIDERS = {
-  lab: { npi: "1000000900", name: "Sample Regional Laboratory" },
-  er: { npi: "1000000910", name: "Sample Community Hospital" },
-  dental: { npi: "1000000920", name: "Sample Family Dental" },
+  lab: { npi: "1000000905", name: "Sample Regional Laboratory" },
+  er: { npi: "1000000913", name: "Sample Community Hospital" },
+  dental: { npi: "1000000921", name: "Sample Family Dental" },
 };
 const claimsV16 = (m: Member, base: ClaimRow[]): ClaimRow[] => {
   const age = DEMO_NOW.getFullYear() - m.dob.getFullYear();
@@ -507,7 +507,7 @@ const encBase = (m: Member): EncRow[] => {
  * Version 16 (LPP-16158): some members also have an upcoming visit (Planned, in the future) and a few have a visit that is happening today
  * (Arrived, Triaged or In Progress), so all eight statuses of the ticket show up with dates that make sense. Sample data, made the same way every time.
  */
-export const encRows = (m: Member): EncRow[] => {
+const encRowsRaw = (m: Member): EncRow[] => {
   const base = encBase(m);
   if (getVersion() < 16) return base;
   const ev0 = allRecords(m).find((e) => v3TabOf(e) === "visits");
@@ -740,7 +740,7 @@ const band = (m: Member) => {
   const age = MY - m.dob.getFullYear();
   return age < 1 ? "infant" : age < 18 ? "child" : "adult";
 };
-export const medRows = (m: Member): MedRow[] => {
+const medRowsRaw = (m: Member): MedRow[] => {
   const mk = (
     key: string,
     date: Date,
@@ -873,7 +873,7 @@ const IMM_FILL = {
   child: [["Influenza vaccine, seasonal, injectable", "141"], ["MMR vaccine", "03"], ["DTaP vaccine", "20"]],
   adult: [["Influenza vaccine, seasonal, injectable", "141"], ["Tdap vaccine", "115"], ["COVID-19 mRNA vaccine", "208"]],
 } as const;
-export const immRows = (m: Member): ImmRow[] => {
+const immRowsRaw = (m: Member): ImmRow[] => {
   const mk = (key: string, date: Date, vaccine: string, cvx: string, status: string, npi: string, measures: string[], e: Evt): ImmRow => ({
     key,
     date,
@@ -1255,6 +1255,8 @@ export const tabKeyOfRecord = (e: Evt): RecordTabKey =>
       : ({ claims: "claims", diagnoses: "diagnoses", labs: "labs", observations: "observations", procedures: "procedures", visits: "encounters" } as const)[v3TabOf(e)];
 
 export interface ProvRow {
+  /** Version 16: the primary care manager row has no records, so it has no interaction date. */
+  noInteraction?: boolean;
   npi: string;
   name: string;
   active: "Yes" | "No";
@@ -1295,12 +1297,20 @@ export const orgContact16 = (org: string, key: string): { address: string; phone
   const c = ORG_CONTACT[org];
   return c ? { address: c[0], phone: `(${c[1]}) 555-01${pad(h(`ph${key}`) % 100, 2)}` } : { address: DASH, phone: DASH };
 };
+/** Version 16: the data is as of the day before the run (10/15/2026 for the 10/16/2026 run), so nothing that already happened is dated after it. Planned visits keep their future dates. */
+const ASOF16 = new Date(DEMO_NOW.getFullYear(), DEMO_NOW.getMonth(), DEMO_NOW.getDate() - 1);
+const clampAsOf = <T extends { date: Date; status: string }>(rows: T[]): T[] =>
+  getVersion() < 16 ? rows : rows.map((r) => (r.status !== "Planned" && r.date > ASOF16 ? { ...r, date: ASOF16 } : r));
+export const encRows = (m: Member): EncRow[] => clampAsOf(encRowsRaw(m));
+export const medRows = (m: Member): MedRow[] => clampAsOf(medRowsRaw(m));
+export const immRows = (m: Member): ImmRow[] => clampAsOf(immRowsRaw(m));
 export const provRows = (m: Member): ProvRow[] => {
-  type Grp = { npi: string; name?: string; dates: Date[]; counts: Map<RecordTabKey, number>; last?: Evt };
+  type Grp = { npi: string; name?: string; dates: Date[]; planned: Date[]; counts: Map<RecordTabKey, number>; last?: Evt };
   const by = new Map<string, Grp>();
-  const addTo = (npi: string, date: Date, t: RecordTabKey, name?: string, last?: Evt) => {
-    const cur: Grp = by.get(npi) ?? { npi, name, dates: [], counts: new Map<RecordTabKey, number>(), last };
-    cur.dates.push(date);
+  const addTo = (npi: string, date: Date, t: RecordTabKey, name?: string, last?: Evt, planned = false) => {
+    const cur: Grp = by.get(npi) ?? { npi, name, dates: [], planned: [], counts: new Map<RecordTabKey, number>(), last };
+    // Version 16: a Planned visit counts in Related Records but is not an interaction yet, so it never sets Last Interaction.
+    (planned ? cur.planned : cur.dates).push(date);
     cur.counts.set(t, (cur.counts.get(t) ?? 0) + 1);
     by.set(npi, cur);
   };
@@ -1310,10 +1320,11 @@ export const provRows = (m: Member): ProvRow[] => {
     for (const p of providers) npiOf.set(/,\s?(MD|NP|DDS|DO|PA)$/.test(p.name) ? lastFirst(p.name) : p.name, p.npi);
     for (const o of Object.values(ORG_PROVIDERS)) npiOf.set(o.name, o.npi);
     const put = (rows: Array<{ provider: string }>, date: (r: never) => Date, t: RecordTabKey) => {
+      const isPlanned = (r: unknown) => (r as { status?: string }).status === "Planned";
       for (const r of rows) {
         if (!r.provider || r.provider === DASH) continue;
         const npi = npiOf.get(r.provider) ?? `19${pad(h(r.provider) % 100000000, 8)}`.slice(0, 10);
-        addTo(npi, (date as (x: typeof r) => Date)(r), t, r.provider);
+        addTo(npi, (date as (x: typeof r) => Date)(r), t, r.provider, undefined, isPlanned(r));
       }
     };
     put(claimRows(m), (r) => (r as unknown as ClaimRow).from, "claims");
@@ -1332,7 +1343,8 @@ export const provRows = (m: Member): ProvRow[] => {
   return [...by.values()].map((g) => {
     const p = providers.find((x) => x.npi === g.npi);
     const org = providers.find((x) => x.name === p?.org);
-    const dates = [...g.dates].sort((a, b) => a.getTime() - b.getTime());
+    // A provider with only Planned visits has no interaction yet: the earliest planned date, no later than the data date, stands in.
+    const dates = [...(g.dates.length ? g.dates : [new Date(Math.min(ASOF16.getTime(), ...g.planned.map((x) => x.getTime())))])].sort((a, b) => a.getTime() - b.getTime());
     const seed = h(g.npi);
     const individual = !!p && /,\s?(MD|NP|DDS|DO|PA)$/.test(p.name);
     return {

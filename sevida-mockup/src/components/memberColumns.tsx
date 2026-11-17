@@ -14,6 +14,7 @@ import {
   evidenceCodeOf,
   evidenceNameOf,
   fmtDay,
+  gapDueOf,
   parseDay,
   useGaps,
 } from "../careGaps";
@@ -35,7 +36,7 @@ import {
   fmtDate,
   measures,
   members,
-  resultsFor,
+  rawResultsFor,
   spokenLanguageOf,
   stateLabel,
   stateTone,
@@ -502,7 +503,7 @@ export function useMemberTableColumns(
             .filter(
               (x) =>
                 (!only || x.code === only) &&
-                resultsFor(m, yearOf(m))[x.code].state === "Gap",
+                rawResultsFor(m, yearOf(m))[x.code].state === "Gap",
             )
             .map((x) => x.code)
         : openOf(m).map((g) => g.def.code);
@@ -510,7 +511,7 @@ export function useMemberTableColumns(
     /** "BCS-E: Met" for every measure the member is in (not for measures that do not apply to them). */
     const resultLines = (m: MemberRow) =>
       measures.flatMap((x) => {
-        const st = resultsFor(m, yearOf(m))[x.code].state;
+        const st = rawResultsFor(m, yearOf(m))[x.code].state;
         return st === "Not eligible" ? [] : [`${x.code}: ${stateLabel[st]}`];
       });
     const facets = memberFacets<MemberRow>((m) => m, yearOf);
@@ -618,7 +619,7 @@ export function useMemberTableColumns(
         : (lastOutreach(m)?.result ?? NOT_CONTACTED);
     const excludedOf = (m: MemberRow) =>
       measures.filter(
-        (x) => resultsFor(m, yearOf(m))[x.code].state === "Excluded",
+        (x) => rawResultsFor(m, yearOf(m))[x.code].state === "Excluded",
       );
     // Inside one measure: how this member came out for it (Met, Not met, Excluded, Needs review).
     const resultColumn: Column<MemberRow> | null = only
@@ -626,11 +627,11 @@ export function useMemberTableColumns(
           key: "result",
           header: "Measure result",
           help: "How the member came out for this measure in the measurement year. Not met is the care gap. Needs review means the evidence is missing or conflicting, so it is not counted as a gap yet. Excluded members are not in the rate.",
-          accessor: (m) => stateLabel[resultsFor(m, yearOf(m))[only].state],
+          accessor: (m) => stateLabel[rawResultsFor(m, yearOf(m))[only].state],
           sortable: true,
           nowrap: true,
           render: (m) => {
-            const st = resultsFor(m, yearOf(m))[only].state;
+            const st = rawResultsFor(m, yearOf(m))[only].state;
             return <StatusChip tone={stateTone[st]} label={stateLabel[st]} />;
           },
           filter: {
@@ -1081,7 +1082,7 @@ export function useMemberTableColumns(
       measures.filter(
         (x) =>
           (!only || x.code === only) &&
-          resultsFor(m, yearOf(m))[x.code].state !== "Not eligible",
+          rawResultsFor(m, yearOf(m))[x.code].state !== "Not eligible",
       );
     const eligibleCol: Column<MemberRow> = {
       key: "eligible",
@@ -1565,6 +1566,12 @@ export function useMemberTableColumns(
       const by = (k: string) => base.find((c) => c.key === k)!;
       const allBy = (k: string) => all.find((c) => c.key === k)!;
       const dueDate = new Date(CURRENT_YEAR, 11, 31);
+      // Version 16: every open gap has its own due date, so the earliest one is the soonest of them.
+      const earliestDue = (m: MemberRow) => {
+        const open = openOf(m);
+        if (!open.length) return null;
+        return getVersion() >= 16 ? new Date(Math.min(...open.map((g) => gapDueOf(g.id).getTime()))) : dueDate;
+      };
       const sexOf = (m: MemberRow) => {
         const g = genderV3(m);
         return g === "Other" ? "Unknown" : g;
@@ -1815,8 +1822,8 @@ export function useMemberTableColumns(
           help: "Date on which the next recommended action is due to close an open gap. For members with multiple gaps, the earliest date is given.",
           group: "Care Gaps",
           defaultHidden: getVersion() >= 12 ? true : undefined,
-          accessor: (m) => (openOf(m).length ? dueDate : null),
-          render: (m) => dateCell(openOf(m).length ? dueDate : null),
+          accessor: (m) => earliestDue(m),
+          render: (m) => dateCell(earliestDue(m)),
           sortable: true,
           nowrap: true,
           searchable: false,

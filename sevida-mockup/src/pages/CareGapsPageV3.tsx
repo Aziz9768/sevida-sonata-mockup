@@ -19,7 +19,7 @@ import { TableLink } from "../components/TableLink";
 import { missingEvidenceFor } from "../components/memberColumns";
 import { LlmText } from "../components/LlmText";
 import { GapStatusChip } from "../components/GapStatusChip";
-import { evidenceNameOf, fmtDay, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
+import { evidenceNameOf, fmtDay, gapDueOf, gapPriority, gapStatusTone, gapStatusesV12, parseDay, priorityRank, useGaps } from "../careGaps";
 import type { GapView } from "../careGaps";
 import { CURRENT_YEAR, DEMO_NOW, fmtDate, hashOf, measures, v3Extra } from "../data";
 import { encRows } from "../v8Records";
@@ -273,13 +273,13 @@ export function CareGapsPageV3() {
           ? "Date by which the gap needs to be closed in order to manage member's care. Also impacts the Gap Met % rates."
           : "Gaps are due by the end of the measurement year: the number of days left, then the date.",
         group: "Care Gaps",
-        accessor: (r) => (v8 && r.g.status !== "Open" && (v12 || r.g.status === "Closed") ? null : DUE),
+        accessor: (r) => (v8 && r.g.status !== "Open" && (v12 || r.g.status === "Closed") ? null : versionNo >= 16 ? gapDueOf(r.g.id) : DUE),
         // LPP-16144: MM/DD/YYYY only, and N/A once the gap is closed.
         render: (r) =>
           v8
             ? r.g.status === "Closed" || r.g.status === "Excluded"
               ? "N/A"
-              : fmtDate(DUE)
+              : fmtDate(versionNo >= 16 ? gapDueOf(r.g.id) : DUE)
             : `${daysToDue()} days (${fmtDate(DUE)})`,
         sortable: true,
         nowrap: true,
@@ -339,7 +339,7 @@ export function CareGapsPageV3() {
       {
         key: "age",
         header: "Age",
-        ...(v8 ? {} : { help: "Age today: days under 1 month, months under 1 year, then years and months." }),
+        ...(v8 ? (versionNo >= 16 ? { help: "The member's age today. A measure uses the age on December 31 of the measurement year, so a member who turns the measure's minimum age later this year is already listed." } : {}) : { help: "Age today: days under 1 month, months under 1 year, then years and months." }),
         accessor: (r) => ageParts(r.m.dob).days,
         render: (r) => ageLabel(r.m.dob),
         sortable: true,
@@ -566,7 +566,7 @@ export function CareGapsPageV3() {
         base(g("gapStatus"), { group: "Care Gaps", ...(v16 ? { help: "Indicates whether the care gap is open or closed. Open gaps require actions. Excluded means the member is out of the measure." } : {}) }),
         ...(v12
           ? [
-              { key: "priority", header: "Priority", help: v16 ? "How urgent the gap is, based on how close it is to its due date. High: 45 days or fewer left. Medium: 46 to 90 days left. Low: more than 90 days left." : "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
+              { key: "priority", header: "Priority", help: v16 ? "How urgent the gap is, based on how close it is to its due date. High: 30 days or fewer left. Medium: 31 to 60 days left. Low: more than 60 days left." : "How urgent an open gap is: High, Medium or Low. The same value is shown on the member's Care Gaps tab and on the Care Gap Details page. Tier definitions to be confirmed. Sample data.", accessor: (r: GapRow) => (v16 ? rankOf(r) : priorityOf(r)), filterAccessor: (r: GapRow) => priorityOf(r) ?? "N/A", render: (r: GapRow) => priorityOf(r) ?? "N/A", sortable: true, nowrap: true, group: "Care Gaps", filterOrder: 14, filter: { type: "multiselect" as const, ordered: true, options: opt(["High", "Medium", "Low"]) }, ...none } as Column<GapRow>,
             ]
           : []),
         base(g("found"), { group: "Care Gaps", ...(v16 ? { help: "Date on which the gap was identified. Based on information used to open the gap - e.g. encounter date if known, otherwise shows the run date when the Gaps in Care engine was last run." } : {}) }),

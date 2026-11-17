@@ -281,7 +281,15 @@ export const MISSING_SHORT: Record<MeasureCode, string> = {
 
 /** Version 8 (LPP-16144): the Recommended Actions text is a sentence written by the AI, not a short label. Open gaps only. */
 export const RECOMMENDED_SENTENCE = (code: MeasureCode, year: number): string =>
-  ({
+  getVersion() >= 16
+    ? ({
+        "BCS-E": "Schedule a mammogram before the due date.",
+        "CCS-E": "Schedule a cervical cancer screening (cervical cytology) before the due date.",
+        "COL-E": "Schedule a colonoscopy, or send a stool-based screening test kit, before the due date.",
+        GSD: "Order an HbA1c test and record the result before the due date.",
+        WCV: "Schedule a well-care visit with a primary care provider before the due date.",
+      })[code]
+    : ({
     "BCS-E": `Schedule a mammogram before Dec 31, ${year}.`,
     "CCS-E": `Schedule a cervical cancer screening (cervical cytology) before Dec 31, ${year}.`,
     "COL-E": `Schedule a colonoscopy, or send a stool-based screening test kit, before Dec 31, ${year}.`,

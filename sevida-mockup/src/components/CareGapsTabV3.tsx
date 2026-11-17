@@ -10,6 +10,7 @@ import {
   fmtWhen,
   gapStatusTone,
   evidenceRoles,
+  gapDueOf,
   gapPriority,
   gapRole,
   gapStatuses,
@@ -19,7 +20,7 @@ import {
   useGaps,
 } from "../careGaps";
 import type { GapStatus } from "../careGaps";
-import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, resultsFor } from "../data";
+import { DEMO_NOW, MY, YEARS, fmtDate, hashOf, measures, rawResultsFor } from "../data";
 import type { Member, MeasureCode } from "../data";
 import { RECOMMENDED_SENTENCE, cgGapOptions, cgLabel } from "../v3Data";
 import { getVersion } from "../version";
@@ -86,8 +87,8 @@ export function CareGapsTabV3({ m }: { m: Member }) {
     // date inside that year. Its status follows the same measure this year, so the tab never disagrees with "# Open Gaps":
     // still a gap this year = not listed again (it is the same open gap); closed this year = Closed; met this year = Closed by that evidence; otherwise not listed.
     const past: Row[] = YEARS.filter((y) => y !== MY).flatMap((y) => {
-      const res = resultsFor(m, y);
-      const cur = resultsFor(m, MY);
+      const res = rawResultsFor(m, y);
+      const cur = rawResultsFor(m, MY);
       return measures
         .filter((x) => res[x.code].state === "Gap")
         .flatMap((x): Row[] => {
@@ -154,7 +155,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
   // Open gaps first by Priority, then Closed, then Excluded. Priority is the same sample value as on the Care Gaps list and the details page.
   if (getVersion() >= 12) {
     const dash = "--";
-    const dueOf = (r: Row) => new Date(r.year, 11, 31);
+    const dueOf = (r: Row) => (getVersion() >= 16 ? gapDueOf(r.id, r.year) : new Date(r.year, 11, 31));
     const prio = (r: Row) => gapPriority({ id: r.id, status: r.status, due: dueOf(r) });
     const pcm = (() => {
       const p = pcmPerson(m);
@@ -200,7 +201,7 @@ export function CareGapsTabV3({ m }: { m: Member }) {
       {
         key: "priority",
         header: "Priority",
-        help: getVersion() >= 16 ? "How urgent an open gap is, based on the days left until the due date. High: 45 days or fewer. Medium: 46 to 90 days. Low: more than 90 days. The same value as on the Care Gaps list." : "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
+        help: getVersion() >= 16 ? "How urgent an open gap is, based on the days left until the due date. High: 30 days or fewer. Medium: 31 to 60 days. Low: more than 60 days. The same value as on the Care Gaps list." : "How urgent an open gap is: High, Medium or Low. The same value as on the Care Gaps list. Tier definitions to be confirmed. Sample data.",
         accessor: (r) => priorityRank(prio(r)),
         filterAccessor: (r) => prio(r) ?? "N/A",
         filter: { type: "multiselect", options: opt(["High", "Medium", "Low"]) },

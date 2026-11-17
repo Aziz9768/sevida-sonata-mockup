@@ -370,6 +370,17 @@ function Protected() {
   useEffect(() => {
     if (user) clearReturnPath();
   }, [user]);
+  // Version 16: one browser tab title pattern, "Page, Sevida". The dashboards and the not-found page set their own in the same pattern.
+  useEffect(() => {
+    if (version.id < 16) return;
+    const parts = pathname.split("/").filter(Boolean);
+    const title =
+      parts[0] === "care-gaps" ? "Care Gaps List"
+      : parts[0] === "members" ? (parts.length === 1 ? "Members List" : parts[2] === "gaps" ? "Care Gap Details" : "Member Details")
+      : parts[0] === "access-log" ? "Access Log"
+      : null;
+    if (title) document.title = `${title}, Sevida`;
+  }, [pathname, version.id]);
   // An expired session (a return path is saved) ends on the Session Expired page, a normal sign-out on the sign-in page.
   if (!user)
     return (
@@ -513,7 +524,7 @@ function Protected() {
           path="/dashboard"
           element={
             <MenuGate path="/dashboard">
-              <DashboardPage />
+              {version.id >= 16 ? <Navigate to="/dashboards" replace /> : <DashboardPage />}
             </MenuGate>
           }
         />
@@ -567,7 +578,7 @@ function Protected() {
           path="/dashboard/:code"
           element={
             <MenuGate path="/dashboard">
-              <MeasureDashboardPage />
+              {version.id >= 16 ? <Navigate to="/dashboards" replace /> : <MeasureDashboardPage />}
             </MenuGate>
           }
         />
@@ -575,7 +586,7 @@ function Protected() {
           path="/measures"
           element={
             <MenuGate path="/measures">
-              <MeasuresPage />
+              {version.id >= 16 ? <Navigate to="/dashboards" replace /> : <MeasuresPage />}
             </MenuGate>
           }
         />
@@ -583,7 +594,7 @@ function Protected() {
           path="/measures/:code"
           element={
             <MenuGate path="/measures">
-              <MeasureDetailPage />
+              {version.id >= 16 ? <Navigate to="/dashboards" replace /> : <MeasureDetailPage />}
             </MenuGate>
           }
         />

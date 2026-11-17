@@ -47,6 +47,41 @@ const NOUN: Record<V8TabKey, string> = {
   providers: "Providers",
 };
 
+/** The rows of the Providers tab. The tab number counts the same rows. Version 16 adds the primary care manager from the header (no records of their own, so no Last Interaction). */
+function providerRows(m: Member) {
+  const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime() || (v16() ? a.name.localeCompare(b.name) : 0));
+  // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
+  const pcm = v16() ? pcmPerson(m) : undefined;
+  if (pcm && !base.some((r) => r.npi === pcm.npi)) {
+    const [first, ...rest] = pcm.name.split(" ");
+    const last = new Date(0);
+    const early = base.length ? new Date(Math.min(...base.map((r) => r.first.getTime()))) : DEMO_NOW;
+    base.push({
+      npi: pcm.npi,
+      // Like the other providers, the manager has a credential after the name.
+      name: `${rest.join(" ")}, ${first} ${["MD", "DO", "NP", "PA"][hashOf(pcm.npi) % 4]}`,
+      active: "Yes",
+      entity: "I",
+      specialty: "Primary Care",
+      org: clinicOf(m),
+      last,
+      first: last,
+      related: [],
+      noInteraction: true,
+      prescribing: "N",
+      taxonomy: DASH,
+      orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
+      phone: v16() ? orgContact16(clinicOf(m), pcm.npi).phone : `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
+      address: v16() ? orgContact16(clinicOf(m), pcm.npi).address : "9040 Jackson Ave, Tacoma, WA 98431",
+      created: early,
+      updated: early,
+      source: "MHS GENESIS",
+    });
+  }
+  if (v16() && clinicOf(m) !== "–") for (const r of base) if (r.org === "Sample Family Medicine Group") r.org = clinicOf(m);
+  return v16() ? base.sort((a, b) => b.last.getTime() - a.last.getTime() || a.name.localeCompare(b.name)) : base;
+}
+
 /** How many rows each tab has, for the number on the tab. */
 export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
   claims: claimRows(m).length,
@@ -57,7 +92,7 @@ export const v8Counts = (m: Member): Record<V8TabKey, number> => ({
   medications: medRows(m).length,
   observations: obsRows(m).length,
   procedures: procRows(m).length,
-  providers: provRows(m).length,
+  providers: v16() ? providerRows(m).length : provRows(m).length,
 });
 
 const GREEN = ["Active", "Completed", "Paid", "Final", "Yes"];
@@ -433,6 +468,7 @@ function ClaimsV8({ m }: { m: Member }) {
           {
             ...by("services"),
             header: "Procedure/Service",
+            sortable: true,
             // LPP-16156: one line per service line, each at most 2 lines, then "…" with the full text in a tooltip.
             render: (r: R) => (
               <>
@@ -629,9 +665,10 @@ function EncountersV8({ m }: { m: Member }) {
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
-          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: () => "Madigan Army Medical Center" })), "pos", (x) => ({
+          mapKey(mapKey(c, "facility", (x) => ({ ...x, header: "Clinic / Facility", accessor: () => (clinicOf(m) === "–" ? "Madigan Army Medical Center" : clinicOf(m)) })), "pos", (x) => ({
             ...x,
-            accessor: (r: R) => r.place,
+            // The room or department inside that clinic, so the two columns never repeat each other.
+            accessor: (r: R) => (r.place === DASH ? r.place : r.place.replace(/^Madigan /, "").replace(/^Army Medical Center$/, "Main Campus")),
           })),
         hidden: (h) => [
           col<R>("end", "End Date", (r) => r.end, { sortable: true, nowrap: true, render: (r) => day(r.end) }),
@@ -1233,36 +1270,7 @@ function ProceduresV8({ m }: { m: Member }) {
 function ProvidersV8({ m }: { m: Member }) {
   type R = ReturnType<typeof provRows>[number];
   // Name A to Z; providers with the same name: the most recent interaction first (the table sort is stable).
-  const rows = useMemo(() => {
-    const base = provRows(m).sort((a, b) => b.last.getTime() - a.last.getTime() || (v16() ? a.name.localeCompare(b.name) : 0));
-    // Version 16: the primary care manager is the one the header and the dashboards show, so the manager has a row here too.
-    const pcm = v16() ? pcmPerson(m) : undefined;
-    if (pcm && !base.some((r) => r.npi === pcm.npi)) {
-      const [first, ...rest] = pcm.name.split(" ");
-      const last = base.length ? base[0].last : DEMO_NOW;
-      const early = base.length ? new Date(Math.min(...base.map((r) => r.first.getTime()))) : last;
-      base.push({
-        npi: pcm.npi,
-        name: `${rest.join(" ")}, ${first}`,
-        active: "Yes",
-        entity: "I",
-        specialty: "Primary Care",
-        org: clinicOf(m),
-        last,
-        first: early,
-        related: [],
-        prescribing: "N",
-        taxonomy: DASH,
-        orgNpi: `19${String(hashOf(pcm.npi) % 100000000).padStart(8, "0")}`,
-        phone: v16() ? orgContact16(clinicOf(m), pcm.npi).phone : `(253) 555-0${String(100 + (hashOf(pcm.npi) % 900))}`,
-        address: v16() ? orgContact16(clinicOf(m), pcm.npi).address : "9040 Jackson Ave, Tacoma, WA 98431",
-        created: early,
-        updated: last,
-        source: "MHS GENESIS",
-      });
-    }
-    return v16() ? base.sort((a, b) => b.last.getTime() - a.last.getTime() || a.name.localeCompare(b.name)) : base;
-  }, [m]);
+  const rows = useMemo(() => providerRows(m), [m]);
   const columns: Column<R>[] = [
     col<R>("name", "Provider", (r) => r.name, { s: true, group: "Provider", sortable: true, alwaysVisible: true, width: 240 }),
     col<R>("npi", "Provider ID", (r) => r.npi, { s: true, group: "Provider", nowrap: true, help: "The provider's NPI." }),
@@ -1270,7 +1278,7 @@ function ProvidersV8({ m }: { m: Member }) {
     col<R>("entity", "Entity Type", (r) => (r.entity === "I" ? "Individual" : "Organization"), { group: "Provider", nowrap: true }),
     col<R>("specialty", "Specialty", (r) => r.specialty, { s: true, group: "Provider", sortable: true }),
     col<R>("org", "Organization", (r) => r.org, { s: true, group: "Provider", sortable: true }),
-    col<R>("last", "Last Interaction", (r) => r.last, { group: REL, sortable: true, nowrap: true, render: (r) => day(r.last) }),
+    col<R>("last", "Last Interaction", (r) => r.last, { group: REL, sortable: true, nowrap: true, render: (r) => (r.noInteraction ? DASH : day(r.last)) }),
     col<R>("related", "Related Records", (r) => r.related.map((x) => `${x.label} (${x.n})`), {
       group: REL,
       width: 220,
@@ -1284,7 +1292,7 @@ function ProvidersV8({ m }: { m: Member }) {
           )),
         ),
     }),
-    col<R>("first", "First Interaction", (r) => r.first, { group: REL, defaultHidden: true, sortable: true, nowrap: true, render: (r) => day(r.first) }),
+    col<R>("first", "First Interaction", (r) => r.first, { group: REL, defaultHidden: true, sortable: true, nowrap: true, render: (r) => (r.noInteraction ? DASH : day(r.first)) }),
     col<R>("prescribing", "Prescribing Provider", (r) => r.prescribing, { group: "Provider", defaultHidden: true, nowrap: true }),
     col<R>("taxonomy", "Taxonomy Code", (r) => r.taxonomy, { group: "Provider", defaultHidden: true, nowrap: true }),
     col<R>("orgNpi", "Organization NPI", (r) => r.orgNpi, { group: "Provider", defaultHidden: true, nowrap: true }),
@@ -1359,7 +1367,7 @@ function ProvidersV8({ m }: { m: Member }) {
     Hospital: "Facility",
     Clinic: "Facility",
     Laboratory: "Laboratory",
-    "Dental clinic": "Dental Clinic",
+    "Dental clinic": "Dental clinic",
   };
   const role16 = (r: R) => (r.npi === pcmNpi ? "PCM" : (ROLE16[r.specialty] ?? "Encounter Provider"));
   const taxonomy16 = (r: R): string[] => {

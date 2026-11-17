@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { Box, Link } from "@mui/material";
+import { getVersion } from "../version";
 
 /**
  * Text written by the AI (Gap Details, Recommended Actions): at most `lines` lines, then "…see more" that opens the full message
@@ -66,8 +67,8 @@ export function LlmText({
                     position: "absolute",
                     right: 0,
                     bottom: 0,
-                    pl: 3,
-                    background: "linear-gradient(to right, rgba(255,255,255,0), #fff 1.25rem)",
+                    pl: getVersion() >= 16 ? 3.5 : 3,
+                    background: "linear-gradient(to right, rgba(255,255,255,0), #fff " + (getVersion() >= 16 ? "1rem" : "1.25rem") + ")",
                     lineHeight: "inherit",
                   }),
             }}

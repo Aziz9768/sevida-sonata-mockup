@@ -39,7 +39,7 @@ import { MemberHeaderV4 } from "../components/MemberHeaderV4";
 import { tricareIdOf, genderV3, militaryV3 } from "../v3Data";
 import { groupOfRecord } from "../components/ClinicalTab";
 import { diagnosesOfYear } from "../components/memberColumns";
-import { useVersion } from "../version";
+import { getVersion, useVersion } from "../version";
 import { RecordsTab, isRecordTab, recordTabOrder } from "../components/RecordsTab";
 import { RecordTabV3, recordsOf } from "../components/RecordTabV3";
 import { RecordTabV8, v8Counts } from "../components/RecordTabsV8";
@@ -84,7 +84,7 @@ import {
   productLineOfMember,
   primaryCareOf,
   raceNames,
-  resultsFor,
+  rawResultsFor,
   rulesOfYear,
   stateLabel,
   stateTone,
@@ -138,7 +138,7 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
   // Care-gap work exists for the current year only.
   const get = (mm: Member, code: MeasureCode) =>
     year === MY ? getGap(mm, code) : null;
-  const results = resultsFor(m, year);
+  const results = rawResultsFor(m, year);
   const rows: MeasureRow[] = measures
     .filter((def) => results[def.code].state !== "Not eligible")
     .map((def) => ({
@@ -336,7 +336,7 @@ function MeasuresTab({ m, year }: { m: Member; year: number }) {
 /** Version 2: the measures this member is excluded from and why. It replaces the "Excluded from" column of the Members list. */
 function ExclusionsTab({ m, year }: { m: Member; year: number }) {
   const navigate = useNavigate();
-  const results = resultsFor(m, year);
+  const results = rawResultsFor(m, year);
   const rows = measures
     .filter((def) => results[def.code].state === "Excluded")
     .map((def) => ({ def, r: results[def.code] }));
@@ -405,7 +405,7 @@ function LastUpdatedNote({ files }: { files: FileId[] }) {
       {files
         .map((id) => {
           const got = dataFiles.find((f) => f.id === id)?.receivedOn;
-          return `${got ? fmtDate(got) : "not received yet"} (${id}.csv)`;
+          return getVersion() >= 16 ? (got ? fmtDate(got) : "not received yet") : `${got ? fmtDate(got) : "not received yet"} (${id}.csv)`;
         })
         .join(", ")}
     </Typography>
@@ -467,7 +467,7 @@ function DataFreshnessDetails() {
  */
 function PrintSummary({ m, year }: { m: Member; year: number }) {
   const { gapsOf } = useGaps();
-  const results = resultsFor(m, year);
+  const results = rawResultsFor(m, year);
   const enroll = enrollmentStatusOf(m, DEMO_NOW);
   const gaps = year === MY ? gapsOf(m) : [];
   const th = {
@@ -937,7 +937,7 @@ function EnrollmentTab({ m: base, year }: { m: Member; year: number }) {
   const now =
     m.segments.find((s) => s.end >= Y_END) ?? sorted[sorted.length - 1];
   const ce = continuouslyEnrolled(m, year);
-  const r = resultsFor(base, year);
+  const r = rawResultsFor(base, year);
   const notEnrolled = measures.filter((x) =>
     r[x.code].reason.startsWith("Not enrolled"),
   );
@@ -1105,7 +1105,7 @@ export function MemberHeader({
   const v3 = version.id >= 3;
   const [open, setOpen] = useState(false);
   const { gapsOf } = useGaps();
-  const results = resultsFor(m, year);
+  const results = rawResultsFor(m, year);
   const first = [...memberForYear(m, year).segments].sort(
     (a, b) => a.start.getTime() - b.start.getTime(),
   )[0];
@@ -1675,7 +1675,7 @@ export function MemberDetailPage() {
                     key: "exclusions",
                     label: "Excluded from",
                     count: measures.filter(
-                      (d) => resultsFor(m, year)[d.code].state === "Excluded",
+                      (d) => rawResultsFor(m, year)[d.code].state === "Excluded",
                     ).length,
                     content: <ExclusionsTab m={m} year={year} />,
                   },

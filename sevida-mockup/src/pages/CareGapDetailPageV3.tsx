@@ -26,6 +26,8 @@ import {
   fmtDay,
   fmtWhen,
   evidenceRoles,
+  gapDaysLeft,
+  gapDueOf,
   gapPriority,
   gapStatusTone,
   recordRole,
@@ -106,6 +108,9 @@ const V11_LEFT_GSD = ["A glycemic status assessment (HbA1c) during the measureme
 
 /** "47 Days (12/31/2026)": time left to the due date (LPP-16153 / Mansi). */
 const timeLeft = () => `${daysToDue()} Days (${fmtDate(DUE)})`;
+/** Version 16: each open gap has its own due date. */
+const dueFor = (g: { id: string }) => (getVersion() >= 16 ? gapDueOf(g.id) : DUE);
+const daysLeft = (g: { id: string }) => (getVersion() >= 16 ? gapDaysLeft(gapDueOf(g.id)) : daysToDue());
 
 function Overview({ g }: { g: GapView }) {
 
@@ -192,7 +197,7 @@ function Overview({ g }: { g: GapView }) {
               ? "N/A"
               : "Closed"
             : v8 && !v11
-              ? fmtDate(DUE)
+              ? fmtDate(dueFor(g))
               : timeLeft()}
         </Field>
       </Stack>
@@ -268,7 +273,7 @@ function OverviewV12({ g }: { g: GapView }) {
   const summary =
     getVersion() >= 16 ? (
       <Card title="Gap Summary">
-        <Table size="small" aria-label="Gap Summary">
+        <Table size="small" aria-label="Gap Summary" sx={{ "& .MuiTableCell-root": { fontFamily: "inherit" } }}>
           <TableHead>
             <TableRow>
               {["Status", "Priority", "Gap Identified Date", "Due Date", "Days Remaining"].map((h) => (
@@ -283,8 +288,8 @@ function OverviewV12({ g }: { g: GapView }) {
               <TableCell>{excluded ? <StatusChip tone={gapStatusTone.Excluded} label="Excluded" /> : <GapStatusChip closed={closed} />}</TableCell>
               <TableCell>{gapPriority(g) ?? "N/A"}</TableCell>
               <TableCell>{fmtDate(g.identified)}</TableCell>
-              <TableCell>{g.status === "Open" ? fmtDate(DUE) : "N/A"}</TableCell>
-              <TableCell>{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? fmtDate(dueFor(g)) : "N/A"}</TableCell>
+              <TableCell>{g.status === "Open" ? `${daysLeft(g)} Days` : "N/A"}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -304,7 +309,7 @@ function OverviewV12({ g }: { g: GapView }) {
               ))}
             </Stack>
           ) : (
-            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+            <Typography sx={{ color: "text.secondary" }}>{displayName(g.m)} has no other open gaps.</Typography>
           )}
         </Card>
         <Card title={excluded ? "Why The Member Is Excluded" : closed ? "Why The Gap Is Closed" : "Why The Gap Is Open"}>
@@ -396,7 +401,7 @@ function OverviewV12({ g }: { g: GapView }) {
               ))}
             </Stack>
           ) : (
-            <Typography sx={{ color: "text.secondary" }}>{g.m.name} has no other open gaps.</Typography>
+            <Typography sx={{ color: "text.secondary" }}>{displayName(g.m)} has no other open gaps.</Typography>
           )}
         </Stack>
       </Stack>
@@ -595,7 +600,7 @@ function HistoryV12({ g }: { g: GapView }) {
         priority,
         details: e.details,
         pcm: e.pcm,
-        due: status === "Open" ? DUE : null,
+        due: status === "Open" ? dueFor(g) : null,
         closed: e.closed,
         action: status === "Open" ? RECOMMENDED_SENTENCE(code, CURRENT_YEAR) : "N/A",
         source: "Sonata quality run",
@@ -794,15 +799,15 @@ function History({ g }: { g: GapView }) {
   const v11 = useVersion().version.id >= 11;
   const rows = useMemo<HistRow[]>(() => {
     // Version 11 (LPP-16229): Priority only for an open gap, and the Primary Care Manager on every row.
-    const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
-    const openPriority = left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
+    const left = Math.round((dueFor(g).getTime() - DEMO_NOW.getTime()) / 86400000);
+    const openPriority = getVersion() >= 16 ? (gapPriority(g) ?? "Low") : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
     const pcmP = pcmPerson(g.m);
     const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
     const open: HistRow = {
       key: "open",
       gap: cgLabel(code),
       identified: g.identified,
-      due: DUE,
+      due: dueFor(g),
       closed: null,
       updated: g.identified,
       action: RECOMMENDED_SENTENCE(code, CURRENT_YEAR),
@@ -955,9 +960,10 @@ export function CareGapDetailPageV3() {
   const crumbs = v16
     ? [
         { label: "Care Gaps", href: "/care-gaps" },
-        { label: def ? label : "Not found", href: "/care-gaps" },
+        ...(def ? [{ label, href: "/care-gaps" }] : []),
         ...(m ? [{ label: displayName(m), href: `/members/${m.id}` }] : []),
-        { label: tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
+        // An address that names no gap has no tab to show either.
+        { label: !def ? "Gap not found" : tab === "evidence" ? "Evidence" : tab === "history" ? "History" : "Overview" },
       ]
     : v8
     ? [
@@ -977,7 +983,7 @@ export function CareGapDetailPageV3() {
           title="No care gap here"
           description={
             m && def
-              ? `${m.name} has no care gap for ${def.name}.`
+              ? `${version.id >= 16 ? displayName(m) : m.name} has no care gap for ${def.name}.`
               : "This care gap does not exist."
           }
           action={
@@ -997,7 +1003,7 @@ export function CareGapDetailPageV3() {
   const closed = g.status === "Closed";
   const excluded = g.status === "Excluded";
   // Version 11 summary (LPP-16153 and the Application Tables sheet): Priority, Primary Care Manager and Gap Evidence are new.
-  const left = Math.round((DUE.getTime() - DEMO_NOW.getTime()) / 86400000);
+  const left = Math.round((dueFor(g).getTime() - DEMO_NOW.getTime()) / 86400000);
   const priority = v12 ? gapPriority(g) ?? "--" : closed ? "--" : left <= 45 ? "High" : left <= 90 ? "Medium" : "Low";
   const pcmP = pcmPerson(m);
   const pcm = pcmP ? `${pcmP.name} - NPI: ${pcmP.npi}` : "Not sent";
@@ -1047,10 +1053,10 @@ export function CareGapDetailPageV3() {
             <Field label={v11 ? "Gap Identified Date" : "Identified Date"}>{fmtDate(g.identified)}</Field>
             {v11 && !v12 && <Field label="Priority">{priority}</Field>}
             {v12 && (
-              <Field label="Due Date">{g.status === "Open" ? fmtDate(DUE) : "N/A"}</Field>
+              <Field label="Due Date">{g.status === "Open" ? fmtDate(dueFor(g)) : "N/A"}</Field>
             )}
             {v12 && (
-              <Field label="Days Remaining">{g.status === "Open" ? `${daysToDue()} Days` : "N/A"}</Field>
+              <Field label="Days Remaining">{g.status === "Open" ? `${daysLeft(g)} Days` : "N/A"}</Field>
             )}
             {v12 && closed && (
               <Field label="Gap Closed Date">
@@ -1064,7 +1070,7 @@ export function CareGapDetailPageV3() {
                   {g.work.closed ? fmtDay(g.work.closed.on) : fmtDate(g.lastUpdated)}
                 </Field>
               ) : (
-                <Field label="Due Date">{fmtDate(DUE)}</Field>
+                <Field label="Due Date">{fmtDate(dueFor(g))}</Field>
               ))}
             <Field label={v11 ? "Recommended Action" : version.id >= 4 ? "Recommended Actions" : "Missing Evidence"}>
               {v8 ? (
