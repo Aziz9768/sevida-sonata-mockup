@@ -223,7 +223,7 @@ export function CareGapsPageV3() {
         align: "right",
         nowrap: true,
         searchable: false,
-        filter: { type: "numberCompare" },
+        filter: { type: "numberCompare", keepOperator: versionNo >= 16 },
       },
       {
         key: "found",
@@ -667,6 +667,7 @@ export function CareGapsPageV3() {
           onResultCountChange={setShown}
           key={v12 ? mode : undefined}
           storageKey={versionNo >= 16 ? `demo-care-gaps-v3-ver16-a-${mode}` : v12 ? `demo-care-gaps-v3-ver12-a-${mode}` : v11 ? "demo-care-gaps-v3-ver11-a" : v8 ? "demo-care-gaps-v3-ver8-a" : "demo-care-gaps-v3-ver3-a"}
+          savedViewsKeepPageSize={versionNo >= 16}
           savedViews={versionNo >= 16 ? "care-gaps-v16" : v12 ? "care-gaps-v12" : v11 ? "care-gaps-v11" : v8 ? "care-gaps-v8" : "care-gaps-v3"}
           exportFile="care-gaps"
           stickyHeader

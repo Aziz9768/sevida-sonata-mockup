@@ -287,7 +287,14 @@ export const encRows = (m: Member): EncRow[] => {
               ]
             : near.map((x) => ({ code: x.code, text: x.text })),
         provider: providerCell(m, e),
-        place: e.telehealth ? "Telehealth (member's home)" : POS[seed % POS.length],
+        place: e.telehealth
+          ? "Telehealth (member's home)"
+          : getVersion() >= 16
+            ? // Version 16: a children's clinic only for children, internal medicine only for adults.
+              (e.date.getFullYear() - m.dob.getFullYear() < 18
+                ? ["Madigan Pediatrics Clinic", "Madigan Family Medicine Clinic", "Madigan Army Medical Center"]
+                : ["Madigan Family Medicine Clinic", "Madigan Internal Medicine Clinic", "Madigan Army Medical Center"])[seed % 3]
+            : POS[seed % POS.length],
         measures: measuresOf(m, e),
         reason: e.text,
         encId: `ENC-${e.date.getFullYear()}${pad(e.date.getMonth() + 1)}${pad(e.date.getDate())}-${pad(seed % 10000, 4)}`,

@@ -153,6 +153,8 @@ export function FilterFields<T>({
   filters: FilterState;
   onChange: (key: string, value: FilterValue | undefined) => void;
 }) {
+  // An operator picked before its number is typed has no value to live in yet (a filter with no number is no filter), so it waits here.
+  const [pendingOps, setPendingOps] = useState<Record<string, string>>({});
   // A required filter (Measurement year) always has a value, so it stays on top. A `filterPinned` filter comes next. The rest are A to Z by the label people read.
   const labelOf = (c: Column<T>) => c.filterLabel ?? c.header;
   const isRequired = (c: Column<T>) =>
@@ -355,9 +357,12 @@ export function FilterFields<T>({
             const [op0, num = ""] = String(
               (value as string | undefined) ?? "",
             ).split("|");
-            const op = op0 || "=";
-            const set = (o: string, n: string) =>
+            const keep = (f as { keepOperator?: boolean }).keepOperator === true;
+            const op = op0 || (keep ? pendingOps[c.key] : undefined) || "=";
+            const set = (o: string, n: string) => {
+              if (keep) setPendingOps((p) => ({ ...p, [c.key]: o }));
               onChange(c.key, n === "" ? undefined : `${o}|${n}`);
+            };
             return (
               <Box key={c.key}>
                 <Typography

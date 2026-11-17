@@ -89,6 +89,19 @@ export const MILITARY_V8 = [
 /** The Military Status choices of the version being shown. */
 export const militaryOptions = () => (getVersion() >= 8 ? MILITARY_V8 : MILITARY_V3);
 export const militaryV3 = (m: Member, year = DEMO_NOW.getFullYear()): string => {
+  // Version 16 (LPP-16069): a status that fits the member's age. Children and many spouses are family members with no status of their own ("–");
+  // nobody under 18 serves, and retirement comes after 20 years of service.
+  if (getVersion() >= 16) {
+    const before = DEMO_NOW.getMonth() < m.dob.getMonth() || (DEMO_NOW.getMonth() === m.dob.getMonth() && DEMO_NOW.getDate() < m.dob.getDate());
+    const age = DEMO_NOW.getFullYear() - m.dob.getFullYear() - (before ? 1 : 0);
+    const r = hashOf(`${m.id}-mil`) % 100;
+    if (age < 18) return "–";
+    if (m.military === "Active" && age <= 60) return MILITARY_V8[0];
+    if (m.military === "Retired" && age >= 38) return MILITARY_V8[4];
+    if (age < 38) return r < 50 ? MILITARY_V8[0] : r < 68 ? MILITARY_V8[2] : r < 78 ? MILITARY_V8[1] : r < 82 ? MILITARY_V8[3] : "–";
+    if (age < 60) return r < 20 ? MILITARY_V8[0] : r < 28 ? MILITARY_V8[2] : r < 33 ? MILITARY_V8[1] : r < 38 ? MILITARY_V8[3] : r < 78 ? MILITARY_V8[4] : "–";
+    return r < 75 ? MILITARY_V8[4] : "–";
+  }
   if (getVersion() >= 8) {
     if (m.military === "Active") return MILITARY_V8[0];
     if (m.military === "Retired") return MILITARY_V8[4];

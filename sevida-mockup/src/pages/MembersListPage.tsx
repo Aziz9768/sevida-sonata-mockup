@@ -105,6 +105,7 @@ export function MembersListPage() {
               ? "demo-members-v30-ver2-d"
               : "demo-members-v30"
         }
+        savedViewsKeepPageSize={v16}
         savedViews={v16 ? "members-v16" : v12 ? "members-v12" : v11 ? "members-v11" : v8 ? "members-v8" : v3 ? "members-v3" : v2 ? "members-v2" : "members"}
         exportFile="members"
         // Column names stay in view while a long page of rows scrolls (FR-405).
