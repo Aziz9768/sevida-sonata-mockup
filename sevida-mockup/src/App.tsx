@@ -55,6 +55,8 @@ import { RoleProvider, useRole } from "./roles";
 import type { NavKey } from "./roles";
 import { RolePicker } from "./components/RolePicker";
 import { VersionPicker, VersionProvider, isRedesign, useVersion } from "./version";
+import { TourProvider } from "./components/tour/TourProvider";
+import { GuideButton } from "./components/tour/GuideButton";
 import { RunLine } from "./components/RunBits";
 import { FailedRunSwitch } from "./components/FailedRunSwitch";
 import { RunKeyed, RunProvider } from "./runs";
@@ -405,6 +407,7 @@ function Protected() {
     );
   }
   return (
+    <TourProvider>
     <AppShell
       defaultCollapsed
       // Version 11: the sidebar takes the Sonata look (lighter panel with a rounded corner, orange text for the open page).
@@ -425,6 +428,7 @@ function Protected() {
       headerContent={
         <>
           {version.id >= 16 && /^\/(dashboards|quicksight)/.test(pathname) ? null : <RunLine />}
+          <GuideButton />
           <VersionPicker footer={<FailedRunSwitch />} />
           <RolePicker />
         </>
@@ -651,6 +655,7 @@ function Protected() {
       </Fragment>
       </RunKeyed>
     </AppShell>
+    </TourProvider>
   );
 }
 
