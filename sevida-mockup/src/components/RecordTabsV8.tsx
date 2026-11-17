@@ -891,8 +891,6 @@ function MedicationsV8({ m }: { m: Member }) {
   const M16: Record<string, string> = {
     name: "The name of the medication dispensed.",
     date: "The date the pharmacy dispensed the medication to the member.",
-    strength: "How much of the active ingredient is in one unit of the medication, for example 500 mg.",
-    dose: "How much of the medication the member takes at one time, for example 1 tablet.",
     qty: "The amount of medication dispensed in this fill.",
     days: "The number of days this fill is expected to last.",
     mcode: "The drug code for this medication, and the coding system it comes from (RxNorm or NDC).",
@@ -901,19 +899,29 @@ function MedicationsV8({ m }: { m: Member }) {
     source: "The system or data feed this medication record was received from.",
     pharmacy: "The pharmacy that dispensed the medication.",
     pharmacyNpi: "The NPI of the pharmacy.",
-    prescriberNpi: "The NPI of the provider who prescribed the medication.",
-    prescriberName: "The name of the provider who prescribed the medication.",
+    prescriberNpi: "The NPI of the pharmacy.",
     refills: "The number of refills left on this prescription, out of the total refills prescribed.",
-    created: "The date this record was first received.",
-    updated: "The date this record was last changed.",
   };
+  // The ticket gives Strength, Dose, Code System, Prescriber Name, Created On, Created By and Last Updated no info text, so they have no (i).
+  const NO_HELP16 = ["strength", "dose", "msys", "prescriberName", "created", "createdBy", "updated"];
   // Version 16 (LPP-16160): Strength and Dose are two columns; the pharmacy, prescriber and refill columns are in the Columns panel (no Related Care Gap).
-  const doseOf = (r: R) => (/inhal|puff|actuation/i.test(r.name) ? "2 puffs" : /inject|pen|syringe|insulin/i.test(r.name) ? "1 injection" : "1 tablet");
+  const doseOf = (r: R) =>
+    /inhal|puff|actuation/i.test(r.name)
+      ? "2 puffs"
+      : /suspension/i.test(r.name)
+        ? "5 mL"
+        : /drops/i.test(r.name)
+          ? "1 mL"
+          : /capsule/i.test(r.name)
+            ? "1 capsule"
+            : /inject|syringe|insulin/i.test(r.name)
+              ? "1 injection"
+              : "1 tablet";
   const cols16 = v16()
     ? ticket16<R>(cols12, {
         main: (c) =>
           mapKey(
-            mapKey(c, "mcode", (x) => ({ ...x, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })),
+            mapKey(c, "mcode", (x) => ({ ...x, searchable: true, render: (r: R) => `${systemOf(r.code) === DASH ? "NDC" : systemOf(r.code)}: ${ndcFmt(codeOf(r.code))}` })),
             "name",
             // Name, strength and form, at most 2 lines, then "…" with the full text in a tooltip.
             (x) => ({
@@ -941,10 +949,18 @@ function MedicationsV8({ m }: { m: Member }) {
           col<R>("prescriberName", "Prescriber Name", (r) => r.provider, { sortable: true }),
           { ...columns.find((x) => x.key === "refills")!, header: "Refills Remaining" },
         ],
-      }).map((c) => (M16[c.key] ? { ...c, help: M16[c.key] } : c))
+      })
+        .map((c) => (NO_HELP16.includes(c.key) ? { ...c, help: "" } : M16[c.key] ? { ...c, help: M16[c.key] } : c))
+        // The hidden columns follow the ticket's order.
+        .sort((a, b) => {
+          const ORDER = ["created", "createdBy", "updated", "pharmacy", "pharmacyNpi", "prescriberNpi", "prescriberName", "refills"];
+          const ia = ORDER.indexOf(a.key);
+          const ib = ORDER.indexOf(b.key);
+          return ia < 0 && ib < 0 ? 0 : ia < 0 ? -1 : ib < 0 ? 1 : ia - ib;
+        })
     : null;
   const cols = cols16 ?? (v12() ? cols12 : colsOld);
-  return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search="Search by Medication…" providerOf={(r) => r.provider} />;
+  return <RecordTable tab="medications" m={m} rows={rows} columns={cols} getRowId={(r) => r.key} sort={{ key: "date", direction: "desc" }} search={v16() ? "Search by Medication or Code…" : "Search by Medication…"} providerOf={(r) => r.provider} note={v16() ? "Sample data: pharmacies, refills and created and updated dates are made up from each record in this demo." : undefined} />;
 }
 
 /* ------------------------------------------------------------------ observations */

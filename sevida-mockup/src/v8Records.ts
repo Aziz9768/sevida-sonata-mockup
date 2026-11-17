@@ -701,7 +701,7 @@ export interface MedRow {
   key: string;
   date: Date;
   name: string;
-  status: "Active" | "Inactive" | "Discontinued";
+  status: "Active" | "Inactive" | "Discontinued" | "--";
   quantity: string;
   days: number;
   code: string;
@@ -755,26 +755,43 @@ export const medRows = (m: Member): MedRow[] => {
     // Version 16 (LPP-16160): the name carries strength and form ("Metformin 500 mg tablet"); about one fill in four is coded in RxNorm, the rest in NDC;
     // the status shows all three values of the ticket (Active, Discontinued, Inactive).
     const v16 = getVersion() >= 16;
+    // Version 16: an antibiotic is a 10-day course, and a short course is only "Active" until a week after it should have ended.
+    if (v16 && /amoxicillin/i.test(name)) days = 10;
     if (v16 && /\d\s?(mg|mcg|IU)$/.test(name)) name = `${name} tablet`;
     const RXNORM: Record<string, string> = { "Metformin 500 mg tablet": "861004", "Lisinopril 10 mg tablet": "314076", "Atorvastatin 20 mg tablet": "617310" };
     if (v16 && RXNORM[name] && seed % 4 === 0) {
       codeSystem = "RxNorm";
       code = RXNORM[name];
     }
+    // Version 16: a fill still counts as current for 120 days; the quantity follows how the drug is taken (metformin twice a day, the other pills once a day,
+    // an inhaler is one inhaler, a suspension is dosed in mL); retail fills come from a pharmacy of the community, only the clinic's own dispensing is Madigan's.
+    const PHARMACIES = ["Riverside Community Pharmacy", "Main Street Pharmacy", "Lakeview Family Pharmacy", "TRICARE Home Delivery Pharmacy"];
+    const pharmacy16 = clinic ? "Madigan Outpatient Pharmacy" : PHARMACIES[seed % PHARMACIES.length];
+    const perDay = /metformin/i.test(name) ? 2 : 1;
+    const qty16 = /inhaler/i.test(name)
+      ? "1 inhaler"
+      : /suspension/i.test(name)
+        ? `${days * 10} mL`
+        : /drops/i.test(name)
+          ? `${days} mL`
+          : /capsule/i.test(name)
+            ? `${days * perDay} capsules`
+            : `${days * perDay} tablets`;
+    const noPrescriber = v16 && missing(`${key}${m.id}mpv`, 25);
     return {
       key,
       date,
       name,
-      status: v16 && seed % 7 === 0 ? "Discontinued" : DEMO_NOW.getTime() - date.getTime() <= 100 * DAY ? "Active" : "Inactive",
-      quantity: `${days * (/inhaler|drops|suspension/i.test(name) ? 1 : 2)} ${/tablet/i.test(name) ? "tablets" : /capsule/i.test(name) ? "capsules" : /mL/.test(name) ? "mL" : "doses"}`,
+      status: v16 && missing(`${key}${m.id}mst`, 50) ? "--" : v16 && seed % 7 === 0 ? "Discontinued" : DEMO_NOW.getTime() - date.getTime() <= (v16 ? (days <= 14 ? days + 7 : 120) : 100) * DAY ? "Active" : "Inactive",
+      quantity: v16 ? qty16 : `${days * (/inhaler|drops|suspension/i.test(name) ? 1 : 2)} ${/tablet/i.test(name) ? "tablets" : /capsule/i.test(name) ? "capsules" : /mL/.test(name) ? "mL" : "doses"}`,
       days,
       code: `${codeSystem}: ${code}`,
-      provider: lastFirst(providerName(npi)),
-      prescriberNpi: npi,
+      provider: noPrescriber ? DASH : lastFirst(providerName(npi)),
+      prescriberNpi: noPrescriber ? DASH : npi,
       measures,
-      pharmacy: clinic ? "Madigan Outpatient Pharmacy" : "Madigan Outpatient Pharmacy",
-      pharmacyNpi: `18${pad(seed % 100000000, 8)}`,
-      refills: `${seed % (total + 1)} out of ${total}`,
+      pharmacy: v16 ? pharmacy16 : "Madigan Outpatient Pharmacy",
+      pharmacyNpi: v16 ? `18${pad(h(pharmacy16) % 100000000, 8)}` : `18${pad(seed % 100000000, 8)}`,
+      refills: v16 && missing(`${key}${m.id}mrf`, 12) ? DASH : `${seed % (total + 1)} out of ${total}`,
       claimId: clinic ? DASH : `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(10000 + (seed % 89999), 5)}`,
       claimStatus: clinic ? DASH : "Active",
       payment: clinic ? DASH : "Paid",
@@ -808,8 +825,8 @@ export const medRows = (m: Member): MedRow[] => {
   const pool = MED_FILL[band(m)];
   const filler = Array.from({ length: Math.min(need, pool.length) }, (_, i) => {
     const [name, ndc, days] = pool[(h(m.id + "med") + i) % pool.length];
-    const date = new Date(2026, 3 + ((h(m.id + "md" + i) % 5)), 3 + ((h(m.id + "dd" + i) % 22)));
-    const d = date < m.dob ? addDays(m.dob, 30) : date;
+    const date = new Date(2026, (getVersion() >= 16 ? 5 : 3) + ((h(m.id + "md" + i) % 5)), 3 + ((h(m.id + "dd" + i) % 22)));
+    const d = date < m.dob ? addDays(m.dob, 30) : getVersion() >= 16 && date > DEMO_NOW ? addDays(DEMO_NOW, -(1 + (h(m.id + "mx" + i) % 20))) : date;
     const e = { code: ndc, date: d } as Evt;
     return mk(`fill-${i}-${name}`, d, name, days, "NDC", ndc, providerFor(m, { provider: undefined } as Evt).npi, [], false, createdOn(e), updatedOn(e), "TRICARE pharmacy claims");
   });
